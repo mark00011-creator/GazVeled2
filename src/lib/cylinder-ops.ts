@@ -116,7 +116,7 @@ export async function newTempBarcode(): Promise<string> {
   return data as string;
 }
 
-/** Atomic quick-exchange. Returns the new exchange id. */
+/** Record quick-exchange directly to database. Returns the new exchange id. */
 export async function recordExchange(args: {
   partner_id: string;
   incoming_id: string;
@@ -126,18 +126,22 @@ export async function recordExchange(args: {
   rental_id?: string | null;
   reassign_rental?: boolean;
 }): Promise<string> {
-  const rpc = supabase.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
-  const { data, error } = await rpc("record_exchange", {
-    p_partner_id: args.partner_id,
-    p_incoming_id: args.incoming_id,
-    p_outgoing_id: args.outgoing_id,
-    p_reason: args.reason ?? null,
-    p_note: args.note ?? null,
-    p_rental_id: args.rental_id ?? null,
-    p_reassign_rental: !!args.reassign_rental,
-  });
+  const { data, error } = await supabase
+    .from("exchanges")
+    .insert({
+      partner_id: args.partner_id,
+      incoming_cylinder_id: args.incoming_id,
+      outgoing_cylinder_id: args.outgoing_id,
+      reason: args.reason ?? null,
+      note: args.note ?? null,
+      rental_id: args.rental_id ?? null,
+      reassign_rental: args.reassign_rental ?? false,
+    })
+    .select("id")
+    .single();
+
   if (error) throw error;
-  return data as string;
+  return data.id;
 }
 
 /** Atomic supplier exchange. */
