@@ -228,7 +228,11 @@ function QuickExchange() {
       setReason("");
       setReassign(null);
 
-      qc.invalidateQueries();
+      // Invalidate only necessary queries (not RPC-dependent ones)
+      qc.invalidateQueries({ queryKey: ["cylinders"] });
+      qc.invalidateQueries({ queryKey: ["active-rentals"] });
+      qc.invalidateQueries({ queryKey: ["rented-cyls"] });
+      qc.invalidateQueries({ queryKey: ["history"] });
 
     } catch (e) {
       toast.error((e as Error).message);
