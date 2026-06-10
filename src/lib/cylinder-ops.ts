@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 
-type Circ = "siad" | "own";
+type Circ = "siad" | "own" | "other";
 type CylStatus = "full" | "empty" | "service";
 type LocType = "warehouse_full" | "warehouse_empty" | "customer" | "siad" | "own_supplier";
 
@@ -22,8 +22,68 @@ export type CylinderRow = {
 };
 
 /**
+ * Find cylinder by barcode ONLY. Does not create.
+ * Throws error if not found.
+ */
+export async function findCylinderByBarcode(barcode: string): Promise<CylinderRow> {
+  const bc = barcode.trim();
+  if (!bc) throw new Error("Üres vonalkód");
+  
+  const { data, error } = await supabase
+    .from("cylinders")
+    .select("*")
+    .eq("barcode", bc)
+    .single();
+  
+  if (error) throw new Error("Palack nem található az adatbázisban");
+  return data;
+}
+
+/**
+ * Create NEW cylinder with explicit data (no defaults).
+ * User must provide: gas_type, size, circulation, owner
+ */
+export async function createNewCylinder(args: {
+  barcode: string;
+  gas_type: string;
+  size: string;
+  circulation: Circ;
+  owner: Circ;
+  status?: CylStatus;
+  location_type?: LocType;
+  location_partner_id?: string | null;
+  location_supplier_id?: string | null;
+  note?: string;
+}): Promise<CylinderRow> {
+  const bc = args.barcode.trim();
+  if (!bc) throw new Error("Üres vonalkód");
+  if (!args.gas_type?.trim()) throw new Error("Gáz típusa kötelező");
+  if (!args.size?.trim()) throw new Error("Palack mérete kötelező");
+
+  const { data, error } = await supabase
+    .from("cylinders")
+    .insert({
+      barcode: bc,
+      gas_type: args.gas_type,
+      size: args.size,
+      circulation: args.circulation,
+      owner: args.owner,
+      status: args.status ?? "empty",
+      location_type: args.location_type ?? "warehouse_empty",
+      location_partner_id: args.location_partner_id ?? null,
+      location_supplier_id: args.location_supplier_id ?? null,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+/**
  * Atomic find-or-create via SECURITY DEFINER RPC.
  * Prevents duplicate-barcode race conditions.
+ * @deprecated Use findCylinderByBarcode + createNewCylinder instead for better control
  */
 export async function findOrCreateCylinder(
   barcode: string,
@@ -130,6 +190,22 @@ export async function reassignRentalCylinder(args: {
     p_note: args.note ?? null,
   });
   if (error) throw error;
+}
+
+/** Update cylinder. */
+export async function updateCylinder(
+  id: string,
+  updates: Partial<Pick<CylinderRow, "barcode" | "gas_type" | "size" | "circulation" | "owner" | "status" | "location_type" | "location_partner_id" | "location_supplier_id">>,
+): Promise<CylinderRow> {
+  const { data, error } = await supabase
+    .from("cylinders")
+    .update(updates)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
 }
 
 /** Legacy: kept for compatibility but new code should not need this. */
