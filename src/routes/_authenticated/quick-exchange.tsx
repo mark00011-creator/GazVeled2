@@ -10,10 +10,11 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Camera, ArrowRight, AlertTriangle, Check, Sparkles, ShieldAlert } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Camera, ArrowRight, AlertTriangle, Check, Sparkles, ShieldAlert, X } from "lucide-react";
 import { toast } from "sonner";
 import { circulationLabels, fmtDateTime, locationLabels } from "@/lib/labels";
-import { findOrCreateCylinder, recordExchange, type CylinderRow } from "@/lib/cylinder-ops";
+import { findCylinderByBarcode, createNewCylinder, recordExchange, type CylinderRow } from "@/lib/cylinder-ops";
 
 export const Route = createFileRoute("/_authenticated/quick-exchange")({
   head: () => ({ meta: [{ title: "Gyors csere – Gáz Veled" }] }),
@@ -21,6 +22,14 @@ export const Route = createFileRoute("/_authenticated/quick-exchange")({
 });
 
 type IncomingKind = "rental" | "own" | "new";
+
+const GAS_TYPES = ["Acetilén", "Argon", "Stargon", "Széndioxid", "Nitrogén", "Oxigén"];
+const STANDARD_SIZES = ["10 L", "20 L", "40 L", "50 L"];
+const CO2_SIZES = ["1-5 kg", "5 kg", "10 kg", "15 kg", "20 kg", "30 kg", "37,5 kg"];
+
+function getAvailableSizes(gasType: string): string[] {
+  return gasType === "Széndioxid" ? CO2_SIZES : STANDARD_SIZES;
+}
 
 function QuickExchange() {
   const qc = useQueryClient();
@@ -31,12 +40,27 @@ function QuickExchange() {
   const [incoming, setIncoming] = useState<CylinderRow | null>(null);
   const [incomingCreated, setIncomingCreated] = useState(false);
   const [outgoing, setOutgoing] = useState<CylinderRow | null>(null);
-const [outgoingCreated, setOutgoingCreated] = useState(false);
-  const [newGasType, setNewGasType] = useState("Stargon");
-  const [newSize, setNewSize] = useState("20L");
-  const [newOwner, setNewOwner] = useState<"own" | "siad">("own");
+  const [outgoingCreated, setOutgoingCreated] = useState(false);
+  
+  // New cylinder dialog state
+  const [newCylDialog, setNewCylDialog] = useState(false);
+  const [newCylPhase, setNewCylPhase] = useState<"incoming" | "outgoing">("incoming");
+  const [newCylForm, setNewCylForm] = useState({
+    barcode: "",
+    owner: "own" as "own" | "siad" | "other",
+    gasType: "Argon",
+    size: "20 L",
+    note: "",
+  });
+  const [newCylBusy, setNewCylBusy] = useState(false);
+
+  const [newGasType, setNewGasType] = useState("Argon");
+  const [newSize, setNewSize] = useState("20 L");
+  const [newOwner, setNewOwner] = useState<"own" | "siad" | "other">("own");
   const [reassign, setReassign] = useState<"yes" | "no" | null>(null);
   const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const [reason, setReason] = useState("");
 
   const { data: partners } = useQuery({
     queryKey: ["partners-min"],
@@ -86,18 +110,85 @@ const [outgoingCreated, setOutgoingCreated] = useState(false);
   async function lookupIncoming() {
     if (!incomingBc.trim()) return;
     try {
-      const { cyl, created } = await findOrCreateCylinder(incomingBc);
-      setIncoming(cyl); setIncomingCreated(created);
-      if (created) toast.success("Új palack rögzítve – első nyomon követett tranzakció");
-    } catch (e) { toast.error((e as Error).message); }
+      const cyl = await findCylinderByBarcode(incomingBc);
+      setIncoming(cyl);
+      setIncomingCreated(false);
+    } catch (e) {
+      // Cylinder not found - show new cylinder dialog
+      setNewCylForm({
+        barcode: incomingBc,
+        owner: "own",
+        gasType: "Argon",
+        size: "20 L",
+        note: "",
+      });
+      setNewCylPhase("incoming");
+      setNewCylDialog(true);
+    }
   }
+
   async function lookupOutgoing() {
     if (!outgoingBc.trim()) return;
     try {
-      const { cyl, created } = await findOrCreateCylinder(outgoingBc, { status: "full", location_type: "warehouse_full" });
-      setOutgoing(cyl); setOutgoingCreated(created);
-      if (created) toast.success("Új palack rögzítve – első nyomon követett tranzakció");
-    } catch (e) { toast.error((e as Error).message); }
+      const cyl = await findCylinderByBarcode(outgoingBc);
+      setOutgoing(cyl);
+      setOutgoingCreated(false);
+    } catch (e) {
+      // Cylinder not found - show new cylinder dialog
+      setNewCylForm({
+        barcode: outgoingBc,
+        owner: "own",
+        gasType: "Argon",
+        size: "20 L",
+        note: "",
+      });
+      setNewCylPhase("outgoing");
+      setNewCylDialog(true);
+    }
+  }
+
+  async function saveNewCylinder() {
+    if (!newCylForm.barcode.trim()) {
+      toast.error("Vonalkód kötelező");
+      return;
+    }
+    if (!newCylForm.gasType?.trim()) {
+      toast.error("Gáz típusa kötelező");
+      return;
+    }
+    if (!newCylForm.size?.trim()) {
+      toast.error("Palack mérete kötelező");
+      return;
+    }
+
+    setNewCylBusy(true);
+    try {
+      const cyl = await createNewCylinder({
+        barcode: newCylForm.barcode,
+        gas_type: newCylForm.gasType,
+        size: newCylForm.size,
+        circulation: newCylForm.owner,
+        owner: newCylForm.owner,
+        status: newCylPhase === "outgoing" ? "full" : "empty",
+        location_type: newCylPhase === "outgoing" ? "warehouse_full" : "warehouse_empty",
+      });
+
+      toast.success("Új palack felvéve");
+
+      if (newCylPhase === "incoming") {
+        setIncoming(cyl);
+        setIncomingCreated(true);
+      } else {
+        setOutgoing(cyl);
+        setOutgoingCreated(true);
+      }
+
+      setNewCylDialog(false);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setNewCylBusy(false);
+    }
   }
 
   const isForced = incoming && outgoing && incoming.circulation !== outgoing.circulation;
@@ -111,56 +202,47 @@ const [outgoingCreated, setOutgoingCreated] = useState(false);
 
     setBusy(true);
 
-try {
+    try {
+      const activeRental = (activeRentals ?? [])[0];
+      const reassignYes = !!(activeRental && reassign === "yes");
 
-  if (outgoingCreated) {
-    const { error } = await supabase
-      .from("cylinders")
-      .update({
-        gas_type: newGasType,
-        size: newSize,
-        owner: newOwner,
-        circulation: newOwner,
-      })
-      .eq("id", outgoing.id);
+      await recordExchange({
+        partner_id: partnerId,
+        incoming_id: incoming.id,
+        outgoing_id: outgoing.id,
+        reason: isForced ? reason : null,
+        note: note || null,
+        rental_id: activeRental?.id ?? null,
+        reassign_rental: reassignYes,
+      });
 
-    if (error) throw error;
+      toast.success("Csere rögzítve");
+
+      setIncomingBc("");
+      setOutgoingBc("");
+      setIncoming(null);
+      setOutgoing(null);
+      setIncomingCreated(false);
+      setOutgoingCreated(false);
+      setNote("");
+      setReason("");
+      setReassign(null);
+
+      qc.invalidateQueries();
+
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   }
 
-  const activeRental = (activeRentals ?? [])[0];
-  const reassignYes = !!(activeRental && reassign === "yes");
-
-  await recordExchange({
-    partner_id: partnerId,
-    incoming_id: incoming.id,
-    outgoing_id: outgoing.id,
-    reason: isForced ? reason : null,
-    note: note || null,
-    rental_id: activeRental?.id ?? null,
-    reassign_rental: reassignYes,
-  });
-
-  toast.success("Csere rögzítve");
-
-  setIncomingBc("");
-  setOutgoingBc("");
-  setIncoming(null);
-  setOutgoing(null);
-  setIncomingCreated(false);
-  setOutgoingCreated(false);
-  setNote("");
-  setReason("");
-  setReassign(null);
-
-  qc.invalidateQueries();
-
-} catch (e) {
-  toast.error((e as Error).message);
-} finally {
-  setBusy(false);
-}
-
-}
+  const availableSizes = getAvailableSizes(newCylForm.gasType);
+  const isNewCylFormValid =
+    newCylForm.barcode.trim() &&
+    newCylForm.gasType &&
+    newCylForm.size &&
+    newCylForm.owner;
 
   return (
     <AppShell title="Gyors csere">
@@ -174,6 +256,87 @@ try {
           onClose={() => setScanning(null)}
         />
       )}
+
+      {/* NEW CYLINDER DIALOG */}
+      <Dialog open={newCylDialog} onOpenChange={setNewCylDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Új palack felvétele</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Vonalkód</Label>
+              <Input
+                value={newCylForm.barcode}
+                onChange={(e) => setNewCylForm({ ...newCylForm, barcode: e.target.value })}
+                disabled
+                className="font-mono"
+              />
+            </div>
+
+            <div>
+              <Label className="mb-2 block">Tulajdonos típusa *</Label>
+              <Select value={newCylForm.owner} onValueChange={(v) => setNewCylForm({ ...newCylForm, owner: v as "own" | "siad" | "other" })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="own">Saját palack</SelectItem>
+                  <SelectItem value="siad">SIAD bérpalack</SelectItem>
+                  <SelectItem value="other">Egyéb bérpalack</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="mb-2 block">Gáz típusa *</Label>
+              <Select value={newCylForm.gasType} onValueChange={(v) => {
+                const newSize = getAvailableSizes(v)[0] || "20 L";
+                setNewCylForm({ ...newCylForm, gasType: v, size: newSize });
+              }}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {GAS_TYPES.map((gas) => (
+                    <SelectItem key={gas} value={gas}>{gas}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="mb-2 block">Palack mérete *</Label>
+              <Select value={newCylForm.size} onValueChange={(v) => setNewCylForm({ ...newCylForm, size: v })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableSizes.map((size) => (
+                    <SelectItem key={size} value={size}>{size}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Megjegyzés (opcionális)</Label>
+              <Input
+                value={newCylForm.note}
+                onChange={(e) => setNewCylForm({ ...newCylForm, note: e.target.value })}
+                placeholder="Pl.: Párósító sérült"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-4">
+              <Button variant="outline" onClick={() => setNewCylDialog(false)} className="flex-1">Mégsem</Button>
+              <Button onClick={saveNewCylinder} disabled={!isNewCylFormValid || newCylBusy} className="flex-1">
+                Mentés
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* 1. PARTNER */}
       <Card className="mb-3 p-4">
@@ -266,64 +429,7 @@ try {
               {outgoingCreated && <Badge className="bg-orange-500 text-white">Új palack</Badge>}
             </div>
           )}
-          {outgoingCreated && (
-  <Card className="mt-3 border-orange-500/50 bg-orange-50 dark:bg-orange-950/20 p-3">
-    <div className="mb-3 font-semibold">
-      Új palack adatai
-    </div>
-
-    <div className="grid gap-3">
-      <div>
-        <Label>Gáz típusa</Label>
-        <Select value={newGasType} onValueChange={setNewGasType}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="Stargon">Stargon</SelectItem>
-            <SelectItem value="Acetilén">Acetilén</SelectItem>
-            <SelectItem value="Oxigén">Oxigén</SelectItem>
-            <SelectItem value="Argon">Argon</SelectItem>
-            <SelectItem value="CO2">CO₂</SelectItem>
-            <SelectItem value="Nitrogén">Nitrogén</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div>
-        <Label>Méret</Label>
-        <Select value={newSize} onValueChange={setNewSize}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="10L">10L</SelectItem>
-            <SelectItem value="20L">20L</SelectItem>
-            <SelectItem value="40L">40L</SelectItem>
-            <SelectItem value="50L">50L</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div>
-        <Label>Tulajdonos</Label>
-        <Select
-          value={newOwner}
-          onValueChange={(v) => setNewOwner(v as "own" | "siad")}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="own">Saját</SelectItem>
-            <SelectItem value="siad">SIAD</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
-  </Card>
-)}
-{isForced && (
+          {isForced && (
             <div className="mt-3 space-y-2 rounded-md bg-warning/15 p-2 text-xs text-warning">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="mt-0.5 h-4 w-4" />
