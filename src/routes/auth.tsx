@@ -27,6 +27,23 @@ function AuthPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    const hash = window.location.hash.slice(1);
+    if (hash) {
+      const params = new URLSearchParams(hash);
+      const errorCode = params.get("error_code");
+      const errorDesc = params.get("error_description");
+      if (params.get("error") || errorCode) {
+        const expired = errorCode === "otp_expired";
+        toast.error(
+          expired
+            ? "A visszaállító link lejárt vagy érvénytelen. Kérj egy újat az alábbi űrlapon."
+            : (errorDesc?.replace(/\+/g, " ") ?? "Bejelentkezési hiba"),
+        );
+        if (expired) setMode("forgot");
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+    }
+
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") setMode("reset");
     });
