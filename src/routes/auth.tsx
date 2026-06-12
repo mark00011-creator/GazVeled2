@@ -14,18 +14,28 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
+type AuthMode = "login" | "signup" | "forgot" | "reset";
+
 function AuthPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (user) navigate({ to: "/dashboard", replace: true });
-  }, [user, navigate]);
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") setMode("reset");
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (user && mode !== "reset") navigate({ to: "/dashboard", replace: true });
+  }, [user, navigate, mode]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -42,6 +52,18 @@ function AuthPage() {
         });
         if (error) throw error;
         toast.success("Fiók létrehozva, bejelentkezés…");
+      } else if (mode === "forgot") {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/auth`,
+        });
+        if (error) throw error;
+        toast.success("Ellenőrizd az email fiókodat a jelszó-visszaállító linkért.");
+        setMode("login");
+      } else if (mode === "reset") {
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        if (error) throw error;
+        toast.success("Új jelszó mentve, bejelentkezés…");
+        setMode("login");
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -63,6 +85,14 @@ function AuthPage() {
             <p className="text-xs text-muted-foreground">Palack Manager</p>
           </div>
         </div>
+        {mode === "forgot" && (
+          <p className="mb-4 text-sm text-muted-foreground">
+            Add meg az email címedet, és küldünk egy jelszó-visszaállító linket.
+          </p>
+        )}
+        {mode === "reset" && (
+          <p className="mb-4 text-sm text-muted-foreground">Állíts be egy új jelszót a fiókodhoz.</p>
+        )}
         <form onSubmit={submit} className="space-y-4">
           {mode === "signup" && (
             <div>
@@ -70,21 +100,79 @@ function AuthPage() {
               <Input id="name" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
             </div>
           )}
-          <div>
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </div>
-          <div>
-            <Label htmlFor="password">Jelszó</Label>
-            <Input id="password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
-          </div>
+          {mode !== "reset" && (
+            <div>
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            </div>
+          )}
+          {(mode === "login" || mode === "signup") && (
+            <div>
+              <Label htmlFor="password">Jelszó</Label>
+              <Input
+                id="password"
+                type="password"
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={6}
+              />
+            </div>
+          )}
+          {mode === "reset" && (
+            <div>
+              <Label htmlFor="new-password">Új jelszó</Label>
+              <Input
+                id="new-password"
+                type="password"
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                minLength={6}
+              />
+            </div>
+          )}
           <Button type="submit" className="w-full" disabled={busy}>
-            {busy ? "…" : mode === "login" ? "Bejelentkezés" : "Regisztráció"}
+            {busy
+              ? "…"
+              : mode === "login"
+                ? "Bejelentkezés"
+                : mode === "signup"
+                  ? "Regisztráció"
+                  : mode === "forgot"
+                    ? "Visszaállító link küldése"
+                    : "Új jelszó mentése"}
           </Button>
         </form>
-        <button type="button" onClick={() => setMode(mode === "login" ? "signup" : "login")} className="mt-4 w-full text-sm text-muted-foreground hover:text-foreground">
-          {mode === "login" ? "Nincs még fiókod? Regisztráció" : "Van fiókod? Bejelentkezés"}
-        </button>
+        {mode === "login" && (
+          <button
+            type="button"
+            onClick={() => setMode("forgot")}
+            className="mt-3 w-full text-sm text-muted-foreground hover:text-foreground"
+          >
+            Elfelejtetted a jelszavad?
+          </button>
+        )}
+        {(mode === "login" || mode === "signup") && (
+          <button
+            type="button"
+            onClick={() => setMode(mode === "login" ? "signup" : "login")}
+            className={`w-full text-sm text-muted-foreground hover:text-foreground ${mode === "login" ? "mt-2" : "mt-4"}`}
+          >
+            {mode === "login" ? "Nincs még fiókod? Regisztráció" : "Van fiókod? Bejelentkezés"}
+          </button>
+        )}
+        {(mode === "forgot" || mode === "reset") && (
+          <button
+            type="button"
+            onClick={() => setMode("login")}
+            className="mt-2 w-full text-sm text-muted-foreground hover:text-foreground"
+          >
+            Vissza a bejelentkezéshez
+          </button>
+        )}
       </Card>
     </div>
   );
