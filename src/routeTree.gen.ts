@@ -13,15 +13,22 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedSuppliersRouteImport } from './routes/_authenticated/suppliers'
+import { Route as AuthenticatedRentalsRouteImport } from './routes/_authenticated/rentals'
 import { Route as AuthenticatedRentalReturnRouteImport } from './routes/_authenticated/rental-return'
-import { Route as AuthenticatedQuickExchangemChar225solataRouteImport } from './routes/_authenticated/quick-exchange másolata'
 import { Route as AuthenticatedQuickExchangeRouteImport } from './routes/_authenticated/quick-exchange'
 import { Route as AuthenticatedPartnersRouteImport } from './routes/_authenticated/partners'
 import { Route as AuthenticatedMoreRouteImport } from './routes/_authenticated/more'
+import { Route as AuthenticatedInventoryRouteImport } from './routes/_authenticated/inventory'
+import { Route as AuthenticatedGasOrderRouteImport } from './routes/_authenticated/gas-order'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedCylindersRouteImport } from './routes/_authenticated/cylinders'
 import { Route as AuthenticatedAuditRouteImport } from './routes/_authenticated/audit'
+import { Route as AuthenticatedRentalsIndexRouteImport } from './routes/_authenticated/rentals.index'
+import { Route as AuthenticatedPartnersIndexRouteImport } from './routes/_authenticated/partners.index'
+import { Route as AuthenticatedRentalsIdRouteImport } from './routes/_authenticated/rentals.$id'
+import { Route as AuthenticatedPartnersIdRouteImport } from './routes/_authenticated/partners.$id'
 import { Route as AuthenticatedCylindersIdRouteImport } from './routes/_authenticated/cylinders.$id'
+import { Route as AuthenticatedPartnersIdRentalsRouteImport } from './routes/_authenticated/partners.$id.rentals'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -42,16 +49,15 @@ const AuthenticatedSuppliersRoute = AuthenticatedSuppliersRouteImport.update({
   path: '/suppliers',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedRentalsRoute = AuthenticatedRentalsRouteImport.update({
+  id: '/rentals',
+  path: '/rentals',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedRentalReturnRoute =
   AuthenticatedRentalReturnRouteImport.update({
     id: '/rental-return',
     path: '/rental-return',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedQuickExchangemChar225solataRoute =
-  AuthenticatedQuickExchangemChar225solataRouteImport.update({
-    id: '/quick-exchange másolata',
-    path: '/quick-exchange másolata',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedQuickExchangeRoute =
@@ -70,6 +76,16 @@ const AuthenticatedMoreRoute = AuthenticatedMoreRouteImport.update({
   path: '/more',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedInventoryRoute = AuthenticatedInventoryRouteImport.update({
+  id: '/inventory',
+  path: '/inventory',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedGasOrderRoute = AuthenticatedGasOrderRouteImport.update({
+  id: '/gas-order',
+  path: '/gas-order',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -85,11 +101,39 @@ const AuthenticatedAuditRoute = AuthenticatedAuditRouteImport.update({
   path: '/audit',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedRentalsIndexRoute =
+  AuthenticatedRentalsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedRentalsRoute,
+  } as any)
+const AuthenticatedPartnersIndexRoute =
+  AuthenticatedPartnersIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedPartnersRoute,
+  } as any)
+const AuthenticatedRentalsIdRoute = AuthenticatedRentalsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AuthenticatedRentalsRoute,
+} as any)
+const AuthenticatedPartnersIdRoute = AuthenticatedPartnersIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AuthenticatedPartnersRoute,
+} as any)
 const AuthenticatedCylindersIdRoute =
   AuthenticatedCylindersIdRouteImport.update({
     id: '/$id',
     path: '/$id',
     getParentRoute: () => AuthenticatedCylindersRoute,
+  } as any)
+const AuthenticatedPartnersIdRentalsRoute =
+  AuthenticatedPartnersIdRentalsRouteImport.update({
+    id: '/rentals',
+    path: '/rentals',
+    getParentRoute: () => AuthenticatedPartnersIdRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -98,13 +142,20 @@ export interface FileRoutesByFullPath {
   '/audit': typeof AuthenticatedAuditRoute
   '/cylinders': typeof AuthenticatedCylindersRouteWithChildren
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/gas-order': typeof AuthenticatedGasOrderRoute
+  '/inventory': typeof AuthenticatedInventoryRoute
   '/more': typeof AuthenticatedMoreRoute
-  '/partners': typeof AuthenticatedPartnersRoute
+  '/partners': typeof AuthenticatedPartnersRouteWithChildren
   '/quick-exchange': typeof AuthenticatedQuickExchangeRoute
-  '/quick-exchange másolata': typeof AuthenticatedQuickExchangemChar225solataRoute
   '/rental-return': typeof AuthenticatedRentalReturnRoute
+  '/rentals': typeof AuthenticatedRentalsRouteWithChildren
   '/suppliers': typeof AuthenticatedSuppliersRoute
   '/cylinders/$id': typeof AuthenticatedCylindersIdRoute
+  '/partners/$id': typeof AuthenticatedPartnersIdRouteWithChildren
+  '/rentals/$id': typeof AuthenticatedRentalsIdRoute
+  '/partners/': typeof AuthenticatedPartnersIndexRoute
+  '/rentals/': typeof AuthenticatedRentalsIndexRoute
+  '/partners/$id/rentals': typeof AuthenticatedPartnersIdRentalsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -112,13 +163,18 @@ export interface FileRoutesByTo {
   '/audit': typeof AuthenticatedAuditRoute
   '/cylinders': typeof AuthenticatedCylindersRouteWithChildren
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/gas-order': typeof AuthenticatedGasOrderRoute
+  '/inventory': typeof AuthenticatedInventoryRoute
   '/more': typeof AuthenticatedMoreRoute
-  '/partners': typeof AuthenticatedPartnersRoute
   '/quick-exchange': typeof AuthenticatedQuickExchangeRoute
-  '/quick-exchange másolata': typeof AuthenticatedQuickExchangemChar225solataRoute
   '/rental-return': typeof AuthenticatedRentalReturnRoute
   '/suppliers': typeof AuthenticatedSuppliersRoute
   '/cylinders/$id': typeof AuthenticatedCylindersIdRoute
+  '/partners/$id': typeof AuthenticatedPartnersIdRouteWithChildren
+  '/rentals/$id': typeof AuthenticatedRentalsIdRoute
+  '/partners': typeof AuthenticatedPartnersIndexRoute
+  '/rentals': typeof AuthenticatedRentalsIndexRoute
+  '/partners/$id/rentals': typeof AuthenticatedPartnersIdRentalsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -128,13 +184,20 @@ export interface FileRoutesById {
   '/_authenticated/audit': typeof AuthenticatedAuditRoute
   '/_authenticated/cylinders': typeof AuthenticatedCylindersRouteWithChildren
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/gas-order': typeof AuthenticatedGasOrderRoute
+  '/_authenticated/inventory': typeof AuthenticatedInventoryRoute
   '/_authenticated/more': typeof AuthenticatedMoreRoute
-  '/_authenticated/partners': typeof AuthenticatedPartnersRoute
+  '/_authenticated/partners': typeof AuthenticatedPartnersRouteWithChildren
   '/_authenticated/quick-exchange': typeof AuthenticatedQuickExchangeRoute
-  '/_authenticated/quick-exchange másolata': typeof AuthenticatedQuickExchangemChar225solataRoute
   '/_authenticated/rental-return': typeof AuthenticatedRentalReturnRoute
+  '/_authenticated/rentals': typeof AuthenticatedRentalsRouteWithChildren
   '/_authenticated/suppliers': typeof AuthenticatedSuppliersRoute
   '/_authenticated/cylinders/$id': typeof AuthenticatedCylindersIdRoute
+  '/_authenticated/partners/$id': typeof AuthenticatedPartnersIdRouteWithChildren
+  '/_authenticated/rentals/$id': typeof AuthenticatedRentalsIdRoute
+  '/_authenticated/partners/': typeof AuthenticatedPartnersIndexRoute
+  '/_authenticated/rentals/': typeof AuthenticatedRentalsIndexRoute
+  '/_authenticated/partners/$id/rentals': typeof AuthenticatedPartnersIdRentalsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -144,13 +207,20 @@ export interface FileRouteTypes {
     | '/audit'
     | '/cylinders'
     | '/dashboard'
+    | '/gas-order'
+    | '/inventory'
     | '/more'
     | '/partners'
     | '/quick-exchange'
-    | '/quick-exchange másolata'
     | '/rental-return'
+    | '/rentals'
     | '/suppliers'
     | '/cylinders/$id'
+    | '/partners/$id'
+    | '/rentals/$id'
+    | '/partners/'
+    | '/rentals/'
+    | '/partners/$id/rentals'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -158,13 +228,18 @@ export interface FileRouteTypes {
     | '/audit'
     | '/cylinders'
     | '/dashboard'
+    | '/gas-order'
+    | '/inventory'
     | '/more'
-    | '/partners'
     | '/quick-exchange'
-    | '/quick-exchange másolata'
     | '/rental-return'
     | '/suppliers'
     | '/cylinders/$id'
+    | '/partners/$id'
+    | '/rentals/$id'
+    | '/partners'
+    | '/rentals'
+    | '/partners/$id/rentals'
   id:
     | '__root__'
     | '/'
@@ -173,13 +248,20 @@ export interface FileRouteTypes {
     | '/_authenticated/audit'
     | '/_authenticated/cylinders'
     | '/_authenticated/dashboard'
+    | '/_authenticated/gas-order'
+    | '/_authenticated/inventory'
     | '/_authenticated/more'
     | '/_authenticated/partners'
     | '/_authenticated/quick-exchange'
-    | '/_authenticated/quick-exchange másolata'
     | '/_authenticated/rental-return'
+    | '/_authenticated/rentals'
     | '/_authenticated/suppliers'
     | '/_authenticated/cylinders/$id'
+    | '/_authenticated/partners/$id'
+    | '/_authenticated/rentals/$id'
+    | '/_authenticated/partners/'
+    | '/_authenticated/rentals/'
+    | '/_authenticated/partners/$id/rentals'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -218,18 +300,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSuppliersRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/rentals': {
+      id: '/_authenticated/rentals'
+      path: '/rentals'
+      fullPath: '/rentals'
+      preLoaderRoute: typeof AuthenticatedRentalsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/rental-return': {
       id: '/_authenticated/rental-return'
       path: '/rental-return'
       fullPath: '/rental-return'
       preLoaderRoute: typeof AuthenticatedRentalReturnRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/quick-exchange másolata': {
-      id: '/_authenticated/quick-exchange másolata'
-      path: '/quick-exchange másolata'
-      fullPath: '/quick-exchange másolata'
-      preLoaderRoute: typeof AuthenticatedQuickExchangemChar225solataRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/quick-exchange': {
@@ -253,6 +335,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMoreRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/inventory': {
+      id: '/_authenticated/inventory'
+      path: '/inventory'
+      fullPath: '/inventory'
+      preLoaderRoute: typeof AuthenticatedInventoryRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/gas-order': {
+      id: '/_authenticated/gas-order'
+      path: '/gas-order'
+      fullPath: '/gas-order'
+      preLoaderRoute: typeof AuthenticatedGasOrderRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
       path: '/dashboard'
@@ -274,12 +370,47 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAuditRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/rentals/': {
+      id: '/_authenticated/rentals/'
+      path: '/'
+      fullPath: '/rentals/'
+      preLoaderRoute: typeof AuthenticatedRentalsIndexRouteImport
+      parentRoute: typeof AuthenticatedRentalsRoute
+    }
+    '/_authenticated/partners/': {
+      id: '/_authenticated/partners/'
+      path: '/'
+      fullPath: '/partners/'
+      preLoaderRoute: typeof AuthenticatedPartnersIndexRouteImport
+      parentRoute: typeof AuthenticatedPartnersRoute
+    }
+    '/_authenticated/rentals/$id': {
+      id: '/_authenticated/rentals/$id'
+      path: '/$id'
+      fullPath: '/rentals/$id'
+      preLoaderRoute: typeof AuthenticatedRentalsIdRouteImport
+      parentRoute: typeof AuthenticatedRentalsRoute
+    }
+    '/_authenticated/partners/$id': {
+      id: '/_authenticated/partners/$id'
+      path: '/$id'
+      fullPath: '/partners/$id'
+      preLoaderRoute: typeof AuthenticatedPartnersIdRouteImport
+      parentRoute: typeof AuthenticatedPartnersRoute
+    }
     '/_authenticated/cylinders/$id': {
       id: '/_authenticated/cylinders/$id'
       path: '/$id'
       fullPath: '/cylinders/$id'
       preLoaderRoute: typeof AuthenticatedCylindersIdRouteImport
       parentRoute: typeof AuthenticatedCylindersRoute
+    }
+    '/_authenticated/partners/$id/rentals': {
+      id: '/_authenticated/partners/$id/rentals'
+      path: '/rentals'
+      fullPath: '/partners/$id/rentals'
+      preLoaderRoute: typeof AuthenticatedPartnersIdRentalsRouteImport
+      parentRoute: typeof AuthenticatedPartnersIdRoute
     }
   }
 }
@@ -298,15 +429,59 @@ const AuthenticatedCylindersRouteWithChildren =
     AuthenticatedCylindersRouteChildren,
   )
 
+interface AuthenticatedPartnersIdRouteChildren {
+  AuthenticatedPartnersIdRentalsRoute: typeof AuthenticatedPartnersIdRentalsRoute
+}
+
+const AuthenticatedPartnersIdRouteChildren: AuthenticatedPartnersIdRouteChildren =
+  {
+    AuthenticatedPartnersIdRentalsRoute: AuthenticatedPartnersIdRentalsRoute,
+  }
+
+const AuthenticatedPartnersIdRouteWithChildren =
+  AuthenticatedPartnersIdRoute._addFileChildren(
+    AuthenticatedPartnersIdRouteChildren,
+  )
+
+interface AuthenticatedPartnersRouteChildren {
+  AuthenticatedPartnersIdRoute: typeof AuthenticatedPartnersIdRouteWithChildren
+  AuthenticatedPartnersIndexRoute: typeof AuthenticatedPartnersIndexRoute
+}
+
+const AuthenticatedPartnersRouteChildren: AuthenticatedPartnersRouteChildren = {
+  AuthenticatedPartnersIdRoute: AuthenticatedPartnersIdRouteWithChildren,
+  AuthenticatedPartnersIndexRoute: AuthenticatedPartnersIndexRoute,
+}
+
+const AuthenticatedPartnersRouteWithChildren =
+  AuthenticatedPartnersRoute._addFileChildren(
+    AuthenticatedPartnersRouteChildren,
+  )
+
+interface AuthenticatedRentalsRouteChildren {
+  AuthenticatedRentalsIdRoute: typeof AuthenticatedRentalsIdRoute
+  AuthenticatedRentalsIndexRoute: typeof AuthenticatedRentalsIndexRoute
+}
+
+const AuthenticatedRentalsRouteChildren: AuthenticatedRentalsRouteChildren = {
+  AuthenticatedRentalsIdRoute: AuthenticatedRentalsIdRoute,
+  AuthenticatedRentalsIndexRoute: AuthenticatedRentalsIndexRoute,
+}
+
+const AuthenticatedRentalsRouteWithChildren =
+  AuthenticatedRentalsRoute._addFileChildren(AuthenticatedRentalsRouteChildren)
+
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAuditRoute: typeof AuthenticatedAuditRoute
   AuthenticatedCylindersRoute: typeof AuthenticatedCylindersRouteWithChildren
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedGasOrderRoute: typeof AuthenticatedGasOrderRoute
+  AuthenticatedInventoryRoute: typeof AuthenticatedInventoryRoute
   AuthenticatedMoreRoute: typeof AuthenticatedMoreRoute
-  AuthenticatedPartnersRoute: typeof AuthenticatedPartnersRoute
+  AuthenticatedPartnersRoute: typeof AuthenticatedPartnersRouteWithChildren
   AuthenticatedQuickExchangeRoute: typeof AuthenticatedQuickExchangeRoute
-  AuthenticatedQuickExchangemChar225solataRoute: typeof AuthenticatedQuickExchangemChar225solataRoute
   AuthenticatedRentalReturnRoute: typeof AuthenticatedRentalReturnRoute
+  AuthenticatedRentalsRoute: typeof AuthenticatedRentalsRouteWithChildren
   AuthenticatedSuppliersRoute: typeof AuthenticatedSuppliersRoute
 }
 
@@ -314,12 +489,13 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAuditRoute: AuthenticatedAuditRoute,
   AuthenticatedCylindersRoute: AuthenticatedCylindersRouteWithChildren,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedGasOrderRoute: AuthenticatedGasOrderRoute,
+  AuthenticatedInventoryRoute: AuthenticatedInventoryRoute,
   AuthenticatedMoreRoute: AuthenticatedMoreRoute,
-  AuthenticatedPartnersRoute: AuthenticatedPartnersRoute,
+  AuthenticatedPartnersRoute: AuthenticatedPartnersRouteWithChildren,
   AuthenticatedQuickExchangeRoute: AuthenticatedQuickExchangeRoute,
-  AuthenticatedQuickExchangemChar225solataRoute:
-    AuthenticatedQuickExchangemChar225solataRoute,
   AuthenticatedRentalReturnRoute: AuthenticatedRentalReturnRoute,
+  AuthenticatedRentalsRoute: AuthenticatedRentalsRouteWithChildren,
   AuthenticatedSuppliersRoute: AuthenticatedSuppliersRoute,
 }
 

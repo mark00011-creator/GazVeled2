@@ -10,11 +10,12 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Camera, ArrowRight, AlertTriangle, Check, Sparkles, ShieldAlert, X } from "lucide-react";
 import { toast } from "sonner";
-import { circulationLabels, fmtDateTime, locationLabels } from "@/lib/labels";
-import { findCylinderByBarcode, createNewCylinder, recordExchange, type CylinderRow } from "@/lib/cylinder-ops";
+import { circulationLabels, CIRCULATION_OPTIONS, fmtDateTime, locationLabels, type Circulation } from "@/lib/labels";
+import { findCylinderByBarcode, createNewCylinder, normalizeBarcode, recordExchange, type CylinderRow } from "@/lib/cylinder-ops";
+import { findActiveRentalIdForCylinder } from "@/lib/rental-ops";
 
 export const Route = createFileRoute("/_authenticated/quick-exchange")({
   head: () => ({ meta: [{ title: "Gyors csere – Gáz Veled" }] }),
@@ -47,16 +48,13 @@ function QuickExchange() {
   const [newCylPhase, setNewCylPhase] = useState<"incoming" | "outgoing">("incoming");
   const [newCylForm, setNewCylForm] = useState({
     barcode: "",
-    owner: "own" as "own" | "siad" | "other",
+    owner: "own" as Circulation,
     gasType: "Argon",
     size: "20 L",
     note: "",
   });
   const [newCylBusy, setNewCylBusy] = useState(false);
 
-  const [newGasType, setNewGasType] = useState("Argon");
-  const [newSize, setNewSize] = useState("20 L");
-  const [newOwner, setNewOwner] = useState<"own" | "siad" | "other">("own");
   const [reassign, setReassign] = useState<"yes" | "no" | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
@@ -80,23 +78,43 @@ function QuickExchange() {
     },
   });
 
-  const rentedCylIds = useMemo(
-    () => (activeRentals ?? []).map((r) => r.current_cylinder_id).filter(Boolean) as string[],
-    [activeRentals],
-  );
+  const rentalIds = useMemo(() => (activeRentals ?? []).map((r) => r.id), [activeRentals]);
 
   const { data: rentedCyls } = useQuery({
-    queryKey: ["rented-cyls", rentedCylIds],
-    enabled: rentedCylIds.length > 0,
-    queryFn: async () => (await supabase.from("cylinders").select("id,barcode").in("id", rentedCylIds)).data ?? [],
+    queryKey: ["rental-cyl-links", rentalIds],
+    enabled: rentalIds.length > 0,
+    queryFn: async () => {
+      const { data: links, error: linkErr } = await supabase
+        .from("rental_cylinders")
+        .select("cylinder_id")
+        .in("rental_id", rentalIds)
+        .is("removed_at", null);
+      if (linkErr) throw linkErr;
+      const ids = (links ?? []).map((l) => l.cylinder_id);
+      if (ids.length === 0) return [];
+      const { data: cyls, error: cylErr } = await supabase.from("cylinders").select("id, barcode").in("id", ids);
+      if (cylErr) throw cylErr;
+      return cyls ?? [];
+    },
+  });
+
+  const rentedCylIds = useMemo(
+    () => (rentedCyls ?? []).map((c) => c.id),
+    [rentedCyls],
+  );
+
+  const { data: incomingRentalId } = useQuery({
+    queryKey: ["incoming-rental", incoming?.id],
+    enabled: !!incoming?.id && !incomingCreated,
+    queryFn: () => findActiveRentalIdForCylinder(incoming!.id),
   });
 
   const incomingKind: IncomingKind | null = useMemo(() => {
     if (!incoming) return null;
     if (incomingCreated) return "new";
-    if (rentedCylIds.includes(incoming.id)) return "rental";
+    if (incomingRentalId || rentedCylIds.includes(incoming.id)) return "rental";
     return "own";
-  }, [incoming, incomingCreated, rentedCylIds]);
+  }, [incoming, incomingCreated, rentedCylIds, incomingRentalId]);
 
   const { data: history } = useQuery({
     queryKey: ["history", incoming?.id],
@@ -171,6 +189,7 @@ function QuickExchange() {
         owner: newCylForm.owner,
         status: newCylPhase === "outgoing" ? "full" : "empty",
         location_type: newCylPhase === "outgoing" ? "warehouse_full" : "warehouse_empty",
+        note: newCylForm.note.trim() || undefined,
       });
 
       toast.success("Új palack felvéve");
@@ -193,18 +212,19 @@ function QuickExchange() {
 
   const isForced = incoming && outgoing && incoming.circulation !== outgoing.circulation;
   const needsRentalQuestion =
-    (activeRentals?.length ?? 0) > 0 && incoming && outgoing && reassign === null;
+    incomingKind === "rental" && incoming && outgoing && reassign === null;
 
   async function complete() {
     if (!incoming || !outgoing || !partnerId) { toast.error("Hiányzó adat"); return; }
+    if (incoming.id === outgoing.id) { toast.error("A beérkező és kiadott palack nem lehet ugyanaz"); return; }
     if (isForced && !reason.trim()) { toast.error("Add meg a kényszerhelyettesítés okát"); return; }
-    if ((activeRentals?.length ?? 0) > 0 && reassign === null) { toast.error("Döntsd el az újrarendelés kérdést"); return; }
+    if (needsRentalQuestion) { toast.error("Döntsd el az újrarendelés kérdést"); return; }
 
     setBusy(true);
 
     try {
-      const activeRental = (activeRentals ?? [])[0];
-      const reassignYes = !!(activeRental && reassign === "yes");
+      const rentalId = incomingRentalId ?? (activeRentals ?? [])[0]?.id ?? null;
+      const reassignYes = !!(rentalId && reassign === "yes");
 
       await recordExchange({
         partner_id: partnerId,
@@ -212,7 +232,7 @@ function QuickExchange() {
         outgoing_id: outgoing.id,
         reason: isForced ? reason : null,
         note: note || null,
-        rental_id: activeRental?.id ?? null,
+        rental_id: rentalId,
         reassign_rental: reassignYes,
       });
 
@@ -231,7 +251,12 @@ function QuickExchange() {
       // Invalidate only necessary queries (not RPC-dependent ones)
       qc.invalidateQueries({ queryKey: ["cylinders"] });
       qc.invalidateQueries({ queryKey: ["active-rentals"] });
-      qc.invalidateQueries({ queryKey: ["rented-cyls"] });
+      qc.invalidateQueries({ queryKey: ["rental-cyl-links"] });
+      qc.invalidateQueries({ queryKey: ["incoming-rental"] });
+      qc.invalidateQueries({ queryKey: ["partner-rented-cyl-ids"] });
+      qc.invalidateQueries({ queryKey: ["partner-cylinders"] });
+      qc.invalidateQueries({ queryKey: ["rental-cyls"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
       qc.invalidateQueries({ queryKey: ["history"] });
 
     } catch (e) {
@@ -252,10 +277,33 @@ function QuickExchange() {
     <AppShell title="Gyors csere">
       {scanning && (
         <BarcodeScanner
-          onResult={(t) => {
-            if (scanning === "in") { setIncomingBc(t); }
-            else { setOutgoingBc(t); }
+          onResult={async (t) => {
+            const bc = normalizeBarcode(t);
+            const phase = scanning;
             setScanning(null);
+            if (phase === "in") {
+              setIncomingBc(bc);
+              try {
+                const cyl = await findCylinderByBarcode(bc);
+                setIncoming(cyl);
+                setIncomingCreated(false);
+              } catch {
+                setNewCylForm({ barcode: bc, owner: "own", gasType: "Argon", size: "20 L", note: "" });
+                setNewCylPhase("incoming");
+                setNewCylDialog(true);
+              }
+            } else if (phase === "out") {
+              setOutgoingBc(bc);
+              try {
+                const cyl = await findCylinderByBarcode(bc);
+                setOutgoing(cyl);
+                setOutgoingCreated(false);
+              } catch {
+                setNewCylForm({ barcode: bc, owner: "own", gasType: "Argon", size: "20 L", note: "" });
+                setNewCylPhase("outgoing");
+                setNewCylDialog(true);
+              }
+            }
           }}
           onClose={() => setScanning(null)}
         />
@@ -266,6 +314,7 @@ function QuickExchange() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Új palack felvétele</DialogTitle>
+            <DialogDescription>Ismeretlen vonalkód esetén új palack adatainak megadása.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -280,14 +329,14 @@ function QuickExchange() {
 
             <div>
               <Label className="mb-2 block">Tulajdonos típusa *</Label>
-              <Select value={newCylForm.owner} onValueChange={(v) => setNewCylForm({ ...newCylForm, owner: v as "own" | "siad" | "other" })}>
+              <Select value={newCylForm.owner} onValueChange={(v) => setNewCylForm({ ...newCylForm, owner: v as Circulation })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="own">Saját palack</SelectItem>
-                  <SelectItem value="siad">SIAD bérpalack</SelectItem>
-                  <SelectItem value="other">Egyéb bérpalack</SelectItem>
+                  {CIRCULATION_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

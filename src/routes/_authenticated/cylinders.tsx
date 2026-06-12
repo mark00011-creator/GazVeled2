@@ -8,12 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Plus, Edit } from "lucide-react";
 import { toast } from "sonner";
-import { circulationLabels, locationLabels, statusLabels } from "@/lib/labels";
-import { updateCylinder, type CylinderRow } from "@/lib/cylinder-ops";
+import { circulationLabels, formatCylinderLocation, locationLabels, statusLabels } from "@/lib/labels";
+import { createNewCylinder, updateCylinder, type CylinderRow } from "@/lib/cylinder-ops";
+import type { Circulation } from "@/lib/labels";
 
 export const Route = createFileRoute("/_authenticated/cylinders")({
   head: () => ({ meta: [{ title: "Palackok – Gáz Veled" }] }),
@@ -40,12 +41,16 @@ function Cylinders() {
   const [editingForm, setEditingForm] = useState<Partial<CylinderRow> | null>(null);
   const [formBusy, setFormBusy] = useState(false);
 
-  const [newForm, setNewForm] = useState({ barcode: "", gas_type: "CO2", size: "10kg", circulation: "own" as "own" | "siad" });
+  const [newForm, setNewForm] = useState({ barcode: "", gas_type: "Argon", size: "20 L", circulation: "own" as Circulation });
 
   const { data } = useQuery({
     queryKey: ["cylinders", q, circ, loc],
     queryFn: async () => {
-      let qb = supabase.from("cylinders").select("*").order("barcode");
+      let qb = supabase
+        .from("cylinders")
+        .select("id, barcode, gas_type, size, circulation, owner, status, location_type, location_partner_id, location_supplier_id, suppliers:location_supplier_id(name), partners:location_partner_id(name)")
+        .eq("active", true)
+        .order("barcode");
       if (q) qb = qb.ilike("barcode", `%${q}%`);
       if (circ !== "all") qb = qb.eq("circulation", circ as "siad" | "own");
       if (loc !== "all") qb = qb.eq("location_type", loc as "warehouse_full" | "warehouse_empty" | "customer" | "siad" | "own_supplier");
@@ -56,12 +61,23 @@ function Cylinders() {
 
   async function createNew() {
     if (!newForm.barcode) return;
-    const { error } = await supabase.from("cylinders").insert(newForm);
-    if (error) { toast.error(error.message); return; }
-    toast.success("Palack hozzáadva");
-    setNewForm({ barcode: "", gas_type: "CO2", size: "10kg", circulation: "own" });
-    setOpenNew(false);
-    qc.invalidateQueries({ queryKey: ["cylinders"] });
+    try {
+      await createNewCylinder({
+        barcode: newForm.barcode,
+        gas_type: newForm.gas_type,
+        size: newForm.size,
+        circulation: newForm.circulation,
+        owner: newForm.circulation,
+        status: "empty",
+        location_type: "warehouse_empty",
+      });
+      toast.success("Palack hozzáadva");
+      setNewForm({ barcode: "", gas_type: "Argon", size: "20 L", circulation: "own" });
+      setOpenNew(false);
+      qc.invalidateQueries({ queryKey: ["cylinders"] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
   }
 
   async function saveEdit() {
@@ -85,8 +101,8 @@ function Cylinders() {
         barcode: editingForm.barcode,
         gas_type: editingForm.gas_type,
         size: editingForm.size,
-        circulation: editingForm.circulation as "own" | "siad" | "other",
-        owner: editingForm.owner as "own" | "siad" | "other",
+        circulation: editingForm.circulation as Circulation,
+        owner: (editingForm.owner ?? editingForm.circulation) as Circulation,
         status: editingForm.status as "full" | "empty" | "service",
         location_type: editingForm.location_type as any,
         location_partner_id: editingForm.location_partner_id,
@@ -118,7 +134,10 @@ function Cylinders() {
         <Dialog open={openNew} onOpenChange={setOpenNew}>
           <DialogTrigger asChild><Button size="icon"><Plus className="h-4 w-4" /></Button></DialogTrigger>
           <DialogContent>
-            <DialogHeader><DialogTitle>Új palack</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>Új palack</DialogTitle>
+              <DialogDescription>Új palack manuális felvétele a nyilvántartásba.</DialogDescription>
+            </DialogHeader>
             <div className="space-y-3">
               <div><Label>Vonalkód</Label><Input value={newForm.barcode} onChange={(e) => setNewForm({ ...newForm, barcode: e.target.value })} /></div>
               <div className="grid grid-cols-2 gap-2">
@@ -221,21 +240,21 @@ function Cylinders() {
                         <SelectContent>
                           <SelectItem value="own">Saját</SelectItem>
                           <SelectItem value="siad">SIAD</SelectItem>
-                          <SelectItem value="other">Egyéb</SelectItem>
+                          <SelectItem value="berpalack">Egyéb</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
 
                     <div>
                       <Label>Tulajdonos</Label>
-                      <Select value={editingForm.owner || "own"} onValueChange={(v) => setEditingForm({ ...editingForm, owner: v as any })}>
+                      <Select value={editingForm.owner || editingForm.circulation || "own"} onValueChange={(v) => setEditingForm({ ...editingForm, owner: v as Circulation })}>
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="own">Saját</SelectItem>
                           <SelectItem value="siad">SIAD</SelectItem>
-                          <SelectItem value="other">Egyéb</SelectItem>
+                          <SelectItem value="berpalack">Egyéb</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -299,7 +318,14 @@ function Cylinders() {
                       <Badge style={{ backgroundColor: c.circulation === "siad" ? "var(--siad)" : "var(--own)" }} className="text-background text-[10px]">
                         {circulationLabels[c.circulation]}
                       </Badge>
-                      <span className="text-[10px] text-muted-foreground">{statusLabels[c.status]} · {locationLabels[c.location_type]}</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {formatCylinderLocation(
+                          c.status,
+                          c.location_type,
+                          (c as { suppliers?: { name: string } | null }).suppliers?.name,
+                          (c as { partners?: { name: string } | null }).partners?.name,
+                        )}
+                      </span>
                     </div>
                     <Button
                       size="sm"

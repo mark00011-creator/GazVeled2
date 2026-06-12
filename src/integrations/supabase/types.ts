@@ -92,6 +92,7 @@ export type Database = {
           note: string | null
           owner: Database["public"]["Enums"]["circulation"]
           photo_url: string | null
+          rental_id: string | null
           size: string
           status: Database["public"]["Enums"]["cyl_status"]
           updated_at: string
@@ -113,6 +114,7 @@ export type Database = {
           note?: string | null
           owner?: Database["public"]["Enums"]["circulation"]
           photo_url?: string | null
+          rental_id?: string | null
           size: string
           status?: Database["public"]["Enums"]["cyl_status"]
           updated_at?: string
@@ -134,6 +136,7 @@ export type Database = {
           note?: string | null
           owner?: Database["public"]["Enums"]["circulation"]
           photo_url?: string | null
+          rental_id?: string | null
           size?: string
           status?: Database["public"]["Enums"]["cyl_status"]
           updated_at?: string
@@ -151,6 +154,13 @@ export type Database = {
             columns: ["location_supplier_id"]
             isOneToOne: false
             referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cylinders_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
             referencedColumns: ["id"]
           },
         ]
@@ -379,18 +389,21 @@ export type Database = {
         Row: {
           added_at: string
           cylinder_id: string
+          expiry_date: string | null
           removed_at: string | null
           rental_id: string
         }
         Insert: {
           added_at?: string
           cylinder_id: string
+          expiry_date?: string | null
           removed_at?: string | null
           rental_id: string
         }
         Update: {
           added_at?: string
           cylinder_id?: string
+          expiry_date?: string | null
           removed_at?: string | null
           rental_id?: string
         }
@@ -478,17 +491,22 @@ export type Database = {
       }
       rentals: {
         Row: {
+          billing_cycle_months: number
           circulation: Database["public"]["Enums"]["circulation"] | null
           contract_pdf_url: string | null
           created_at: string
           current_cylinder_id: string | null
           deposit: number
           end_date: string | null
+          expiry_date: string | null
+          first_invoice_date: string | null
           id: string
           monthly_fee: number
+          next_invoice_date: string | null
           note: string | null
           original_cylinder_id: string | null
           partner_id: string
+          rental_type: Database["public"]["Enums"]["rental_type"]
           signature_data: string | null
           signed_at: string | null
           signed_pdf_url: string | null
@@ -497,17 +515,22 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          billing_cycle_months?: number
           circulation?: Database["public"]["Enums"]["circulation"] | null
           contract_pdf_url?: string | null
           created_at?: string
           current_cylinder_id?: string | null
           deposit?: number
           end_date?: string | null
+          expiry_date?: string | null
+          first_invoice_date?: string | null
           id?: string
           monthly_fee?: number
+          next_invoice_date?: string | null
           note?: string | null
           original_cylinder_id?: string | null
           partner_id: string
+          rental_type?: Database["public"]["Enums"]["rental_type"]
           signature_data?: string | null
           signed_at?: string | null
           signed_pdf_url?: string | null
@@ -516,17 +539,22 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          billing_cycle_months?: number
           circulation?: Database["public"]["Enums"]["circulation"] | null
           contract_pdf_url?: string | null
           created_at?: string
           current_cylinder_id?: string | null
           deposit?: number
           end_date?: string | null
+          expiry_date?: string | null
+          first_invoice_date?: string | null
           id?: string
           monthly_fee?: number
+          next_invoice_date?: string | null
           note?: string | null
           original_cylinder_id?: string | null
           partner_id?: string
+          rental_type?: Database["public"]["Enums"]["rental_type"]
           signature_data?: string | null
           signed_at?: string | null
           signed_pdf_url?: string | null
@@ -694,7 +722,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
-      circulation: "siad" | "own"
+      circulation: "siad" | "own" | "berpalack"
       cyl_status: "full" | "empty" | "service"
       location_type:
         | "warehouse_full"
@@ -703,6 +731,7 @@ export type Database = {
         | "siad"
         | "own_supplier"
       partner_type: "company" | "private"
+      rental_type: "yearly" | "monthly" | "free"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -831,7 +860,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
-      circulation: ["siad", "own"],
+      circulation: ["siad", "own", "berpalack"],
       cyl_status: ["full", "empty", "service"],
       location_type: [
         "warehouse_full",
@@ -841,6 +870,7 @@ export const Constants = {
         "own_supplier",
       ],
       partner_type: ["company", "private"],
+      rental_type: ["yearly", "monthly", "free"],
     },
   },
 } as const
