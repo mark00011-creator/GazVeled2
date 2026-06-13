@@ -116,7 +116,6 @@ function AuthPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                minLength={mode === "signup" ? 6 : undefined}
               />
             </div>
           )}
@@ -130,7 +129,6 @@ function AuthPage() {
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
-                minLength={6}
               />
             </div>
           )}
