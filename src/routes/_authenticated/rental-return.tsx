@@ -17,6 +17,7 @@ import {
   rentalNumber,
   type RentalCylinderDetail,
 } from "@/lib/rental-ops";
+import { usePermissions } from "@/lib/auth";
 
 export const Route = createFileRoute("/_authenticated/rental-return")({
   validateSearch: (s: Record<string, unknown>) => ({
@@ -49,7 +50,8 @@ function CylinderRow({
       <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer">
         <div className="font-mono text-sm font-semibold">{cyl.barcode}</div>
         <div className="text-xs text-muted-foreground">
-          {cyl.gas_type} · {cyl.size} · {cyl.status === "full" ? "Teli → telephely" : "Üres → telephely"}
+          {cyl.gas_type} · {cyl.size} ·{" "}
+          {cyl.status === "full" ? "Teli → telephely" : "Üres → telephely"}
         </div>
       </label>
     </div>
@@ -59,6 +61,7 @@ function CylinderRow({
 function RentalReturn() {
   const { rentalId: initialRentalId, cylinderId: initialCylinderId } = Route.useSearch();
   const qc = useQueryClient();
+  const { canWrite } = usePermissions();
   const [rentalId, setRentalId] = useState(initialRentalId);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [note, setNote] = useState("");
@@ -74,10 +77,13 @@ function RentalReturn() {
     isError: rentalsError,
   } = useQuery({
     queryKey: ["rentals-returnable"],
+    enabled: canWrite,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("rentals")
-        .select("id, partner_id, monthly_fee, deposit, start_date, status, partners(name, company_name)")
+        .select(
+          "id, partner_id, monthly_fee, deposit, start_date, status, partners(name, company_name)",
+        )
         .in("status", ["active", "expired", "cancelled"])
         .order("start_date", { ascending: false });
       if (error) throw error;
@@ -94,7 +100,7 @@ function RentalReturn() {
     isFetching: cylsFetching,
   } = useQuery({
     queryKey: ["rental-return-cyls", rentalId],
-    enabled: !!rentalId,
+    enabled: canWrite && !!rentalId,
     queryFn: () => fetchRentalCylinderDetails(rentalId),
   });
 
@@ -150,6 +156,16 @@ function RentalReturn() {
     }
   }
 
+  if (!canWrite) {
+    return (
+      <AppShell title="Bérlet visszavétel">
+        <Card className="p-4 text-sm text-muted-foreground">
+          Viewer jogosultsággal bérlet visszavétel nem végezhető.
+        </Card>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell title="Bérlet visszavétel">
       <Card className="mb-3 p-4">
@@ -169,7 +185,8 @@ function RentalReturn() {
               const p = (r as { partners?: { name?: string } }).partners;
               return (
                 <option key={r.id} value={r.id}>
-                  {p?.name ?? "—"} · {rentalNumber(r.id)} · {rentalStatusLabels[r.status] ?? r.status}
+                  {p?.name ?? "—"} · {rentalNumber(r.id)} ·{" "}
+                  {rentalStatusLabels[r.status] ?? r.status}
                 </option>
               );
             })}
@@ -178,7 +195,9 @@ function RentalReturn() {
         {rental && (
           <div className="mt-2 flex flex-wrap gap-2 text-xs">
             <Badge variant="outline">Kezdés: {fmtDate(rental.start_date)}</Badge>
-            <Badge variant="secondary">Kaució: {Number(rental.deposit ?? 0).toLocaleString("hu-HU")} Ft</Badge>
+            <Badge variant="secondary">
+              Kaució: {Number(rental.deposit ?? 0).toLocaleString("hu-HU")} Ft
+            </Badge>
           </div>
         )}
       </Card>
@@ -211,9 +230,19 @@ function RentalReturn() {
             )}
           </Card>
 
-          <Input className="mb-3" placeholder="Megjegyzés (opcionális)" value={note} onChange={(e) => setNote(e.target.value)} />
+          <Input
+            className="mb-3"
+            placeholder="Megjegyzés (opcionális)"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
 
-          <Button size="lg" className="w-full" disabled={busy || selected.size === 0 || cylsLoading} onClick={submit}>
+          <Button
+            size="lg"
+            className="w-full"
+            disabled={busy || selected.size === 0 || cylsLoading}
+            onClick={submit}
+          >
             <Check className="mr-2 h-5 w-5" />
             Visszavétel ({selected.size} palack)
           </Button>
@@ -221,7 +250,9 @@ function RentalReturn() {
       )}
 
       {!rentalId && !rentalsLoading && (
-        <div className="py-8 text-center text-sm text-muted-foreground">Válassz bérletet a visszavételhez</div>
+        <div className="py-8 text-center text-sm text-muted-foreground">
+          Válassz bérletet a visszavételhez
+        </div>
       )}
     </AppShell>
   );

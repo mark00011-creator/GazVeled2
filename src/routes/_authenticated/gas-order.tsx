@@ -19,7 +19,13 @@ export const Route = createFileRoute("/_authenticated/gas-order")({
   component: GasOrderPage,
 });
 
-function SummaryBlock({ title, lines }: { title: string; lines: { label: string; count: number }[] }) {
+function SummaryBlock({
+  title,
+  lines,
+}: {
+  title: string;
+  lines: { label: string; count: number }[];
+}) {
   if (lines.length === 0) return null;
   return (
     <div className="mb-3">
@@ -97,16 +103,22 @@ function GasOrderPage() {
       </p>
 
       {isLoading && <div className="py-8 text-center text-sm text-muted-foreground">Betöltés…</div>}
-      {isError && <div className="py-8 text-center text-sm text-destructive">Lista betöltése sikertelen</div>}
+      {isError && (
+        <div className="py-8 text-center text-sm text-destructive">Lista betöltése sikertelen</div>
+      )}
 
       {!isLoading && !isError && (
         <>
           <Card className="mb-4 p-4">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Összesítés</h2>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Összesítés
+            </h2>
             <SummaryBlock title="SIAD" lines={summary.siad} />
             <SummaryBlock title="Saját" lines={summary.own} />
             {total === 0 && (
-              <div className="text-sm text-muted-foreground">Nincs rendelhető üres palack a telephelyen</div>
+              <div className="text-sm text-muted-foreground">
+                Nincs rendelhető üres palack a telephelyen
+              </div>
             )}
           </Card>
 

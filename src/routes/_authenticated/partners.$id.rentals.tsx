@@ -20,6 +20,7 @@ import {
   type RentalType,
 } from "@/lib/labels";
 import { extendRentalCylinder, fetchPartnerRentalOverview, rentalNumber } from "@/lib/rental-ops";
+import { usePermissions } from "@/lib/auth";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/partners/$id/rentals")({
@@ -30,18 +31,27 @@ export const Route = createFileRoute("/_authenticated/partners/$id/rentals")({
 function PartnerRentalsPage() {
   const { id } = Route.useParams();
   const qc = useQueryClient();
+  const { canWrite } = usePermissions();
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const { data: partner, isLoading: partnerLoading } = useQuery({
     queryKey: ["partner", id],
     queryFn: async () => {
-      const { data, error } = await supabase.from("partners").select("id, name, company_name, address, phone").eq("id", id).maybeSingle();
+      const { data, error } = await supabase
+        .from("partners")
+        .select("id, name, company_name, address, phone")
+        .eq("id", id)
+        .maybeSingle();
       if (error) throw error;
       return data;
     },
   });
 
-  const { data: overview, isLoading, isError } = useQuery({
+  const {
+    data: overview,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ["partner-rental-overview", id],
     enabled: !!partner,
     queryFn: () => fetchPartnerRentalOverview(id),
@@ -105,17 +115,25 @@ function PartnerRentalsPage() {
         )}
         {summary.length > 0 && (
           <div className="mt-3">
-            <div className="text-xs font-medium text-muted-foreground">Bérelt palackok összesen:</div>
+            <div className="text-xs font-medium text-muted-foreground">
+              Bérelt palackok összesen:
+            </div>
             <div className="mt-1 space-y-0.5">
               {summary.map((line) => (
-                <div key={line} className="text-sm text-primary">{line}</div>
+                <div key={line} className="text-sm text-primary">
+                  {line}
+                </div>
               ))}
             </div>
           </div>
         )}
       </Card>
 
-      {isError && <div className="py-4 text-center text-sm text-destructive">Bérleti adatok betöltése sikertelen</div>}
+      {isError && (
+        <div className="py-4 text-center text-sm text-destructive">
+          Bérleti adatok betöltése sikertelen
+        </div>
+      )}
 
       <div className="space-y-4">
         {(overview ?? []).map(({ rental, cylinders }) => {
@@ -126,9 +144,15 @@ function PartnerRentalsPage() {
 
           return (
             <Card key={rental.id} className="overflow-hidden p-0">
-              <div className={`border-b p-4 ${rentalExpired ? "border-destructive/40 bg-destructive/5" : ""}`}>
+              <div
+                className={`border-b p-4 ${rentalExpired ? "border-destructive/40 bg-destructive/5" : ""}`}
+              >
                 <div className="flex flex-wrap items-center gap-2">
-                  <Link to="/rentals/$id" params={{ id: rental.id }} className="font-mono text-sm font-semibold hover:underline">
+                  <Link
+                    to="/rentals/$id"
+                    params={{ id: rental.id }}
+                    className="font-mono text-sm font-semibold hover:underline"
+                  >
                     {rentalNumber(rental.id)}
                   </Link>
                   <Badge variant={displayStatus === "expired" ? "destructive" : "default"}>
@@ -138,7 +162,11 @@ function PartnerRentalsPage() {
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
                   <span>Kezdete: {fmtDate(rental.start_date)}</span>
-                  <span className={rentalExpired ? "font-medium text-destructive" : "text-muted-foreground"}>
+                  <span
+                    className={
+                      rentalExpired ? "font-medium text-destructive" : "text-muted-foreground"
+                    }
+                  >
                     Lejárata: {fmtDate(rentalExpiry)}
                   </span>
                   <span className="text-muted-foreground">{cylinders.length} palack</span>
@@ -149,7 +177,9 @@ function PartnerRentalsPage() {
                 {cylinders.map((c) => {
                   const cylExpiry = c.expiry_date ?? rentalExpiry;
                   const cylExpired = isRentalExpired(cylExpiry);
-                  const owner = (c.owner ?? c.circulation ?? "own") as keyof typeof circulationLabels;
+                  const owner = (c.owner ??
+                    c.circulation ??
+                    "own") as keyof typeof circulationLabels;
                   return (
                     <div
                       key={c.cylinder_id}
@@ -162,7 +192,9 @@ function PartnerRentalsPage() {
                         </div>
                         <div>
                           <div className="text-muted-foreground">Gáz / méret</div>
-                          <div>{c.gas_type} · {c.size}</div>
+                          <div>
+                            {c.gas_type} · {c.size}
+                          </div>
                         </div>
                         <div>
                           <div className="text-muted-foreground">Tulajdonos</div>
@@ -171,30 +203,40 @@ function PartnerRentalsPage() {
                         <div>
                           <div className="text-muted-foreground">Bérlet ideje</div>
                           <div>{formatRentalDuration(c.added_at)}</div>
-                          <div className={cylExpired ? "font-medium text-destructive" : "text-muted-foreground"}>
+                          <div
+                            className={
+                              cylExpired ? "font-medium text-destructive" : "text-muted-foreground"
+                            }
+                          >
                             Lejár: {fmtDate(cylExpiry)}
                           </div>
                         </div>
                       </div>
-                      {cylExpired && <Badge variant="destructive" className="mt-2">LEJÁRT</Badge>}
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busyId === c.cylinder_id}
-                          onClick={() => extendCylinder(rental.id, c.cylinder_id)}
-                        >
-                          <CalendarPlus className="mr-1 h-3.5 w-3.5" /> Palack hosszabbítás
-                        </Button>
-                        <Button size="sm" variant="secondary" asChild>
-                          <Link
-                            to="/rental-return"
-                            search={{ rentalId: rental.id, cylinderId: c.cylinder_id }}
+                      {cylExpired && (
+                        <Badge variant="destructive" className="mt-2">
+                          LEJÁRT
+                        </Badge>
+                      )}
+                      {canWrite && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busyId === c.cylinder_id}
+                            onClick={() => extendCylinder(rental.id, c.cylinder_id)}
                           >
-                            <RotateCcw className="mr-1 h-3.5 w-3.5" /> Palack visszavétel
-                          </Link>
-                        </Button>
-                      </div>
+                            <CalendarPlus className="mr-1 h-3.5 w-3.5" /> Palack hosszabbítás
+                          </Button>
+                          <Button size="sm" variant="secondary" asChild>
+                            <Link
+                              to="/rental-return"
+                              search={{ rentalId: rental.id, cylinderId: c.cylinder_id }}
+                            >
+                              <RotateCcw className="mr-1 h-3.5 w-3.5" /> Palack visszavétel
+                            </Link>
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -205,7 +247,9 @@ function PartnerRentalsPage() {
       </div>
 
       {!isLoading && !isError && (overview ?? []).length === 0 && (
-        <div className="py-8 text-center text-sm text-muted-foreground">Nincs aktív bérelt palack ennél a partnernél</div>
+        <div className="py-8 text-center text-sm text-muted-foreground">
+          Nincs aktív bérelt palack ennél a partnernél
+        </div>
       )}
     </AppShell>
   );

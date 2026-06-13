@@ -18,7 +18,11 @@ function Audit() {
   const { data } = useQuery({
     queryKey: ["audit", q],
     queryFn: async () => {
-      let qb = supabase.from("audit_log").select("*").order("created_at", { ascending: false }).limit(200);
+      let qb = supabase
+        .from("audit_log")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(200);
       if (q.trim()) qb = qb.ilike("entity_type", `%${q}%`);
       return (await qb).data ?? [];
     },
@@ -26,7 +30,12 @@ function Audit() {
 
   return (
     <AppShell title="Audit napló">
-      <Input className="mb-3" placeholder="Szűrés entitástípusra (pl. exchanges, rentals)" value={q} onChange={(e) => setQ(e.target.value)} />
+      <Input
+        className="mb-3"
+        placeholder="Szűrés entitástípusra (pl. exchanges, rentals)"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
       <div className="space-y-2">
         {(data ?? []).map((row) => (
           <Card key={row.id} className="p-3 text-xs">
@@ -37,10 +46,16 @@ function Audit() {
               </div>
               <div className="text-muted-foreground">{fmtDateTime(row.created_at)}</div>
             </div>
-            {row.entity_id && <div className="mt-1 font-mono text-[10px] text-muted-foreground">id: {row.entity_id}</div>}
+            {row.entity_id && (
+              <div className="mt-1 font-mono text-[10px] text-muted-foreground">
+                id: {row.entity_id}
+              </div>
+            )}
           </Card>
         ))}
-        {(data ?? []).length === 0 && <div className="p-6 text-center text-sm text-muted-foreground">Nincs bejegyzés</div>}
+        {(data ?? []).length === 0 && (
+          <div className="p-6 text-center text-sm text-muted-foreground">Nincs bejegyzés</div>
+        )}
       </div>
     </AppShell>
   );

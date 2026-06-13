@@ -78,17 +78,37 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Gaz veled" },
-      { name: "description", content: "Web-based gas cylinder management and rental system for tracking industrial cylinders and rental agreements." },
+      {
+        name: "description",
+        content:
+          "Web-based gas cylinder management and rental system for tracking industrial cylinders and rental agreements.",
+      },
       { name: "author", content: "Lovable" },
       { property: "og:title", content: "Gaz veled" },
-      { property: "og:description", content: "Web-based gas cylinder management and rental system for tracking industrial cylinders and rental agreements." },
+      {
+        property: "og:description",
+        content:
+          "Web-based gas cylinder management and rental system for tracking industrial cylinders and rental agreements.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
       { name: "twitter:title", content: "Gaz veled" },
-      { name: "twitter:description", content: "Web-based gas cylinder management and rental system for tracking industrial cylinders and rental agreements." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/9c56f2a0-a8af-499d-bf8f-ca8c76b8b300/id-preview-7014e3f7--1babc3f5-6b36-4c1c-a314-00d520e16117.lovable.app-1780639722171.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/9c56f2a0-a8af-499d-bf8f-ca8c76b8b300/id-preview-7014e3f7--1babc3f5-6b36-4c1c-a314-00d520e16117.lovable.app-1780639722171.png" },
+      {
+        name: "twitter:description",
+        content:
+          "Web-based gas cylinder management and rental system for tracking industrial cylinders and rental agreements.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/9c56f2a0-a8af-499d-bf8f-ca8c76b8b300/id-preview-7014e3f7--1babc3f5-6b36-4c1c-a314-00d520e16117.lovable.app-1780639722171.png",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/9c56f2a0-a8af-499d-bf8f-ca8c76b8b300/id-preview-7014e3f7--1babc3f5-6b36-4c1c-a314-00d520e16117.lovable.app-1780639722171.png",
+      },
     ],
     links: [
       {

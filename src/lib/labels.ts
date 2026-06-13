@@ -58,8 +58,24 @@ export const RENTAL_TYPE_OPTIONS: { value: RentalType; label: string }[] = [
   { value: "free", label: "Díjmentes kölcsön" },
 ];
 
+export type DepositType = "normal" | "waived" | "custom";
+
+export const depositTypeLabels: Record<DepositType, string> = {
+  normal: "Normál (30 000 Ft)",
+  waived: "Elengedve",
+  custom: "Egyedi összeg",
+};
+
+export const DEPOSIT_TYPE_OPTIONS: { value: DepositType; label: string }[] = [
+  { value: "normal", label: depositTypeLabels.normal },
+  { value: "waived", label: depositTypeLabels.waived },
+  { value: "custom", label: depositTypeLabels.custom },
+];
+
 /** "Nitrogén 20L (2 db)" style lines from cylinder list. */
-export function summarizeRentalCylinders(cylinders: { gas_type: string; size: string }[]): string[] {
+export function summarizeRentalCylinders(
+  cylinders: { gas_type: string; size: string }[],
+): string[] {
   const counts = new Map<string, number>();
   for (const c of cylinders) {
     const key = `${c.gas_type} ${c.size}`;
@@ -77,8 +93,23 @@ export function isRentalExpired(expiryDate: string | null | undefined): boolean 
   return exp < today;
 }
 
+export function isRentalExpiringSoon(
+  expiryDate: string | null | undefined,
+  thresholdDays = 30,
+): boolean {
+  if (!expiryDate || isRentalExpired(expiryDate)) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const [y, m, d] = expiryDate.split("-").map(Number);
+  const exp = new Date(y, m - 1, d);
+  return exp.getTime() - today.getTime() <= thresholdDays * 86400000;
+}
+
 /** Fallback when rentals.expiry_date is missing (legacy rows). */
-export function effectiveRentalExpiry(startDate: string, expiryDate: string | null | undefined): string {
+export function effectiveRentalExpiry(
+  startDate: string,
+  expiryDate: string | null | undefined,
+): string {
   if (expiryDate) return expiryDate;
   const [y, m, d] = startDate.split("-").map(Number);
   const dt = new Date(y, m - 1, d);

@@ -9,15 +9,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClipboardList, Check } from "lucide-react";
 import { toast } from "sonner";
 import { CIRCULATION_OPTIONS, type Circulation } from "@/lib/labels";
-import {
-  GAS_TYPES,
-  getAvailableSizes,
-} from "@/lib/gas-cylinder-form";
+import { GAS_TYPES, getAvailableSizes } from "@/lib/gas-cylinder-form";
 import {
   INVENTORY_PLACE_OPTIONS,
   INVENTORY_STATUS_OPTIONS,
@@ -26,6 +29,7 @@ import {
   type InventoryPlace,
 } from "@/lib/inventory";
 import { registerInventoryCylinders, type InventoryRegisterResult } from "@/lib/cylinder-ops";
+import { usePermissions } from "@/lib/auth";
 
 export const Route = createFileRoute("/_authenticated/inventory")({
   head: () => ({ meta: [{ title: "Leltár – Gáz Veled" }] }),
@@ -54,6 +58,7 @@ const DEFAULTS: SharedDefaults = {
 
 function Inventory() {
   const qc = useQueryClient();
+  const { canWrite } = usePermissions();
   const [tab, setTab] = useState("single");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<InventoryRegisterResult | null>(null);
@@ -70,11 +75,22 @@ function Inventory() {
 
   const { data: suppliers } = useQuery({
     queryKey: ["suppliers"],
-    queryFn: async () => (await supabase.from("suppliers").select("id,name,kind").order("name")).data ?? [],
+    queryFn: async () =>
+      (await supabase.from("suppliers").select("id,name,kind").order("name")).data ?? [],
   });
 
   const availableSizes = useMemo(() => getAvailableSizes(shared.gasType), [shared.gasType]);
   const bulkCount = useMemo(() => parseBulkBarcodes(bulkText).length, [bulkText]);
+
+  if (!canWrite) {
+    return (
+      <AppShell title="Leltár">
+        <Card className="p-4 text-sm text-muted-foreground">
+          Viewer jogosultsággal a leltár feltöltése nem végezhető.
+        </Card>
+      </AppShell>
+    );
+  }
 
   function updateShared<K extends keyof SharedDefaults>(key: K, value: SharedDefaults[K]) {
     setShared((prev) => ({ ...prev, [key]: value }));
@@ -155,7 +171,9 @@ function Inventory() {
         qc.invalidateQueries({ queryKey: ["cylinders"] });
       }
       if (res.skipped.length > 0 && res.created.length === 0) {
-        toast.warning(`Mind kihagyva (${res.skipped.length}) – már létező vagy duplikált vonalkódok`);
+        toast.warning(
+          `Mind kihagyva (${res.skipped.length}) – már létező vagy duplikált vonalkódok`,
+        );
       } else if (res.skipped.length > 0) {
         toast.info(`${res.skipped.length} vonalkód kihagyva (már létezik vagy duplikált)`);
       }
@@ -174,7 +192,8 @@ function Inventory() {
           <div className="text-sm">
             <p className="font-semibold">Meglévő állomány feltöltése</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Egyedi vagy tömeges felvitel. A már létező vonalkódok automatikusan kihagyásra kerülnek – duplikáció nem keletkezik.
+              Egyedi vagy tömeges felvitel. A már létező vonalkódok automatikusan kihagyásra
+              kerülnek – duplikáció nem keletkezik.
             </p>
           </div>
         </div>
@@ -224,7 +243,12 @@ function Inventory() {
               {bulkCount} vonalkód a listában. Mind ugyanazokkal a beállításokkal kerül fel.
             </p>
           </Card>
-          <Button className="w-full" size="lg" disabled={busy || bulkCount === 0} onClick={submitBulk}>
+          <Button
+            className="w-full"
+            size="lg"
+            disabled={busy || bulkCount === 0}
+            onClick={submitBulk}
+          >
             <Check className="mr-2 h-5 w-5" />
             {bulkCount > 0 ? `${bulkCount} palack felvétele` : "Palackok felvétele"}
           </Button>
@@ -307,7 +331,10 @@ function SharedFields({
 
       <div>
         <Label className="mb-2 block">Állapot</Label>
-        <Select value={shared.status} onValueChange={(v) => updateShared("status", v as "full" | "empty")}>
+        <Select
+          value={shared.status}
+          onValueChange={(v) => updateShared("status", v as "full" | "empty")}
+        >
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
@@ -390,7 +417,9 @@ function ResultSummary({ result }: { result: InventoryRegisterResult }) {
       <h3 className="mb-2 text-sm font-semibold">Eredmény</h3>
       <div className="mb-3 flex gap-2">
         <Badge className="bg-green-600">{result.created.length} felvéve</Badge>
-        {result.skipped.length > 0 && <Badge variant="secondary">{result.skipped.length} kihagyva</Badge>}
+        {result.skipped.length > 0 && (
+          <Badge variant="secondary">{result.skipped.length} kihagyva</Badge>
+        )}
       </div>
       {result.created.length > 0 && (
         <div className="mb-3 max-h-32 overflow-y-auto rounded-md bg-muted/40 p-2 text-xs font-mono">
@@ -402,7 +431,10 @@ function ResultSummary({ result }: { result: InventoryRegisterResult }) {
       {result.skipped.length > 0 && (
         <div className="max-h-32 overflow-y-auto space-y-1 text-xs">
           {result.skipped.map((s) => (
-            <div key={s.barcode} className="flex justify-between gap-2 rounded-md bg-muted/40 px-2 py-1">
+            <div
+              key={s.barcode}
+              className="flex justify-between gap-2 rounded-md bg-muted/40 px-2 py-1"
+            >
               <span className="font-mono">{s.barcode}</span>
               <span className="text-muted-foreground">{s.reason}</span>
             </div>

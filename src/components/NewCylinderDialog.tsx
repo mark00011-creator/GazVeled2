@@ -1,9 +1,21 @@
 import { useEffect, useState } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import { CIRCULATION_OPTIONS, type Circulation } from "@/lib/labels";
 import {
@@ -76,7 +88,9 @@ export function NewCylinderDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Új palack felvétele</DialogTitle>
-          <DialogDescription>Ismeretlen vonalkód esetén új palack adatainak megadása.</DialogDescription>
+          <DialogDescription>
+            Ismeretlen vonalkód esetén új palack adatainak megadása.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div>
@@ -86,7 +100,10 @@ export function NewCylinderDialog({
 
           <div>
             <Label className="mb-2 block">Tulajdonos típusa *</Label>
-            <Select value={form.owner} onValueChange={(v) => setForm({ ...form, owner: v as Circulation })}>
+            <Select
+              value={form.owner}
+              onValueChange={(v) => setForm({ ...form, owner: v as Circulation })}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -151,7 +168,11 @@ export function NewCylinderDialog({
             <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
               Mégsem
             </Button>
-            <Button onClick={save} disabled={!isNewCylinderFormValid(form) || busy} className="flex-1">
+            <Button
+              onClick={save}
+              disabled={!isNewCylinderFormValid(form) || busy}
+              className="flex-1"
+            >
               Mentés
             </Button>
           </div>

@@ -25,6 +25,7 @@ export type CylinderRow = {
   is_temporary: boolean;
   first_tracked_at: string | null;
   category?: string | null;
+  replacement_value?: number;
 };
 
 /** Normalize barcodes to match DB convention (lowercase, trimmed). */
@@ -36,7 +37,8 @@ function parseDbError(message: string): string {
   if (message.includes("Missing cylinder")) return "Hiányzó palack az adatbázisban";
   if (message.includes("Missing partner")) return "Hiányzó partner";
   if (message.includes("Reason required")) return "Kényszerhelyettesítéshez indoklás kötelező";
-  if (message.includes("invalid input value for enum")) return "Érvénytelen tulajdonos típus – használd: Saját, SIAD vagy Egyéb";
+  if (message.includes("invalid input value for enum"))
+    return "Érvénytelen tulajdonos típus – használd: Saját, SIAD vagy Egyéb";
   return message;
 }
 
@@ -88,7 +90,10 @@ async function assertNotInActiveRental(cylinderId: string): Promise<void> {
   const { data: rentals, error: rentErr } = await supabase
     .from("rentals")
     .select("status")
-    .in("id", links.map((l) => l.rental_id));
+    .in(
+      "id",
+      links.map((l) => l.rental_id),
+    );
   if (rentErr) throw new Error(parseDbError(rentErr.message));
   if (rentals?.some((r) => r.status === "active")) {
     throw new Error("A palack aktív bérletben van");
@@ -143,7 +148,9 @@ export async function createNewCylinder(args: {
  */
 export async function findOrCreateCylinder(
   barcode: string,
-  defaults?: Partial<Pick<CylinderRow, "circulation" | "owner" | "status" | "location_type" | "gas_type" | "size">>,
+  defaults?: Partial<
+    Pick<CylinderRow, "circulation" | "owner" | "status" | "location_type" | "gas_type" | "size">
+  >,
 ): Promise<{ cyl: CylinderRow; created: boolean }> {
   const bc = normalizeBarcode(barcode);
   if (!bc) throw new Error("Üres vonalkód");
@@ -212,7 +219,8 @@ async function syncRentalCylindersAfterExchange(args: {
     .select("id, status, location_type, location_partner_id")
     .eq("id", args.incoming_id)
     .single();
-  if (inCylErr || !incoming) throw new Error(parseDbError(inCylErr?.message ?? "Palack nem található"));
+  if (inCylErr || !incoming)
+    throw new Error(parseDbError(inCylErr?.message ?? "Palack nem található"));
 
   const { data: inLinks, error: inErr } = await supabase
     .from("rental_cylinders")
@@ -412,7 +420,9 @@ export async function submitSupplierExchange(args: {
       continue;
     }
 
-    const fromLoc = SUPPLIER_LOCATIONS.includes(cyl.location_type) ? cyl.location_type : supplierLoc;
+    const fromLoc = SUPPLIER_LOCATIONS.includes(cyl.location_type)
+      ? cyl.location_type
+      : supplierLoc;
     const { error: movErr } = await recordMovement({
       cylinder_id: cyl.id,
       from_location: fromLoc,
@@ -484,7 +494,23 @@ export async function reassignRentalCylinder(args: {
 /** Update cylinder. */
 export async function updateCylinder(
   id: string,
-  updates: Partial<Pick<CylinderRow, "barcode" | "gas_type" | "size" | "circulation" | "owner" | "status" | "location_type" | "location_partner_id" | "location_supplier_id" | "rental_id" | "is_temporary">>,
+  updates: Partial<
+    Pick<
+      CylinderRow,
+      | "barcode"
+      | "gas_type"
+      | "size"
+      | "circulation"
+      | "owner"
+      | "status"
+      | "location_type"
+      | "location_partner_id"
+      | "location_supplier_id"
+      | "rental_id"
+      | "is_temporary"
+      | "replacement_value"
+    >
+  >,
 ): Promise<CylinderRow> {
   const payload = { ...updates };
   if (payload.barcode) payload.barcode = normalizeBarcode(payload.barcode);
@@ -512,10 +538,14 @@ export async function updateCylinderBarcode(id: string, newBarcode: string): Pro
 }
 
 /** Update barcode on existing cylinder (e.g. temp → permanent). Does not create a new record. */
-export async function finalizeCylinderBarcode(id: string, newBarcode: string): Promise<CylinderRow> {
+export async function finalizeCylinderBarcode(
+  id: string,
+  newBarcode: string,
+): Promise<CylinderRow> {
   const bc = normalizeBarcode(newBarcode);
   if (!bc) throw new Error("Üres vonalkód");
-  if (bc.startsWith("temp-") || bc.startsWith("TEMP-")) throw new Error("A végleges vonalkód nem lehet ideiglenes");
+  if (bc.startsWith("temp-") || bc.startsWith("TEMP-"))
+    throw new Error("A végleges vonalkód nem lehet ideiglenes");
 
   const existing = await tryFindCylinderByBarcode(bc);
   if (existing && existing.id !== id) throw new Error("Ez a vonalkód már foglalt");

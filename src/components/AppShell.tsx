@@ -1,6 +1,6 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { LayoutDashboard, RefreshCw, Cylinder, Users, MoreHorizontal } from "lucide-react";
-import { signOut } from "@/lib/auth";
+import { signOut, usePermissions } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 
 const tabs = [
@@ -13,6 +13,9 @@ const tabs = [
 
 export function AppShell({ children, title }: { children: React.ReactNode; title?: string }) {
   const loc = useLocation();
+  const { canWrite } = usePermissions();
+  const visibleTabs = tabs.filter((t) => canWrite || t.to !== "/quick-exchange");
+
   return (
     <div className="flex min-h-screen flex-col bg-background pb-20">
       <header className="sticky top-0 z-30 border-b border-border bg-card/90 backdrop-blur">
@@ -21,14 +24,17 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
             <span className="text-primary">GÁZ</span> VELED
           </Link>
           {title && <h1 className="text-sm font-medium text-muted-foreground">{title}</h1>}
-          <Button variant="ghost" size="sm" onClick={() => signOut()}>Kilépés</Button>
+          <Button variant="ghost" size="sm" onClick={() => signOut()}>
+            Kilépés
+          </Button>
         </div>
       </header>
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-4">{children}</main>
       <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur">
         <ul className="mx-auto flex max-w-3xl">
-          {tabs.map((t) => {
-            const active = loc.pathname === t.to || (t.to !== "/dashboard" && loc.pathname.startsWith(t.to));
+          {visibleTabs.map((t) => {
+            const active =
+              loc.pathname === t.to || (t.to !== "/dashboard" && loc.pathname.startsWith(t.to));
             const Icon = t.icon;
             return (
               <li key={t.to} className="flex-1">

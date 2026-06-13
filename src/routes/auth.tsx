@@ -79,7 +79,9 @@ function AuthPage() {
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm p-6">
         <div className="mb-6 flex items-center gap-3">
-          <div className="rounded-lg bg-primary/15 p-2 text-primary"><Flame className="h-6 w-6" /></div>
+          <div className="rounded-lg bg-primary/15 p-2 text-primary">
+            <Flame className="h-6 w-6" />
+          </div>
           <div>
             <h1 className="text-lg font-bold">Gáz Veled</h1>
             <p className="text-xs text-muted-foreground">Palack Manager</p>
@@ -91,19 +93,33 @@ function AuthPage() {
           </p>
         )}
         {mode === "reset" && (
-          <p className="mb-4 text-sm text-muted-foreground">Állíts be egy új jelszót a fiókodhoz.</p>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Állíts be egy új jelszót a fiókodhoz.
+          </p>
         )}
         <form onSubmit={submit} className="space-y-4">
           {mode === "signup" && (
             <div>
               <Label htmlFor="name">Név</Label>
-              <Input id="name" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+              <Input
+                id="name"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                required
+              />
             </div>
           )}
           {mode !== "reset" && (
             <div>
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
             </div>
           )}
           {(mode === "login" || mode === "signup") && (
@@ -116,7 +132,6 @@ function AuthPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                minLength={6}
               />
             </div>
           )}
@@ -130,7 +145,6 @@ function AuthPage() {
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
-                minLength={6}
               />
             </div>
           )}
