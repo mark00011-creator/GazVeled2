@@ -35,6 +35,7 @@ import {
 import {
   findCylinderByBarcode,
   createNewCylinder,
+  newTempBarcode,
   normalizeBarcode,
   recordExchange,
   type CylinderRow,
@@ -52,9 +53,14 @@ type IncomingKind = "rental" | "own" | "new";
 const GAS_TYPES = ["Acetilén", "Argon", "Stargon", "Széndioxid", "Nitrogén", "Oxigén"];
 const STANDARD_SIZES = ["10 L", "20 L", "40 L", "50 L"];
 const CO2_SIZES = ["1-5 kg", "5 kg", "10 kg", "15 kg", "20 kg", "30 kg", "37,5 kg"];
+const BARCODE_PREFIX = "HU";
 
 function getAvailableSizes(gasType: string): string[] {
   return gasType === "Széndioxid" ? CO2_SIZES : STANDARD_SIZES;
+}
+
+function isPrefixOnlyBarcode(barcode: string): boolean {
+  return barcode.trim().toUpperCase() === BARCODE_PREFIX;
 }
 
 function QuickExchange() {
@@ -62,8 +68,8 @@ function QuickExchange() {
   const { canWrite } = usePermissions();
   const [partnerId, setPartnerId] = useState<string>("");
   const [scanning, setScanning] = useState<"in" | "out" | null>(null);
-  const [incomingBc, setIncomingBc] = useState("");
-  const [outgoingBc, setOutgoingBc] = useState("");
+  const [incomingBc, setIncomingBc] = useState(BARCODE_PREFIX);
+  const [outgoingBc, setOutgoingBc] = useState(BARCODE_PREFIX);
   const [incoming, setIncoming] = useState<CylinderRow | null>(null);
   const [incomingCreated, setIncomingCreated] = useState(false);
   const [outgoing, setOutgoing] = useState<CylinderRow | null>(null);
@@ -160,7 +166,24 @@ function QuickExchange() {
   });
 
   async function lookupIncoming() {
-    if (!incomingBc.trim()) return;
+    if (!incomingBc.trim() || isPrefixOnlyBarcode(incomingBc)) {
+      try {
+        const barcode = await newTempBarcode();
+        setIncomingBc(barcode);
+        setNewCylForm({
+          barcode,
+          owner: "own",
+          gasType: "Argon",
+          size: "20 L",
+          note: "",
+        });
+        setNewCylPhase("incoming");
+        setNewCylDialog(true);
+      } catch (e) {
+        toast.error((e as Error).message);
+      }
+      return;
+    }
     try {
       const cyl = await findCylinderByBarcode(incomingBc);
       setIncoming(cyl);
@@ -180,7 +203,24 @@ function QuickExchange() {
   }
 
   async function lookupOutgoing() {
-    if (!outgoingBc.trim()) return;
+    if (!outgoingBc.trim() || isPrefixOnlyBarcode(outgoingBc)) {
+      try {
+        const barcode = await newTempBarcode();
+        setOutgoingBc(barcode);
+        setNewCylForm({
+          barcode,
+          owner: "own",
+          gasType: "Argon",
+          size: "20 L",
+          note: "",
+        });
+        setNewCylPhase("outgoing");
+        setNewCylDialog(true);
+      } catch (e) {
+        toast.error((e as Error).message);
+      }
+      return;
+    }
     try {
       const cyl = await findCylinderByBarcode(outgoingBc);
       setOutgoing(cyl);
@@ -284,8 +324,8 @@ function QuickExchange() {
 
       toast.success("Csere rögzítve");
 
-      setIncomingBc("");
-      setOutgoingBc("");
+      setIncomingBc(BARCODE_PREFIX);
+      setOutgoingBc(BARCODE_PREFIX);
       setIncoming(null);
       setOutgoing(null);
       setIncomingCreated(false);
@@ -546,7 +586,9 @@ function QuickExchange() {
                 setIncomingBc(e.target.value);
                 setIncoming(null);
               }}
-              onBlur={lookupIncoming}
+              onBlur={() => {
+                if (incomingBc.trim() && !isPrefixOnlyBarcode(incomingBc)) void lookupIncoming();
+              }}
               className="font-mono"
             />
             <Button variant="outline" onClick={lookupIncoming}>
@@ -606,7 +648,9 @@ function QuickExchange() {
                 setOutgoingBc(e.target.value);
                 setOutgoing(null);
               }}
-              onBlur={lookupOutgoing}
+              onBlur={() => {
+                if (outgoingBc.trim() && !isPrefixOnlyBarcode(outgoingBc)) void lookupOutgoing();
+              }}
               className="font-mono"
             />
             <Button variant="outline" onClick={lookupOutgoing}>
