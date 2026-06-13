@@ -3,7 +3,7 @@ import type { User } from "@supabase/supabase-js";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
-export type ProfileRole = "admin" | "viewer";
+export type ProfileRole = "admin" | "operator" | "viewer";
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
@@ -67,12 +67,20 @@ export function usePermissions() {
     },
   });
 
-  const role: ProfileRole = profile.data?.role === "admin" ? "admin" : "viewer";
+  const role: ProfileRole =
+    profile.data?.role === "admin" || profile.data?.role === "operator"
+      ? profile.data.role
+      : "viewer";
+  const canWrite = role === "admin" || role === "operator";
 
   return {
     role,
-    canWrite: role === "admin",
+    canWrite,
+    canCreate: canWrite,
+    canUpdate: canWrite,
+    canDelete: role === "admin",
     isAdmin: role === "admin",
+    isOperator: role === "operator",
     loading: authLoading || (!!user && profile.isLoading),
     profile: profile.data ?? null,
   };

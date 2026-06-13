@@ -50,7 +50,8 @@ function CylinderRow({
       <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer">
         <div className="font-mono text-sm font-semibold">{cyl.barcode}</div>
         <div className="text-xs text-muted-foreground">
-          {cyl.gas_type} · {cyl.size} · {cyl.status === "full" ? "Teli → telephely" : "Üres → telephely"}
+          {cyl.gas_type} · {cyl.size} ·{" "}
+          {cyl.status === "full" ? "Teli → telephely" : "Üres → telephely"}
         </div>
       </label>
     </div>
@@ -80,7 +81,9 @@ function RentalReturn() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("rentals")
-        .select("id, partner_id, monthly_fee, deposit, start_date, status, partners(name, company_name)")
+        .select(
+          "id, partner_id, monthly_fee, deposit, start_date, status, partners(name, company_name)",
+        )
         .in("status", ["active", "expired", "cancelled"])
         .order("start_date", { ascending: false });
       if (error) throw error;
@@ -182,7 +185,8 @@ function RentalReturn() {
               const p = (r as { partners?: { name?: string } }).partners;
               return (
                 <option key={r.id} value={r.id}>
-                  {p?.name ?? "—"} · {rentalNumber(r.id)} · {rentalStatusLabels[r.status] ?? r.status}
+                  {p?.name ?? "—"} · {rentalNumber(r.id)} ·{" "}
+                  {rentalStatusLabels[r.status] ?? r.status}
                 </option>
               );
             })}
@@ -191,7 +195,9 @@ function RentalReturn() {
         {rental && (
           <div className="mt-2 flex flex-wrap gap-2 text-xs">
             <Badge variant="outline">Kezdés: {fmtDate(rental.start_date)}</Badge>
-            <Badge variant="secondary">Kaució: {Number(rental.deposit ?? 0).toLocaleString("hu-HU")} Ft</Badge>
+            <Badge variant="secondary">
+              Kaució: {Number(rental.deposit ?? 0).toLocaleString("hu-HU")} Ft
+            </Badge>
           </div>
         )}
       </Card>
@@ -224,9 +230,19 @@ function RentalReturn() {
             )}
           </Card>
 
-          <Input className="mb-3" placeholder="Megjegyzés (opcionális)" value={note} onChange={(e) => setNote(e.target.value)} />
+          <Input
+            className="mb-3"
+            placeholder="Megjegyzés (opcionális)"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
 
-          <Button size="lg" className="w-full" disabled={busy || selected.size === 0 || cylsLoading} onClick={submit}>
+          <Button
+            size="lg"
+            className="w-full"
+            disabled={busy || selected.size === 0 || cylsLoading}
+            onClick={submit}
+          >
             <Check className="mr-2 h-5 w-5" />
             Visszavétel ({selected.size} palack)
           </Button>
@@ -234,7 +250,9 @@ function RentalReturn() {
       )}
 
       {!rentalId && !rentalsLoading && (
-        <div className="py-8 text-center text-sm text-muted-foreground">Válassz bérletet a visszavételhez</div>
+        <div className="py-8 text-center text-sm text-muted-foreground">
+          Válassz bérletet a visszavételhez
+        </div>
       )}
     </AppShell>
   );

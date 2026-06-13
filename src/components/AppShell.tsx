@@ -24,14 +24,17 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
             <span className="text-primary">GÁZ</span> VELED
           </Link>
           {title && <h1 className="text-sm font-medium text-muted-foreground">{title}</h1>}
-          <Button variant="ghost" size="sm" onClick={() => signOut()}>Kilépés</Button>
+          <Button variant="ghost" size="sm" onClick={() => signOut()}>
+            Kilépés
+          </Button>
         </div>
       </header>
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-4">{children}</main>
       <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur">
         <ul className="mx-auto flex max-w-3xl">
           {visibleTabs.map((t) => {
-            const active = loc.pathname === t.to || (t.to !== "/dashboard" && loc.pathname.startsWith(t.to));
+            const active =
+              loc.pathname === t.to || (t.to !== "/dashboard" && loc.pathname.startsWith(t.to));
             const Icon = t.icon;
             return (
               <li key={t.to} className="flex-1">

@@ -8,7 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Camera, Check, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { circulationLabels, fmtDateTime, locationLabels } from "@/lib/labels";
@@ -57,8 +63,13 @@ function Suppliers() {
   const { data: history } = useQuery({
     queryKey: ["supex"],
     queryFn: async () =>
-      (await supabase.from("supplier_exchanges").select("*, suppliers(name,kind)").order("created_at", { ascending: false }).limit(20))
-        .data ?? [],
+      (
+        await supabase
+          .from("supplier_exchanges")
+          .select("*, suppliers(name,kind)")
+          .order("created_at", { ascending: false })
+          .limit(20)
+      ).data ?? [],
   });
 
   const selectedSupplier = (suppliers ?? []).find((s) => s.id === supplierId);
@@ -281,7 +292,11 @@ function Suppliers() {
             </SelectContent>
           </Select>
           <div className="mt-3 flex gap-2">
-            <Input placeholder="Új beszállító neve" value={newName} onChange={(e) => setNewName(e.target.value)} />
+            <Input
+              placeholder="Új beszállító neve"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+            />
             <Select value={newKind} onValueChange={(v) => setNewKind(v as SupKind)}>
               <SelectTrigger className="w-40">
                 <SelectValue />
@@ -308,7 +323,8 @@ function Suppliers() {
               </Button>
             </div>
             <p className="mb-2 text-xs text-muted-foreground">
-              Meglévő üres palack vonalkódja, vagy ismeretlen kód esetén új palack felvétele. A palack a beszállítóhoz kerül, nem törlődik.
+              Meglévő üres palack vonalkódja, vagy ismeretlen kód esetén új palack felvétele. A
+              palack a beszállítóhoz kerül, nem törlődik.
             </p>
             <div className="flex gap-2">
               <Input
@@ -325,12 +341,20 @@ function Suppliers() {
             {returned.length > 0 && (
               <div className="mt-3 space-y-1">
                 {returned.map((c) => (
-                  <div key={c.id} className="flex items-center justify-between rounded-md bg-muted/40 px-2 py-1 text-xs">
+                  <div
+                    key={c.id}
+                    className="flex items-center justify-between rounded-md bg-muted/40 px-2 py-1 text-xs"
+                  >
                     <span className="font-mono">{c.barcode}</span>
                     <span className="text-muted-foreground">
                       {c.gas_type} · {circulationLabels[c.owner ?? c.circulation]}
                     </span>
-                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setReturned((p) => p.filter((x) => x.id !== c.id))}>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6"
+                      onClick={() => setReturned((p) => p.filter((x) => x.id !== c.id))}
+                    >
                       <X className="h-3 w-3" />
                     </Button>
                   </div>
@@ -347,7 +371,8 @@ function Suppliers() {
               </Button>
             </div>
             <p className="mb-2 text-xs text-muted-foreground">
-              Meglévő palack vonalkódja (pl. korábban üresen kiadott) vagy ismeretlen kód esetén új palack felvétele.
+              Meglévő palack vonalkódja (pl. korábban üresen kiadott) vagy ismeretlen kód esetén új
+              palack felvétele.
             </p>
             <div className="flex gap-2">
               <Input
@@ -364,12 +389,20 @@ function Suppliers() {
             {received.length > 0 && (
               <div className="mt-3 space-y-1">
                 {received.map((c) => (
-                  <div key={c.id} className="flex items-center justify-between rounded-md bg-muted/40 px-2 py-1 text-xs">
+                  <div
+                    key={c.id}
+                    className="flex items-center justify-between rounded-md bg-muted/40 px-2 py-1 text-xs"
+                  >
                     <span className="font-mono">{c.barcode}</span>
                     <span className="text-muted-foreground">
                       {c.gas_type} · {c.size} · {circulationLabels[c.owner ?? c.circulation]}
                     </span>
-                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setReceived((p) => p.filter((x) => x.id !== c.id))}>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6"
+                      onClick={() => setReceived((p) => p.filter((x) => x.id !== c.id))}
+                    >
                       <X className="h-3 w-3" />
                     </Button>
                   </div>
@@ -378,7 +411,12 @@ function Suppliers() {
             )}
           </Card>
 
-          <Input className="mb-3" placeholder="Megjegyzés (opcionális)" value={note} onChange={(e) => setNote(e.target.value)} />
+          <Input
+            className="mb-3"
+            placeholder="Megjegyzés (opcionális)"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
 
           <Button className="w-full" size="lg" disabled={busy} onClick={submit}>
             <Check className="mr-2 h-5 w-5" />
@@ -398,7 +436,9 @@ function Suppliers() {
         {(history ?? []).map((h) => (
           <Card key={h.id} className="p-3">
             <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold">{(h as { suppliers?: { name: string } }).suppliers?.name ?? "—"}</div>
+              <div className="text-sm font-semibold">
+                {(h as { suppliers?: { name: string } }).suppliers?.name ?? "—"}
+              </div>
               <div className="text-xs text-muted-foreground">{fmtDateTime(h.created_at)}</div>
             </div>
             <div className="mt-1 flex gap-2 text-xs">

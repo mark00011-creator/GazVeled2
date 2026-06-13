@@ -8,7 +8,12 @@ export const Route = createFileRoute("/_authenticated")({
 
 function Layout() {
   const { user, loading } = useAuth();
-  if (loading) return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Betöltés…</div>;
+  if (loading)
+    return (
+      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
+        Betöltés…
+      </div>
+    );
   if (!user) return <Navigate to="/auth" replace />;
   return <Outlet />;
 }

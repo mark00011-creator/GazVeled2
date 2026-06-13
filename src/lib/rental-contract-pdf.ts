@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { fmtDate } from "@/lib/labels";
-import type { RentalType } from "@/lib/labels";
+import QRCode from "qrcode";
+import { depositTypeLabels, fmtDate } from "@/lib/labels";
+import type { DepositType, RentalType } from "@/lib/labels";
 
 /** Átadó – sablon: GÁZPALACK ÁTADÁS-ÁTVÉTELI JEGYZŐKÖNYV */
 const LESSOR = {
@@ -39,9 +40,9 @@ const SIZE_ROWS = [
 
 /** Normalize app gas/size labels to template grid keys. */
 const GAS_ALIASES: Record<string, string> = {
-  "Széndioxid": "Szén-dioxid",
+  Széndioxid: "Szén-dioxid",
   Argon: "Spórgáz",
-  "Stargon": "Stargon",
+  Stargon: "Stargon",
 };
 
 function normalizeGas(gas: string): string {
@@ -57,6 +58,7 @@ function normalizeSize(size: string): string {
 
 export type RentalContractData = {
   rentalId: string;
+  contractNumber?: string | null;
   rentalType: RentalType;
   contractDate?: string;
   handoverDate?: string;
@@ -74,7 +76,13 @@ export type RentalContractData = {
   expiryDate: string | null;
   monthlyFee: number;
   deposit: number;
-  cylinders: { barcode: string; gas_type: string; size: string }[];
+  depositType?: DepositType | null;
+  cylinders: {
+    barcode: string;
+    gas_type: string;
+    size: string;
+    replacement_value?: number | null;
+  }[];
 };
 
 function pdfSafe(text: string): string {
@@ -89,8 +97,8 @@ function pdfSafe(text: string): string {
 
 function contractSerial(rentalId: string, startDate: string): string {
   const year = startDate.slice(0, 4);
-  const seq = rentalId.replace(/-/g, "").slice(0, 2).toUpperCase();
-  return `${year}/B-${seq}`;
+  const seq = rentalId.replace(/-/g, "").slice(0, 4).toUpperCase();
+  return `GV-${year}-${seq}`;
 }
 
 function countByGasSize(cylinders: RentalContractData["cylinders"]): Map<string, number> {
@@ -145,6 +153,9 @@ export async function generateRentalContractPdf(data: RentalContractData): Promi
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const serial = data.contractNumber ?? contractSerial(data.rentalId, data.startDate);
+  const qrDataUrl = await QRCode.toDataURL(serial, { margin: 1, width: 96 });
+  const qrPng = await doc.embedPng(qrDataUrl);
   const pageWidth = 595;
   const pageHeight = 842;
   const margin = 40;
@@ -175,7 +186,6 @@ export async function generateRentalContractPdf(data: RentalContractData): Promi
 
   const contractDate = data.contractDate ?? data.startDate;
   const handoverDate = data.handoverDate ?? data.startDate;
-  const serial = contractSerial(data.rentalId, data.startDate);
   const dateFmt = fmtDate(contractDate).replace(/\s/g, " ");
 
   // Fejléc
@@ -192,6 +202,7 @@ export async function generateRentalContractPdf(data: RentalContractData): Promi
   y -= 18;
   drawAt(margin, `Sorszama: ${serial}`, 9);
   drawAt(pageWidth - margin - 100, dateFmt, 9);
+  page.drawImage(qrPng, { x: pageWidth - margin - 48, y: y - 38, width: 42, height: 42 });
   y -= 14;
 
   // Két oszlop fejléc
@@ -208,7 +219,12 @@ export async function generateRentalContractPdf(data: RentalContractData): Promi
     leftY -= 11;
   };
   const drawRight = (label: string, value: string) => {
-    page.drawText(pdfSafe(`${label}: ${value || "-"}`), { x: colMid + 8, y: rightY, size: 8, font });
+    page.drawText(pdfSafe(`${label}: ${value || "-"}`), {
+      x: colMid + 8,
+      y: rightY,
+      size: 8,
+      font,
+    });
     rightY -= 11;
   };
 
@@ -223,6 +239,7 @@ export async function generateRentalContractPdf(data: RentalContractData): Promi
   drawLeft("Nyilv. szam", LESSOR.reg_number);
   drawRight("Nyilv. szam", "");
   drawLeft("Kaucio osszege", `${data.deposit.toLocaleString("hu-HU")} Ft`);
+  drawLeft("Kaucio tipusa", depositTypeLabels[data.depositType ?? "custom"] ?? "Egyedi osszeg");
   drawRight("Telefonszam", data.partner.phone ?? "");
   drawRight("e-mail cim", data.partner.email ?? "");
   if (data.partner.id_number) drawRight("Szemelyi ig. szam", data.partner.id_number);
@@ -251,7 +268,13 @@ export async function generateRentalContractPdf(data: RentalContractData): Promi
   // Oszlop fejlécek
   GAS_COLUMNS.forEach((gas, i) => {
     const x = margin + i * cellW + 2;
-    page.drawText(pdfSafe(gas), { x, y: gridTop, size: 6, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+    page.drawText(pdfSafe(gas), {
+      x,
+      y: gridTop,
+      size: 6,
+      font: fontBold,
+      color: rgb(0.2, 0.2, 0.2),
+    });
   });
   y = gridTop - headerH;
 
@@ -275,7 +298,10 @@ export async function generateRentalContractPdf(data: RentalContractData): Promi
 
   // Összefoglaló + vonalkódok
   const summary = summarizeList(data.cylinders);
-  drawLine(`1.) Felek kijelentik, hogy ATADO berbe adja ATVEVONEK a kovetkezo palackokat berleti dij elleneben: ${summary || "0 db"}.`, 9);
+  drawLine(
+    `1.) Felek kijelentik, hogy ATADO berbe adja ATVEVONEK a kovetkezo palackokat berleti dij elleneben: ${summary || "0 db"}.`,
+    9,
+  );
   y -= 2;
 
   if (data.cylinders.length > 0) {
@@ -286,6 +312,19 @@ export async function generateRentalContractPdf(data: RentalContractData): Promi
   }
 
   drawLine(feeClause(data.rentalType, data.monthlyFee), 9);
+  y -= 2;
+  drawLine(
+    `Havi/eves dij: ${data.monthlyFee.toLocaleString("hu-HU")} Ft. Kaucio: ${data.deposit.toLocaleString("hu-HU")} Ft (${depositTypeLabels[data.depositType ?? "custom"] ?? "Egyedi osszeg"}).`,
+    9,
+  );
+  const replacementTotal = data.cylinders.reduce(
+    (sum, c) => sum + Number(c.replacement_value ?? 100000),
+    0,
+  );
+  drawLine(
+    `Palack potlasi ertek nyilvantartas szerint: ${replacementTotal.toLocaleString("hu-HU")} Ft (szerzodesben jelenleg egysegesen 100 000 Ft/palack kezelheto).`,
+    9,
+  );
   y -= 2;
   drawLine(
     "3.) ATADO kijelenti, hogy ATVEVONEK megteriti a kauciot, amennyiben ATVEVO felmondja a berleti szerzodest, valamint a felmondast koveto 5 napon visszaadja a berelt palackot. Amennyiben ATVEVO a berleti ido lejarta utan nem hosszabbitja meg a berleti idot, koteles visszaadni azt a palackot ATADONAK. Amennyiben 10 napon belul nem tortenik meg a visszaadas, akkor a berles tovabb folytatodik az eves berleti dijnak a ketszereseert. Ezt az ATADO az atvett kauciobol levonhatja, amennyiben ATVEVO nem rendezi.",
@@ -301,13 +340,36 @@ export async function generateRentalContractPdf(data: RentalContractData): Promi
     drawLine(`Berlet lejarata: ${fmtDate(data.expiryDate)}`, 9);
   }
 
+  y -= 2;
+  drawLine(`QR-kod tartalma / szerzodes azonosito: ${serial}`, 8);
+
   y -= 24;
   ensureSpace(50);
   const sigY = y;
-  page.drawLine({ start: { x: margin, y: sigY }, end: { x: colMid - 20, y: sigY }, thickness: 0.5, color: rgb(0.4, 0.4, 0.4) });
-  page.drawLine({ start: { x: colMid + 20, y: sigY }, end: { x: pageWidth - margin, y: sigY }, thickness: 0.5, color: rgb(0.4, 0.4, 0.4) });
-  page.drawText(pdfSafe("Atado (nev, alairas, belyegzo)"), { x: margin, y: sigY - 12, size: 8, font });
-  page.drawText(pdfSafe("Atvevo (nev, alairas, belyegzo)"), { x: colMid + 20, y: sigY - 12, size: 8, font });
+  page.drawLine({
+    start: { x: margin, y: sigY },
+    end: { x: colMid - 20, y: sigY },
+    thickness: 0.5,
+    color: rgb(0.4, 0.4, 0.4),
+  });
+  page.drawLine({
+    start: { x: colMid + 20, y: sigY },
+    end: { x: pageWidth - margin, y: sigY },
+    thickness: 0.5,
+    color: rgb(0.4, 0.4, 0.4),
+  });
+  page.drawText(pdfSafe("Atado (nev, alairas, belyegzo)"), {
+    x: margin,
+    y: sigY - 12,
+    size: 8,
+    font,
+  });
+  page.drawText(pdfSafe("Atvevo (nev, alairas, belyegzo)"), {
+    x: colMid + 20,
+    y: sigY - 12,
+    size: 8,
+    font,
+  });
 
   return doc.save();
 }

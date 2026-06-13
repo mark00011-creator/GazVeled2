@@ -15,7 +15,9 @@ import {
   rentalDisplayStatus,
   rentalStatusLabels,
   rentalTypeLabels,
+  depositTypeLabels,
   type RentalType,
+  type DepositType,
 } from "@/lib/labels";
 import {
   advanceRentalBilling,
@@ -44,7 +46,12 @@ function RentalDetail() {
   const [editingBarcodeId, setEditingBarcodeId] = useState<string | null>(null);
   const [barcodeEdits, setBarcodeEdits] = useState<Record<string, string>>({});
 
-  const { data: rental, isLoading, isError, refetch: refetchRental } = useQuery({
+  const {
+    data: rental,
+    isLoading,
+    isError,
+    refetch: refetchRental,
+  } = useQuery({
     queryKey: ["rental", id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -139,11 +146,14 @@ function RentalDetail() {
             phone?: string | null;
             email?: string | null;
             tax_number?: string | null;
+            contact_person?: string | null;
+            personal_id_number?: string | null;
           };
         }
       ).partners;
       const bytes = await generateRentalContractPdf({
         rentalId: id,
+        contractNumber: rental.contract_number,
         rentalType: (rental.rental_type ?? "yearly") as RentalType,
         partner: {
           name: partner?.name ?? "—",
@@ -152,14 +162,22 @@ function RentalDetail() {
           phone: partner?.phone,
           email: partner?.email,
           tax_number: partner?.tax_number,
+          contact_person: partner?.contact_person,
+          id_number: partner?.personal_id_number,
         },
         startDate: rental.start_date,
         expiryDate: rental.expiry_date,
         monthlyFee: Number(rental.monthly_fee),
         deposit: Number(rental.deposit),
-        cylinders: (cylLinks ?? []).map((c) => ({ barcode: c.barcode, gas_type: c.gas_type, size: c.size })),
+        depositType: rental.deposit_type as DepositType,
+        cylinders: (cylLinks ?? []).map((c) => ({
+          barcode: c.barcode,
+          gas_type: c.gas_type,
+          size: c.size,
+          replacement_value: c.replacement_value,
+        })),
       });
-      downloadPdf(bytes, `berlet-${rentalNumber(id)}.pdf`);
+      downloadPdf(bytes, `berlet-${rental.contract_number ?? rentalNumber(id)}.pdf`);
       toast.success("PDF letöltve");
     } catch (e) {
       toast.error((e as Error).message);
@@ -213,14 +231,12 @@ function RentalDetail() {
       {rental.status !== "closed" && (
         <Card
           className={`mb-4 p-4 text-center text-sm font-semibold ${
-            expired ? "border-destructive/50 bg-destructive/10 text-destructive" : "border-primary/30 bg-primary/5"
+            expired
+              ? "border-destructive/50 bg-destructive/10 text-destructive"
+              : "border-primary/30 bg-primary/5"
           }`}
         >
-          {expired ? (
-            "LEJÁRT"
-          ) : (
-            <>Hosszabbítás szükséges: {fmtDate(rentalExpiry)}</>
-          )}
+          {expired ? "LEJÁRT" : <>Hosszabbítás szükséges: {fmtDate(rentalExpiry)}</>}
         </Card>
       )}
 
@@ -237,9 +253,17 @@ function RentalDetail() {
         <div className="grid grid-cols-2 gap-3 text-sm">
           <Info label="Státusz" value={rentalStatusLabels[displayStatus] ?? displayStatus} />
           <Info label="Partner" value={partner?.name ?? "—"} bold />
+          {rental.contract_number && (
+            <Info label="Szerződésszám" value={rental.contract_number} bold />
+          )}
           <Info label="Bérlet típusa" value={rentalTypeLabels[rentalType]} />
           <Info label="Kezdő dátum" value={fmtDate(rental.start_date)} />
-          <Info label="Lejárati dátum" value={fmtDate(rentalExpiry)} highlight={expired} highlightTone="red" />
+          <Info
+            label="Lejárati dátum"
+            value={fmtDate(rentalExpiry)}
+            highlight={expired}
+            highlightTone="red"
+          />
           {rental.next_invoice_date && (
             <Info
               label="Következő számlázás"
@@ -252,16 +276,34 @@ function RentalDetail() {
             label={rentalType === "monthly" ? "Havi díj" : "Díj"}
             value={`${Number(rental.monthly_fee).toLocaleString("hu-HU")} Ft${rentalType === "monthly" ? "/hó" : ""}`}
           />
-          <Info label="Kaució" value={`${Number(rental.deposit).toLocaleString("hu-HU")} Ft`} />
+          <Info
+            label="Kaució"
+            value={`${depositTypeLabels[(rental.deposit_type ?? "custom") as DepositType] ?? "Egyedi összeg"} · ${Number(rental.deposit).toLocaleString("hu-HU")} Ft`}
+          />
           {rental.end_date && <Info label="Lezárva" value={fmtDate(rental.end_date)} />}
         </div>
 
-        {canWrite && rental.status === "active" && rentalType === "monthly" && rental.next_invoice_date && (
-          <Button className="mt-4 w-full" variant="outline" size="sm" disabled={busyId === "invoice"} onClick={markInvoiced}>
-            Számlázás rögzítve – következő hónap
-          </Button>
-        )}
-        <Button className="mt-2 w-full" variant="outline" size="sm" disabled={pdfBusy} onClick={generatePdf}>
+        {canWrite &&
+          rental.status === "active" &&
+          rentalType === "monthly" &&
+          rental.next_invoice_date && (
+            <Button
+              className="mt-4 w-full"
+              variant="outline"
+              size="sm"
+              disabled={busyId === "invoice"}
+              onClick={markInvoiced}
+            >
+              Számlázás rögzítve – következő hónap
+            </Button>
+          )}
+        <Button
+          className="mt-2 w-full"
+          variant="outline"
+          size="sm"
+          disabled={pdfBusy}
+          onClick={generatePdf}
+        >
           <FileDown className="mr-2 h-4 w-4" /> PDF szerződés generálása
         </Button>
       </Card>
@@ -301,7 +343,10 @@ function RentalDetail() {
                             className="h-8 font-mono text-xs"
                             value={editValue}
                             onChange={(e) =>
-                              setBarcodeEdits((prev) => ({ ...prev, [c.cylinder_id]: e.target.value }))
+                              setBarcodeEdits((prev) => ({
+                                ...prev,
+                                [c.cylinder_id]: e.target.value,
+                              }))
                             }
                           />
                           <Button
@@ -328,7 +373,11 @@ function RentalDetail() {
                       <div>{circulationLabels[owner] ?? owner}</div>
                     </div>
                   </div>
-                  {cylExpired && <Badge variant="destructive" className="mt-2">LEJÁRT</Badge>}
+                  {cylExpired && (
+                    <Badge variant="destructive" className="mt-2">
+                      LEJÁRT
+                    </Badge>
+                  )}
                   <div className="mt-3 flex flex-wrap gap-2">
                     {canWrite && (
                       <Button
@@ -343,7 +392,12 @@ function RentalDetail() {
                       </Button>
                     )}
                     {canExtend && (
-                      <Button size="sm" variant="outline" disabled={busyId === "extend"} onClick={doExtend}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busyId === "extend"}
+                        onClick={doExtend}
+                      >
                         <CalendarPlus className="mr-1 h-3.5 w-3.5" /> Tovább bérli
                       </Button>
                     )}
