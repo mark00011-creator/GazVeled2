@@ -367,6 +367,7 @@ export type Database = {
           email: string | null
           full_name: string | null
           id: string
+          role: string
           updated_at: string
         }
         Insert: {
@@ -374,6 +375,7 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id: string
+          role?: string
           updated_at?: string
         }
         Update: {
@@ -381,6 +383,7 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          role?: string
           updated_at?: string
         }
         Relationships: []
@@ -689,6 +692,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_admin: { Args: never; Returns: boolean }
       next_temp_barcode: { Args: never; Returns: string }
       reassign_rental_cylinder: {
         Args: {
@@ -719,6 +723,7 @@ export type Database = {
         }
         Returns: string
       }
+      require_admin: { Args: never; Returns: undefined }
     }
     Enums: {
       app_role: "admin" | "user"

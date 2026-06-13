@@ -25,6 +25,7 @@ import { Plus, Building2, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 import { fetchPartnerRentalSummaries } from "@/lib/rental-ops";
+import { usePermissions } from "@/lib/auth";
 
 
 
@@ -65,6 +66,7 @@ const empty = {
 function PartnersList() {
 
   const qc = useQueryClient();
+  const { canWrite } = usePermissions();
 
   const [q, setQ] = useState("");
 
@@ -150,7 +152,7 @@ function PartnersList() {
 
         <Input placeholder="Név, cég, telefon…" value={q} onChange={(e) => setQ(e.target.value)} />
 
-        <Dialog open={open} onOpenChange={setOpen}>
+        {canWrite && <Dialog open={open} onOpenChange={setOpen}>
 
           <DialogTrigger asChild>
 
@@ -272,7 +274,7 @@ function PartnersList() {
 
           </DialogContent>
 
-        </Dialog>
+        </Dialog>}
 
       </div>
 

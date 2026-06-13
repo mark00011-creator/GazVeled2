@@ -21,6 +21,7 @@ import { ArrowLeft } from "lucide-react";
 
 import { circulationLabels, fmtDateTime, formatCylinderLocation, locationLabels } from "@/lib/labels";
 import { finalizeCylinderBarcode } from "@/lib/cylinder-ops";
+import { usePermissions } from "@/lib/auth";
 import { toast } from "sonner";
 
 
@@ -39,6 +40,7 @@ function CylinderDetail() {
 
   const { id } = Route.useParams();
   const qc = useQueryClient();
+  const { canWrite } = usePermissions();
   const [newBarcode, setNewBarcode] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -120,7 +122,7 @@ function CylinderDetail() {
 
           <div className="font-mono text-lg font-bold">{cyl.barcode}</div>
 
-          {(cyl as { is_temporary?: boolean }).is_temporary && (
+          {canWrite && (cyl as { is_temporary?: boolean }).is_temporary && (
             <Badge variant="outline" className="mt-1">Ideiglenes vonalkód</Badge>
           )}
 

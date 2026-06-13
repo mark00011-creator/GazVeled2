@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { circulationLabels, formatCylinderLocation, locationLabels, statusLabels } from "@/lib/labels";
 import { createNewCylinder, updateCylinder, type CylinderRow } from "@/lib/cylinder-ops";
 import type { Circulation } from "@/lib/labels";
+import { usePermissions } from "@/lib/auth";
 
 export const Route = createFileRoute("/_authenticated/cylinders")({
   head: () => ({ meta: [{ title: "Palackok – Gáz Veled" }] }),
@@ -33,6 +34,7 @@ function getAvailableSizes(gasType: string): string[] {
 
 function Cylinders() {
   const qc = useQueryClient();
+  const { canWrite } = usePermissions();
   const [q, setQ] = useState("");
   const [circ, setCirc] = useState<string>("all");
   const [loc, setLoc] = useState<string>("all");
@@ -131,33 +133,35 @@ function Cylinders() {
     <AppShell title="Palackok">
       <div className="mb-3 flex gap-2">
         <Input placeholder="Vonalkód keresése…" value={q} onChange={(e) => setQ(e.target.value)} className="font-mono" />
-        <Dialog open={openNew} onOpenChange={setOpenNew}>
-          <DialogTrigger asChild><Button size="icon"><Plus className="h-4 w-4" /></Button></DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Új palack</DialogTitle>
-              <DialogDescription>Új palack manuális felvétele a nyilvántartásba.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-3">
-              <div><Label>Vonalkód</Label><Input value={newForm.barcode} onChange={(e) => setNewForm({ ...newForm, barcode: e.target.value })} /></div>
-              <div className="grid grid-cols-2 gap-2">
-                <div><Label>Gáz</Label><Input value={newForm.gas_type} onChange={(e) => setNewForm({ ...newForm, gas_type: e.target.value })} /></div>
-                <div><Label>Méret</Label><Input value={newForm.size} onChange={(e) => setNewForm({ ...newForm, size: e.target.value })} /></div>
+        {canWrite && (
+          <Dialog open={openNew} onOpenChange={setOpenNew}>
+            <DialogTrigger asChild><Button size="icon"><Plus className="h-4 w-4" /></Button></DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Új palack</DialogTitle>
+                <DialogDescription>Új palack manuális felvétele a nyilvántartásba.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div><Label>Vonalkód</Label><Input value={newForm.barcode} onChange={(e) => setNewForm({ ...newForm, barcode: e.target.value })} /></div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div><Label>Gáz</Label><Input value={newForm.gas_type} onChange={(e) => setNewForm({ ...newForm, gas_type: e.target.value })} /></div>
+                  <div><Label>Méret</Label><Input value={newForm.size} onChange={(e) => setNewForm({ ...newForm, size: e.target.value })} /></div>
+                </div>
+                <div>
+                  <Label>Körforgás</Label>
+                  <Select value={newForm.circulation} onValueChange={(v) => setNewForm({ ...newForm, circulation: v as "own" | "siad" })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="own">Saját</SelectItem>
+                      <SelectItem value="siad">SIAD</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button onClick={createNew} className="w-full">Mentés</Button>
               </div>
-              <div>
-                <Label>Körforgás</Label>
-                <Select value={newForm.circulation} onValueChange={(v) => setNewForm({ ...newForm, circulation: v as "own" | "siad" })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="own">Saját</SelectItem>
-                    <SelectItem value="siad">SIAD</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button onClick={createNew} className="w-full">Mentés</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <div className="mb-3 grid grid-cols-2 gap-2">
@@ -181,7 +185,7 @@ function Cylinders() {
       <div className="space-y-2">
         {(data ?? []).map((c) => (
           <div key={c.id}>
-            {editingId === c.id && editingForm ? (
+            {canWrite && editingId === c.id && editingForm ? (
               // EDIT MODE
               <Card className="p-4 border-primary/50 bg-primary/5">
                 <div className="space-y-3">
@@ -327,17 +331,19 @@ function Cylinders() {
                         )}
                       </span>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="ml-2"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        startEdit(c);
-                      }}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
+                    {canWrite && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="ml-2"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          startEdit(c);
+                        }}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </Card>
               </Link>

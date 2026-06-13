@@ -38,6 +38,7 @@ import {
 import { daysUntil, invoiceUrgency } from "@/lib/rental-billing";
 import { logSupabaseError } from "@/lib/supabase-error";
 import { downloadPdf, generateRentalContractPdf } from "@/lib/rental-contract-pdf";
+import { usePermissions } from "@/lib/auth";
 
 export const Route = createFileRoute("/_authenticated/rentals/")({
   head: () => ({ meta: [{ title: "Bérletek – Gáz Veled" }] }),
@@ -85,6 +86,7 @@ function statusVariant(status: string): "default" | "secondary" | "destructive" 
 
 function RentalsList() {
   const qc = useQueryClient();
+  const { canWrite } = usePermissions();
   const [statusFilter, setStatusFilter] = useState<string>("active");
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -318,7 +320,7 @@ function RentalsList() {
             <SelectItem value="closed">Lezárt</SelectItem>
           </SelectContent>
         </Select>
-        <Dialog
+        {canWrite && <Dialog
           open={open}
           onOpenChange={(v) => {
             setOpen(v);
@@ -465,7 +467,7 @@ function RentalsList() {
               </Button>
             </div>
           </DialogContent>
-        </Dialog>
+        </Dialog>}
       </div>
 
       {statusFilter === "all" && <div className="mb-3 text-xs text-muted-foreground">{activeCount} aktív bérlet</div>}

@@ -17,6 +17,7 @@ import {
   rentalNumber,
   type RentalCylinderDetail,
 } from "@/lib/rental-ops";
+import { usePermissions } from "@/lib/auth";
 
 export const Route = createFileRoute("/_authenticated/rental-return")({
   validateSearch: (s: Record<string, unknown>) => ({
@@ -59,6 +60,7 @@ function CylinderRow({
 function RentalReturn() {
   const { rentalId: initialRentalId, cylinderId: initialCylinderId } = Route.useSearch();
   const qc = useQueryClient();
+  const { canWrite } = usePermissions();
   const [rentalId, setRentalId] = useState(initialRentalId);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [note, setNote] = useState("");
@@ -74,6 +76,7 @@ function RentalReturn() {
     isError: rentalsError,
   } = useQuery({
     queryKey: ["rentals-returnable"],
+    enabled: canWrite,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("rentals")
@@ -94,7 +97,7 @@ function RentalReturn() {
     isFetching: cylsFetching,
   } = useQuery({
     queryKey: ["rental-return-cyls", rentalId],
-    enabled: !!rentalId,
+    enabled: canWrite && !!rentalId,
     queryFn: () => fetchRentalCylinderDetails(rentalId),
   });
 
@@ -148,6 +151,16 @@ function RentalReturn() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (!canWrite) {
+    return (
+      <AppShell title="Bérlet visszavétel">
+        <Card className="p-4 text-sm text-muted-foreground">
+          Viewer jogosultsággal bérlet visszavétel nem végezhető.
+        </Card>
+      </AppShell>
+    );
   }
 
   return (

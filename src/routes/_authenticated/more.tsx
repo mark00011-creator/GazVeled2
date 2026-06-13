@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
 import { Truck, FileText, RotateCcw, ScrollText, ChevronRight, ClipboardList, Package } from "lucide-react";
+import { usePermissions } from "@/lib/auth";
 
 export const Route = createFileRoute("/_authenticated/more")({
   head: () => ({ meta: [{ title: "Több – Gáz Veled" }] }),
@@ -10,18 +11,21 @@ export const Route = createFileRoute("/_authenticated/more")({
 
 const items = [
   { to: "/gas-order", icon: Package, label: "Gáz rendelés", desc: "Üres telephelyi palackok rendelése" },
-  { to: "/inventory", icon: ClipboardList, label: "Leltár", desc: "Meglévő palackállomány feltöltése" },
-  { to: "/suppliers", icon: Truck, label: "Beszállítói cserék", desc: "SIAD / Saját szolgáltató" },
-  { to: "/rental-return", icon: RotateCcw, label: "Bérlet visszavétel", desc: "Aktív bérlet zárása" },
+  { to: "/inventory", icon: ClipboardList, label: "Leltár", desc: "Meglévő palackállomány feltöltése", writeOnly: true },
+  { to: "/suppliers", icon: Truck, label: "Beszállítói cserék", desc: "SIAD / Saját szolgáltató", writeOnly: true },
+  { to: "/rental-return", icon: RotateCcw, label: "Bérlet visszavétel", desc: "Aktív bérlet zárása", writeOnly: true },
   { to: "/rentals", icon: FileText, label: "Bérletek", desc: "Aktív és lezárt bérletek" },
   { to: "/audit", icon: ScrollText, label: "Audit napló", desc: "Műveleti előzmények" },
 ] as const;
 
 function More() {
+  const { canWrite } = usePermissions();
+  const visibleItems = items.filter((it) => canWrite || !("writeOnly" in it && it.writeOnly));
+
   return (
     <AppShell title="Több">
       <div className="space-y-2">
-        {items.map((it) => {
+        {visibleItems.map((it) => {
           const Icon = it.icon;
           return (
             <Link key={it.to} to={it.to as never}>

@@ -20,6 +20,7 @@ import {
   type RentalType,
 } from "@/lib/labels";
 import { extendRentalCylinder, fetchPartnerRentalOverview, rentalNumber } from "@/lib/rental-ops";
+import { usePermissions } from "@/lib/auth";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/partners/$id/rentals")({
@@ -30,6 +31,7 @@ export const Route = createFileRoute("/_authenticated/partners/$id/rentals")({
 function PartnerRentalsPage() {
   const { id } = Route.useParams();
   const qc = useQueryClient();
+  const { canWrite } = usePermissions();
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const { data: partner, isLoading: partnerLoading } = useQuery({
@@ -177,24 +179,26 @@ function PartnerRentalsPage() {
                         </div>
                       </div>
                       {cylExpired && <Badge variant="destructive" className="mt-2">LEJÁRT</Badge>}
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busyId === c.cylinder_id}
-                          onClick={() => extendCylinder(rental.id, c.cylinder_id)}
-                        >
-                          <CalendarPlus className="mr-1 h-3.5 w-3.5" /> Palack hosszabbítás
-                        </Button>
-                        <Button size="sm" variant="secondary" asChild>
-                          <Link
-                            to="/rental-return"
-                            search={{ rentalId: rental.id, cylinderId: c.cylinder_id }}
+                      {canWrite && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busyId === c.cylinder_id}
+                            onClick={() => extendCylinder(rental.id, c.cylinder_id)}
                           >
-                            <RotateCcw className="mr-1 h-3.5 w-3.5" /> Palack visszavétel
-                          </Link>
-                        </Button>
-                      </div>
+                            <CalendarPlus className="mr-1 h-3.5 w-3.5" /> Palack hosszabbítás
+                          </Button>
+                          <Button size="sm" variant="secondary" asChild>
+                            <Link
+                              to="/rental-return"
+                              search={{ rentalId: rental.id, cylinderId: c.cylinder_id }}
+                            >
+                              <RotateCcw className="mr-1 h-3.5 w-3.5" /> Palack visszavétel
+                            </Link>
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

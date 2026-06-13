@@ -246,6 +246,14 @@ async function ensureRentalCylinderLinks(
     expiry_date: defaultExpiry,
   }));
   const { error: insErr } = await supabase.from("rental_cylinders").insert(rows);
+  if (
+    insErr &&
+    (insErr.code === "42501" ||
+      insErr.message.includes("row-level security") ||
+      insErr.message.includes("permission denied"))
+  ) {
+    return;
+  }
   if (insErr) throwSupabaseError("ensureRentalCylinderLinks → rental_cylinders INSERT", insErr);
 }
 

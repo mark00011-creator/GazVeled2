@@ -26,6 +26,7 @@ import {
 import { updateCylinderBarcode } from "@/lib/cylinder-ops";
 import { daysUntil, invoiceUrgency } from "@/lib/rental-billing";
 import { downloadPdf, generateRentalContractPdf } from "@/lib/rental-contract-pdf";
+import { usePermissions } from "@/lib/auth";
 import { toast } from "sonner";
 import { useState } from "react";
 
@@ -37,6 +38,7 @@ export const Route = createFileRoute("/_authenticated/rentals/$id")({
 function RentalDetail() {
   const { id } = Route.useParams();
   const qc = useQueryClient();
+  const { canWrite } = usePermissions();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [editingBarcodeId, setEditingBarcodeId] = useState<string | null>(null);
@@ -189,8 +191,8 @@ function RentalDetail() {
   const displayStatus = rentalDisplayStatus(rental.status, rentalExpiry);
   const days = rentalType === "monthly" ? daysUntil(rental.next_invoice_date) : null;
   const urgency = invoiceUrgency(days);
-  const canExtend = rental.status !== "closed";
-  const canReturn = ["active", "expired", "cancelled"].includes(rental.status);
+  const canExtend = canWrite && rental.status !== "closed";
+  const canReturn = canWrite && ["active", "expired", "cancelled"].includes(rental.status);
 
   return (
     <AppShell title="Bérlet adatlap">
@@ -254,7 +256,7 @@ function RentalDetail() {
           {rental.end_date && <Info label="Lezárva" value={fmtDate(rental.end_date)} />}
         </div>
 
-        {rental.status === "active" && rentalType === "monthly" && rental.next_invoice_date && (
+        {canWrite && rental.status === "active" && rentalType === "monthly" && rental.next_invoice_date && (
           <Button className="mt-4 w-full" variant="outline" size="sm" disabled={busyId === "invoice"} onClick={markInvoiced}>
             Számlázás rögzítve – következő hónap
           </Button>
@@ -281,7 +283,7 @@ function RentalDetail() {
               const cylExpiry = c.expiry_date ?? rentalExpiry;
               const cylExpired = isRentalExpired(cylExpiry);
               const owner = (c.owner ?? c.circulation ?? "own") as keyof typeof circulationLabels;
-              const isEditing = editingBarcodeId === c.cylinder_id;
+              const isEditing = canWrite && editingBarcodeId === c.cylinder_id;
               const editValue = barcodeEdits[c.cylinder_id] ?? c.barcode;
 
               return (
@@ -328,16 +330,18 @@ function RentalDetail() {
                   </div>
                   {cylExpired && <Badge variant="destructive" className="mt-2">LEJÁRT</Badge>}
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setEditingBarcodeId(isEditing ? null : c.cylinder_id);
-                        setBarcodeEdits((prev) => ({ ...prev, [c.cylinder_id]: c.barcode }));
-                      }}
-                    >
-                      <Pencil className="mr-1 h-3.5 w-3.5" /> Vonalkód szerkesztése
-                    </Button>
+                    {canWrite && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setEditingBarcodeId(isEditing ? null : c.cylinder_id);
+                          setBarcodeEdits((prev) => ({ ...prev, [c.cylinder_id]: c.barcode }));
+                        }}
+                      >
+                        <Pencil className="mr-1 h-3.5 w-3.5" /> Vonalkód szerkesztése
+                      </Button>
+                    )}
                     {canExtend && (
                       <Button size="sm" variant="outline" disabled={busyId === "extend"} onClick={doExtend}>
                         <CalendarPlus className="mr-1 h-3.5 w-3.5" /> Tovább bérli

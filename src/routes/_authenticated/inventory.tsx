@@ -26,6 +26,7 @@ import {
   type InventoryPlace,
 } from "@/lib/inventory";
 import { registerInventoryCylinders, type InventoryRegisterResult } from "@/lib/cylinder-ops";
+import { usePermissions } from "@/lib/auth";
 
 export const Route = createFileRoute("/_authenticated/inventory")({
   head: () => ({ meta: [{ title: "Leltár – Gáz Veled" }] }),
@@ -54,6 +55,7 @@ const DEFAULTS: SharedDefaults = {
 
 function Inventory() {
   const qc = useQueryClient();
+  const { canWrite } = usePermissions();
   const [tab, setTab] = useState("single");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<InventoryRegisterResult | null>(null);
@@ -75,6 +77,16 @@ function Inventory() {
 
   const availableSizes = useMemo(() => getAvailableSizes(shared.gasType), [shared.gasType]);
   const bulkCount = useMemo(() => parseBulkBarcodes(bulkText).length, [bulkText]);
+
+  if (!canWrite) {
+    return (
+      <AppShell title="Leltár">
+        <Card className="p-4 text-sm text-muted-foreground">
+          Viewer jogosultsággal a leltár feltöltése nem végezhető.
+        </Card>
+      </AppShell>
+    );
+  }
 
   function updateShared<K extends keyof SharedDefaults>(key: K, value: SharedDefaults[K]) {
     setShared((prev) => ({ ...prev, [key]: value }));

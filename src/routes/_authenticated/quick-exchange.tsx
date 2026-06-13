@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { circulationLabels, CIRCULATION_OPTIONS, fmtDateTime, locationLabels, type Circulation } from "@/lib/labels";
 import { findCylinderByBarcode, createNewCylinder, normalizeBarcode, recordExchange, type CylinderRow } from "@/lib/cylinder-ops";
 import { findActiveRentalIdForCylinder } from "@/lib/rental-ops";
+import { usePermissions } from "@/lib/auth";
 
 export const Route = createFileRoute("/_authenticated/quick-exchange")({
   head: () => ({ meta: [{ title: "Gyors csere – Gáz Veled" }] }),
@@ -34,6 +35,7 @@ function getAvailableSizes(gasType: string): string[] {
 
 function QuickExchange() {
   const qc = useQueryClient();
+  const { canWrite } = usePermissions();
   const [partnerId, setPartnerId] = useState<string>("");
   const [scanning, setScanning] = useState<"in" | "out" | null>(null);
   const [incomingBc, setIncomingBc] = useState("");
@@ -272,6 +274,16 @@ function QuickExchange() {
     newCylForm.gasType &&
     newCylForm.size &&
     newCylForm.owner;
+
+  if (!canWrite) {
+    return (
+      <AppShell title="Gyors csere">
+        <Card className="p-4 text-sm text-muted-foreground">
+          Viewer jogosultsággal a gyors csere nem végezhető.
+        </Card>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell title="Gyors csere">
