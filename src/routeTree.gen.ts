@@ -16,6 +16,7 @@ import { Route as AuthenticatedSuppliersRouteImport } from './routes/_authentica
 import { Route as AuthenticatedRentalsRouteImport } from './routes/_authenticated/rentals'
 import { Route as AuthenticatedRentalReturnRouteImport } from './routes/_authenticated/rental-return'
 import { Route as AuthenticatedQuickExchangeRouteImport } from './routes/_authenticated/quick-exchange'
+import { Route as AuthenticatedPriceListRouteImport } from './routes/_authenticated/price-list'
 import { Route as AuthenticatedPartnersRouteImport } from './routes/_authenticated/partners'
 import { Route as AuthenticatedMoreRouteImport } from './routes/_authenticated/more'
 import { Route as AuthenticatedInventoryRouteImport } from './routes/_authenticated/inventory'
@@ -66,6 +67,11 @@ const AuthenticatedQuickExchangeRoute =
     path: '/quick-exchange',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedPriceListRoute = AuthenticatedPriceListRouteImport.update({
+  id: '/price-list',
+  path: '/price-list',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedPartnersRoute = AuthenticatedPartnersRouteImport.update({
   id: '/partners',
   path: '/partners',
@@ -146,6 +152,7 @@ export interface FileRoutesByFullPath {
   '/inventory': typeof AuthenticatedInventoryRoute
   '/more': typeof AuthenticatedMoreRoute
   '/partners': typeof AuthenticatedPartnersRouteWithChildren
+  '/price-list': typeof AuthenticatedPriceListRoute
   '/quick-exchange': typeof AuthenticatedQuickExchangeRoute
   '/rental-return': typeof AuthenticatedRentalReturnRoute
   '/rentals': typeof AuthenticatedRentalsRouteWithChildren
@@ -166,6 +173,7 @@ export interface FileRoutesByTo {
   '/gas-order': typeof AuthenticatedGasOrderRoute
   '/inventory': typeof AuthenticatedInventoryRoute
   '/more': typeof AuthenticatedMoreRoute
+  '/price-list': typeof AuthenticatedPriceListRoute
   '/quick-exchange': typeof AuthenticatedQuickExchangeRoute
   '/rental-return': typeof AuthenticatedRentalReturnRoute
   '/suppliers': typeof AuthenticatedSuppliersRoute
@@ -188,6 +196,7 @@ export interface FileRoutesById {
   '/_authenticated/inventory': typeof AuthenticatedInventoryRoute
   '/_authenticated/more': typeof AuthenticatedMoreRoute
   '/_authenticated/partners': typeof AuthenticatedPartnersRouteWithChildren
+  '/_authenticated/price-list': typeof AuthenticatedPriceListRoute
   '/_authenticated/quick-exchange': typeof AuthenticatedQuickExchangeRoute
   '/_authenticated/rental-return': typeof AuthenticatedRentalReturnRoute
   '/_authenticated/rentals': typeof AuthenticatedRentalsRouteWithChildren
@@ -211,6 +220,7 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/more'
     | '/partners'
+    | '/price-list'
     | '/quick-exchange'
     | '/rental-return'
     | '/rentals'
@@ -231,6 +241,7 @@ export interface FileRouteTypes {
     | '/gas-order'
     | '/inventory'
     | '/more'
+    | '/price-list'
     | '/quick-exchange'
     | '/rental-return'
     | '/suppliers'
@@ -252,6 +263,7 @@ export interface FileRouteTypes {
     | '/_authenticated/inventory'
     | '/_authenticated/more'
     | '/_authenticated/partners'
+    | '/_authenticated/price-list'
     | '/_authenticated/quick-exchange'
     | '/_authenticated/rental-return'
     | '/_authenticated/rentals'
@@ -319,6 +331,13 @@ declare module '@tanstack/react-router' {
       path: '/quick-exchange'
       fullPath: '/quick-exchange'
       preLoaderRoute: typeof AuthenticatedQuickExchangeRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/price-list': {
+      id: '/_authenticated/price-list'
+      path: '/price-list'
+      fullPath: '/price-list'
+      preLoaderRoute: typeof AuthenticatedPriceListRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/partners': {
@@ -479,6 +498,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedInventoryRoute: typeof AuthenticatedInventoryRoute
   AuthenticatedMoreRoute: typeof AuthenticatedMoreRoute
   AuthenticatedPartnersRoute: typeof AuthenticatedPartnersRouteWithChildren
+  AuthenticatedPriceListRoute: typeof AuthenticatedPriceListRoute
   AuthenticatedQuickExchangeRoute: typeof AuthenticatedQuickExchangeRoute
   AuthenticatedRentalReturnRoute: typeof AuthenticatedRentalReturnRoute
   AuthenticatedRentalsRoute: typeof AuthenticatedRentalsRouteWithChildren
@@ -493,6 +513,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedInventoryRoute: AuthenticatedInventoryRoute,
   AuthenticatedMoreRoute: AuthenticatedMoreRoute,
   AuthenticatedPartnersRoute: AuthenticatedPartnersRouteWithChildren,
+  AuthenticatedPriceListRoute: AuthenticatedPriceListRoute,
   AuthenticatedQuickExchangeRoute: AuthenticatedQuickExchangeRoute,
   AuthenticatedRentalReturnRoute: AuthenticatedRentalReturnRoute,
   AuthenticatedRentalsRoute: AuthenticatedRentalsRouteWithChildren,

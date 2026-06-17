@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
-import { Truck, FileText, RotateCcw, ScrollText, ChevronRight, ClipboardList, Package } from "lucide-react";
+import { Truck, FileText, RotateCcw, ScrollText, ChevronRight, ClipboardList, Package, Tags } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/more")({
   head: () => ({ meta: [{ title: "Több – Gáz Veled" }] }),
@@ -10,6 +10,7 @@ export const Route = createFileRoute("/_authenticated/more")({
 
 const items = [
   { to: "/gas-order", icon: Package, label: "Gáz rendelés", desc: "Üres telephelyi palackok rendelése" },
+  { to: "/price-list", icon: Tags, label: "Árlista", desc: "Csereárak szerkesztése (számlázás alap)" },
   { to: "/inventory", icon: ClipboardList, label: "Leltár", desc: "Meglévő palackállomány feltöltése" },
   { to: "/suppliers", icon: Truck, label: "Beszállítói cserék", desc: "SIAD / Saját szolgáltató" },
   { to: "/rental-return", icon: RotateCcw, label: "Bérlet visszavétel", desc: "Aktív bérlet zárása" },

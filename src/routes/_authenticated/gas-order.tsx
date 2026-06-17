@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
@@ -11,6 +11,8 @@ import {
   summarizeGasOrder,
   type OrderableCylinder,
 } from "@/lib/gas-order";
+import { estimateGasOrderCost, formatHuf } from "@/lib/gas-order-prices";
+import { buildPriceMap, fetchProductPrices } from "@/lib/product-prices";
 import { downloadPdf, generateGasOrderPdf } from "@/lib/gas-order-pdf";
 import { useState } from "react";
 
@@ -54,6 +56,59 @@ function CylinderList({ title, cylinders }: { title: string; cylinders: Orderabl
   );
 }
 
+function OrderEstimateCard({
+  group,
+  priceMap,
+}: {
+  group: { siad: OrderableCylinder[]; own: OrderableCylinder[] };
+  priceMap: Map<string, number>;
+}) {
+  const estimate = estimateGasOrderCost(group, priceMap);
+  const total = estimate.cylinderCount;
+
+  if (total === 0) return null;
+
+  return (
+    <Card className="p-4">
+      <h2 className="mb-3 text-sm font-semibold">Becsült rendelési összeg</h2>
+      {estimate.lines.length > 0 && (
+        <ul className="mb-3 space-y-1 text-sm">
+          {estimate.lines.map((line) => (
+            <li key={line.label} className="flex justify-between gap-3">
+              <span>
+                {line.label} × {line.count} db
+              </span>
+              <span className="shrink-0 text-muted-foreground">
+                {line.lineTotal != null ? formatHuf(line.lineTotal) : "—"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="border-t pt-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-sm text-muted-foreground">Kb. összesen</span>
+          <span className="text-xl font-bold">{formatHuf(estimate.knownTotal)}</span>
+        </div>
+        {estimate.unknownLabels.length > 0 && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Nincs ár az árlistában: {estimate.unknownLabels.join(", ")}
+          </p>
+        )}
+        {estimate.pricedCount < estimate.cylinderCount && estimate.pricedCount > 0 && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Az összeg csak a {estimate.pricedCount}/{estimate.cylinderCount} ismert árú palackot tartalmazza.
+          </p>
+        )}
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground">
+        Árak:{" "}
+        <Link to="/price-list" className="underline hover:text-foreground">Árlista</Link>
+      </p>
+    </Card>
+  );
+}
+
 function GasOrderPage() {
   const [pdfBusy, setPdfBusy] = useState(false);
 
@@ -61,6 +116,13 @@ function GasOrderPage() {
     queryKey: ["gas-order"],
     queryFn: fetchOrderableCylinders,
   });
+
+  const { data: priceRows = [] } = useQuery({
+    queryKey: ["product-prices"],
+    queryFn: () => fetchProductPrices(true),
+  });
+
+  const priceMap = buildPriceMap(priceRows);
 
   const group = data ?? { siad: [], own: [] };
   const summary = summarizeGasOrder(group);
@@ -113,6 +175,7 @@ function GasOrderPage() {
           <div className="mb-4 space-y-3">
             <CylinderList title="SIAD palackok" cylinders={group.siad} />
             <CylinderList title="Saját palackok" cylinders={group.own} />
+            <OrderEstimateCard group={group} priceMap={priceMap} />
           </div>
 
           <div className="flex flex-col gap-2">

@@ -361,6 +361,45 @@ export type Database = {
         }
         Relationships: []
       }
+      product_prices: {
+        Row: {
+          active: boolean
+          created_at: string
+          currency: string
+          gas_type: string
+          id: string
+          note: string | null
+          product_code: string | null
+          size: string
+          unit_price: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          currency?: string
+          gas_type: string
+          id?: string
+          note?: string | null
+          product_code?: string | null
+          size: string
+          unit_price: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          currency?: string
+          gas_type?: string
+          id?: string
+          note?: string | null
+          product_code?: string | null
+          size?: string
+          unit_price?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
