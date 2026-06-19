@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 
 import { ArrowLeft } from "lucide-react";
 
-import { circulationLabels, fmtDateTime, formatCylinderLocation, locationLabels } from "@/lib/labels";
+import { circulationLabels, fmtDateTime, formatCylinderLocation, locationLabels, manufacturerLabels, type Manufacturer } from "@/lib/labels";
 import { finalizeCylinderBarcode } from "@/lib/cylinder-ops";
 import { toast } from "sonner";
 
@@ -52,7 +52,7 @@ function CylinderDetail() {
 
         .from("cylinders")
 
-        .select("id, barcode, gas_type, size, circulation, status, location_type, last_movement_at, is_temporary, suppliers:location_supplier_id(name), partners:location_partner_id(name)")
+        .select("id, barcode, gas_type, size, circulation, manufacturer, status, location_type, last_movement_at, is_temporary, suppliers:location_supplier_id(name), partners:location_partner_id(name)")
 
         .eq("id", id)
 
@@ -125,6 +125,9 @@ function CylinderDetail() {
           )}
 
           <div className="mt-1 text-sm text-muted-foreground">{cyl.gas_type} · {cyl.size}</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            Gyártó: {manufacturerLabels[(cyl.manufacturer as Manufacturer) ?? "other"]}
+          </div>
 
           {(cyl as { is_temporary?: boolean }).is_temporary && (
             <div className="mt-4 space-y-2 rounded-md border border-dashed p-3">

@@ -1,4 +1,4 @@
-import type { Circulation } from "@/lib/labels";
+import type { Circulation, Manufacturer } from "@/lib/labels";
 
 export const GAS_TYPES = ["Acetilén", "Argon", "Stargon", "Széndioxid", "Nitrogén", "Oxigén"];
 export const STANDARD_SIZES = ["10 L", "20 L", "40 L", "50 L"];
@@ -11,6 +11,7 @@ export function getAvailableSizes(gasType: string): string[] {
 export type NewCylinderFormState = {
   barcode: string;
   owner: Circulation;
+  manufacturer: Manufacturer;
   gasType: string;
   size: string;
   note: string;
@@ -20,6 +21,7 @@ export function defaultNewCylinderForm(barcode: string): NewCylinderFormState {
   return {
     barcode,
     owner: "own",
+    manufacturer: "other",
     gasType: "Argon",
     size: "20 L",
     note: "",
@@ -27,5 +29,5 @@ export function defaultNewCylinderForm(barcode: string): NewCylinderFormState {
 }
 
 export function isNewCylinderFormValid(form: NewCylinderFormState): boolean {
-  return !!(form.barcode.trim() && form.gasType && form.size && form.owner);
+  return !!(form.barcode.trim() && form.gasType && form.size && form.owner && form.manufacturer);
 }

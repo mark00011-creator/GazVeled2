@@ -55,6 +55,22 @@ npm run build
 npm run lint
 ```
 
+**TanStack Start – „Crawling result not available”**
+
+Ez nem alkalmazás-logika hiba, hanem a TanStack Router plugin átmeneti állapota: a `routeTree.gen.ts` betöltésekor a route-fájlok crawl eredménye még nem áll rendelkezésre.
+
+- **Vercel éles build:** rendben (utolsó deployok ~34–43 s, Ready).
+- **Helyi `npm run build`:** jelenleg sikeres; korábbi hiba valószínűleg a kézi `routeTree.gen.ts` szerkesztés + új route fájl (`chinese-stock.tsx`) közötti inkonzisztenciából adódott.
+- **Prerender:** nincs engedélyezve (`prerender.enabled` alapértelmezetten ki).
+
+Ha újra előjön:
+
+1. Ne szerkeszd kézzel a `src/routeTree.gen.ts` fájlt – csak új route fájlokat adj hozzá a `src/routes/` alá.
+2. Futtasd egyszer: `npm run dev` (route tree újragenerálás), majd `npm run build`.
+3. Ha továbbra is hibázik: zárd be a dev szervert, töröld a `.vercel/output` mappát, és build újra.
+
+A `src/routes/README.md` is rögzíti: a route tree automatikusan generált.
+
 ## Supabase
 
 A séma migrációk a `supabase/migrations/` mappában találhatók. A távoli projekt ref: `snmiwsgtnokvqlnwvfwf`.

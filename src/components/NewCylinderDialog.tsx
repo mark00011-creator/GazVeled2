@@ -1,11 +1,28 @@
 import { useEffect, useState } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
-import { CIRCULATION_OPTIONS, type Circulation } from "@/lib/labels";
+import {
+  CIRCULATION_OPTIONS,
+  SERIALIZED_MANUFACTURER_OPTIONS,
+  type Circulation,
+  type Manufacturer,
+} from "@/lib/labels";
 import {
   defaultNewCylinderForm,
   getAvailableSizes,
@@ -56,6 +73,7 @@ export function NewCylinderDialog({
         size: form.size,
         circulation: form.owner,
         owner: form.owner,
+        manufacturer: form.manufacturer,
         status,
         location_type: locationType,
         location_supplier_id: locationSupplierId,
@@ -76,7 +94,9 @@ export function NewCylinderDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Új palack felvétele</DialogTitle>
-          <DialogDescription>Ismeretlen vonalkód esetén új palack adatainak megadása.</DialogDescription>
+          <DialogDescription>
+            Ismeretlen vonalkód esetén új palack adatainak megadása.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div>
@@ -86,12 +106,34 @@ export function NewCylinderDialog({
 
           <div>
             <Label className="mb-2 block">Tulajdonos típusa *</Label>
-            <Select value={form.owner} onValueChange={(v) => setForm({ ...form, owner: v as Circulation })}>
+            <Select
+              value={form.owner}
+              onValueChange={(v) => setForm({ ...form, owner: v as Circulation })}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {CIRCULATION_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label className="mb-2 block">Gyártó *</Label>
+            <Select
+              value={form.manufacturer}
+              onValueChange={(v) => setForm({ ...form, manufacturer: v as Manufacturer })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SERIALIZED_MANUFACTURER_OPTIONS.map((o) => (
                   <SelectItem key={o.value} value={o.value}>
                     {o.label}
                   </SelectItem>
@@ -151,7 +193,11 @@ export function NewCylinderDialog({
             <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
               Mégsem
             </Button>
-            <Button onClick={save} disabled={!isNewCylinderFormValid(form) || busy} className="flex-1">
+            <Button
+              onClick={save}
+              disabled={!isNewCylinderFormValid(form) || busy}
+              className="flex-1"
+            >
               Mentés
             </Button>
           </div>

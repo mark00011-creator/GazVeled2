@@ -21,6 +21,33 @@ export const CIRCULATION_OPTIONS: { value: Circulation; label: string }[] = [
   { value: "berpalack", label: "Egyéb" },
 ];
 
+/** DB enum: siad | messer | linde | chinese | other */
+export type Manufacturer = "siad" | "messer" | "linde" | "chinese" | "other";
+
+export const manufacturerLabels: Record<Manufacturer, string> = {
+  siad: "SIAD",
+  messer: "Messer",
+  linde: "Linde",
+  chinese: "Kínai",
+  other: "Egyéb",
+};
+
+/** Egyedi sorszámos palackokhoz (kínai → készlet modul) */
+export const SERIALIZED_MANUFACTURER_OPTIONS: { value: Manufacturer; label: string }[] = [
+  { value: "siad", label: "SIAD" },
+  { value: "messer", label: "Messer" },
+  { value: "linde", label: "Linde" },
+  { value: "other", label: "Egyéb" },
+];
+
+export const MANUFACTURER_OPTIONS: { value: Manufacturer; label: string }[] = [
+  { value: "siad", label: "SIAD" },
+  { value: "messer", label: "Messer" },
+  { value: "linde", label: "Linde" },
+  { value: "chinese", label: "Kínai" },
+  { value: "other", label: "Egyéb" },
+];
+
 export const statusLabels: Record<string, string> = {
   full: "Teli",
   empty: "Üres",
@@ -59,7 +86,9 @@ export const RENTAL_TYPE_OPTIONS: { value: RentalType; label: string }[] = [
 ];
 
 /** "Nitrogén 20L (2 db)" style lines from cylinder list. */
-export function summarizeRentalCylinders(cylinders: { gas_type: string; size: string }[]): string[] {
+export function summarizeRentalCylinders(
+  cylinders: { gas_type: string; size: string }[],
+): string[] {
   const counts = new Map<string, number>();
   for (const c of cylinders) {
     const key = `${c.gas_type} ${c.size}`;
@@ -78,7 +107,10 @@ export function isRentalExpired(expiryDate: string | null | undefined): boolean 
 }
 
 /** Fallback when rentals.expiry_date is missing (legacy rows). */
-export function effectiveRentalExpiry(startDate: string, expiryDate: string | null | undefined): string {
+export function effectiveRentalExpiry(
+  startDate: string,
+  expiryDate: string | null | undefined,
+): string {
   if (expiryDate) return expiryDate;
   const [y, m, d] = startDate.split("-").map(Number);
   const dt = new Date(y, m - 1, d);

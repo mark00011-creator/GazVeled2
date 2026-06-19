@@ -74,6 +74,80 @@ export type Database = {
         }
         Relationships: []
       }
+      chinese_cylinder_stock: {
+        Row: {
+          created_at: string
+          empty_count: number
+          full_count: number
+          gas_type: string
+          id: string
+          size: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          empty_count?: number
+          full_count?: number
+          gas_type: string
+          id?: string
+          size: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          empty_count?: number
+          full_count?: number
+          gas_type?: string
+          id?: string
+          size?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      chinese_stock_movements: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          empty_delta: number
+          full_delta: number
+          id: string
+          movement_type: string
+          note: string | null
+          quantity: number
+          stock_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          empty_delta: number
+          full_delta: number
+          id?: string
+          movement_type: string
+          note?: string | null
+          quantity: number
+          stock_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          empty_delta?: number
+          full_delta?: number
+          id?: string
+          movement_type?: string
+          note?: string | null
+          quantity?: number
+          stock_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chinese_stock_movements_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "chinese_cylinder_stock"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cylinders: {
         Row: {
           active: boolean
@@ -89,6 +163,7 @@ export type Database = {
           location_partner_id: string | null
           location_supplier_id: string | null
           location_type: Database["public"]["Enums"]["location_type"]
+          manufacturer: Database["public"]["Enums"]["cylinder_manufacturer"]
           note: string | null
           owner: Database["public"]["Enums"]["circulation"]
           photo_url: string | null
@@ -111,6 +186,7 @@ export type Database = {
           location_partner_id?: string | null
           location_supplier_id?: string | null
           location_type?: Database["public"]["Enums"]["location_type"]
+          manufacturer?: Database["public"]["Enums"]["cylinder_manufacturer"]
           note?: string | null
           owner?: Database["public"]["Enums"]["circulation"]
           photo_url?: string | null
@@ -133,6 +209,7 @@ export type Database = {
           location_partner_id?: string | null
           location_supplier_id?: string | null
           location_type?: Database["public"]["Enums"]["location_type"]
+          manufacturer?: Database["public"]["Enums"]["cylinder_manufacturer"]
           note?: string | null
           owner?: Database["public"]["Enums"]["circulation"]
           photo_url?: string | null
@@ -167,46 +244,64 @@ export type Database = {
       }
       exchanges: {
         Row: {
+          beszerzesi_ar: number | null
           created_at: string
           created_by: string | null
+          eladasi_ar: number | null
           id: string
           incoming_circulation: Database["public"]["Enums"]["circulation"]
           incoming_cylinder_id: string | null
+          invoiced: boolean
+          invoiced_at: string | null
           is_forced_substitution: boolean
           note: string | null
+          operation_type: Database["public"]["Enums"]["exchange_operation_type"]
           outgoing_circulation: Database["public"]["Enums"]["circulation"]
           outgoing_cylinder_id: string | null
           partner_id: string
+          profit: number | null
           reason: string | null
           rental_id: string | null
           rental_reassigned: boolean
         }
         Insert: {
+          beszerzesi_ar?: number | null
           created_at?: string
           created_by?: string | null
+          eladasi_ar?: number | null
           id?: string
           incoming_circulation: Database["public"]["Enums"]["circulation"]
           incoming_cylinder_id?: string | null
+          invoiced?: boolean
+          invoiced_at?: string | null
           is_forced_substitution?: boolean
           note?: string | null
+          operation_type?: Database["public"]["Enums"]["exchange_operation_type"]
           outgoing_circulation: Database["public"]["Enums"]["circulation"]
           outgoing_cylinder_id?: string | null
           partner_id: string
+          profit?: number | null
           reason?: string | null
           rental_id?: string | null
           rental_reassigned?: boolean
         }
         Update: {
+          beszerzesi_ar?: number | null
           created_at?: string
           created_by?: string | null
+          eladasi_ar?: number | null
           id?: string
           incoming_circulation?: Database["public"]["Enums"]["circulation"]
           incoming_cylinder_id?: string | null
+          invoiced?: boolean
+          invoiced_at?: string | null
           is_forced_substitution?: boolean
           note?: string | null
+          operation_type?: Database["public"]["Enums"]["exchange_operation_type"]
           outgoing_circulation?: Database["public"]["Enums"]["circulation"]
           outgoing_cylinder_id?: string | null
           partner_id?: string
+          profit?: number | null
           reason?: string | null
           rental_id?: string | null
           rental_reassigned?: boolean
@@ -234,6 +329,84 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      gas_order_items: {
+        Row: {
+          barcode: string
+          beszerzesi_ar: number | null
+          circulation: Database["public"]["Enums"]["circulation"]
+          created_at: string
+          cylinder_id: string | null
+          gas_order_id: string
+          gas_type: string
+          id: string
+          size: string
+        }
+        Insert: {
+          barcode: string
+          beszerzesi_ar?: number | null
+          circulation: Database["public"]["Enums"]["circulation"]
+          created_at?: string
+          cylinder_id?: string | null
+          gas_order_id: string
+          gas_type: string
+          id?: string
+          size: string
+        }
+        Update: {
+          barcode?: string
+          beszerzesi_ar?: number | null
+          circulation?: Database["public"]["Enums"]["circulation"]
+          created_at?: string
+          cylinder_id?: string | null
+          gas_order_id?: string
+          gas_type?: string
+          id?: string
+          size?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gas_order_items_cylinder_id_fkey"
+            columns: ["cylinder_id"]
+            isOneToOne: false
+            referencedRelation: "cylinders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gas_order_items_gas_order_id_fkey"
+            columns: ["gas_order_id"]
+            isOneToOne: false
+            referencedRelation: "gas_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      gas_orders: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          note: string | null
+          status: Database["public"]["Enums"]["gas_order_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          status?: Database["public"]["Enums"]["gas_order_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          status?: Database["public"]["Enums"]["gas_order_status"]
+          updated_at?: string
+        }
+        Relationships: []
       }
       movements: {
         Row: {
@@ -364,8 +537,11 @@ export type Database = {
       product_prices: {
         Row: {
           active: boolean
+          arres: number
+          beszerzesi_ar: number
           created_at: string
           currency: string
+          eladasi_ar: number
           gas_type: string
           id: string
           note: string | null
@@ -376,20 +552,26 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          arres?: number
+          beszerzesi_ar: number
           created_at?: string
           currency?: string
+          eladasi_ar?: number
           gas_type: string
           id?: string
           note?: string | null
           product_code?: string | null
           size: string
-          unit_price: number
+          unit_price?: number
           updated_at?: string
         }
         Update: {
           active?: boolean
+          arres?: number
+          beszerzesi_ar?: number
           created_at?: string
           currency?: string
+          eladasi_ar?: number
           gas_type?: string
           id?: string
           note?: string | null
@@ -399,6 +581,94 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      quote_items: {
+        Row: {
+          created_at: string
+          discount_percent: number
+          gas_type: string
+          id: string
+          is_custom_price: boolean
+          list_price: number
+          quantity: number
+          quote_id: string
+          size: string
+          sort_order: number
+          unit_price: number
+        }
+        Insert: {
+          created_at?: string
+          discount_percent?: number
+          gas_type: string
+          id?: string
+          is_custom_price?: boolean
+          list_price: number
+          quantity: number
+          quote_id: string
+          size: string
+          sort_order?: number
+          unit_price: number
+        }
+        Update: {
+          created_at?: string
+          discount_percent?: number
+          gas_type?: string
+          id?: string
+          is_custom_price?: boolean
+          list_price?: number
+          quantity?: number
+          quote_id?: string
+          size?: string
+          sort_order?: number
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_items_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quotes: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          note: string | null
+          partner_id: string
+          quote_date: string
+          quote_number: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          partner_id: string
+          quote_date?: string
+          quote_number: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          partner_id?: string
+          quote_date?: string
+          quote_number?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quotes_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -696,6 +966,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      adjust_chinese_stock: {
+        Args: {
+          p_gas_type: string
+          p_movement_type: string
+          p_note?: string
+          p_quantity: number
+          p_size: string
+        }
+        Returns: string
+      }
       close_rental: {
         Args: {
           p_deposit_returned: boolean
@@ -749,6 +1029,22 @@ export type Database = {
         }
         Returns: string
       }
+      record_empty_return: {
+        Args: {
+          p_incoming_id: string
+          p_note?: string
+          p_partner_id: string
+        }
+        Returns: string
+      }
+      record_partner_sale: {
+        Args: {
+          p_note?: string
+          p_outgoing_id: string
+          p_partner_id: string
+        }
+        Returns: string
+      }
       record_supplier_exchange: {
         Args: {
           p_note?: string
@@ -762,7 +1058,10 @@ export type Database = {
     Enums: {
       app_role: "admin" | "user"
       circulation: "siad" | "own" | "berpalack"
+      cylinder_manufacturer: "siad" | "messer" | "linde" | "chinese" | "other"
+      exchange_operation_type: "exchange" | "sale" | "empty_return" | "chinese_sale"
       cyl_status: "full" | "empty" | "service"
+      gas_order_status: "planned" | "ordered" | "received"
       location_type:
         | "warehouse_full"
         | "warehouse_empty"
@@ -900,7 +1199,9 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "user"],
       circulation: ["siad", "own", "berpalack"],
+      cylinder_manufacturer: ["siad", "messer", "linde", "chinese", "other"],
       cyl_status: ["full", "empty", "service"],
+      gas_order_status: ["planned", "ordered", "received"],
       location_type: [
         "warehouse_full",
         "warehouse_empty",

@@ -1,10 +1,20 @@
 import { supabase } from "@/integrations/supabase/client";
-import { statusLabels, type Circulation } from "@/lib/labels";
+import { statusLabels, type Circulation, type Manufacturer } from "@/lib/labels";
 import {
   resolveInventoryLocation,
   validateInventoryEntry,
   type InventoryEntry,
 } from "@/lib/inventory";
+import {
+  fetchProductPrices,
+  lookupProductPrice,
+  canonicalGasType,
+  canonicalSize,
+} from "@/lib/product-prices";
+import { adjustChineseStock } from "@/lib/chinese-stock";
+import { formatSupabaseError } from "@/lib/supabase-error";
+
+export type PartnerOperationType = "exchange" | "sale" | "empty_return" | "chinese_sale";
 
 type CylStatus = "full" | "empty" | "service";
 type LocType = "warehouse_full" | "warehouse_empty" | "customer" | "siad" | "own_supplier";
@@ -16,6 +26,7 @@ export type CylinderRow = {
   size: string;
   circulation: Circulation;
   owner: Circulation;
+  manufacturer: Manufacturer;
   status: CylStatus;
   location_type: LocType;
   location_partner_id: string | null;
@@ -36,7 +47,8 @@ function parseDbError(message: string): string {
   if (message.includes("Missing cylinder")) return "Hiányzó palack az adatbázisban";
   if (message.includes("Missing partner")) return "Hiányzó partner";
   if (message.includes("Reason required")) return "Kényszerhelyettesítéshez indoklás kötelező";
-  if (message.includes("invalid input value for enum")) return "Érvénytelen tulajdonos típus – használd: Saját, SIAD vagy Egyéb";
+  if (message.includes("invalid input value for enum"))
+    return "Érvénytelen tulajdonos típus – használd: Saját, SIAD vagy Egyéb";
   return message;
 }
 
@@ -88,7 +100,10 @@ async function assertNotInActiveRental(cylinderId: string): Promise<void> {
   const { data: rentals, error: rentErr } = await supabase
     .from("rentals")
     .select("status")
-    .in("id", links.map((l) => l.rental_id));
+    .in(
+      "id",
+      links.map((l) => l.rental_id),
+    );
   if (rentErr) throw new Error(parseDbError(rentErr.message));
   if (rentals?.some((r) => r.status === "active")) {
     throw new Error("A palack aktív bérletben van");
@@ -105,6 +120,7 @@ export async function createNewCylinder(args: {
   size: string;
   circulation: Circulation;
   owner: Circulation;
+  manufacturer?: Manufacturer;
   status?: CylStatus;
   location_type?: LocType;
   location_partner_id?: string | null;
@@ -115,6 +131,12 @@ export async function createNewCylinder(args: {
   if (!bc) throw new Error("Üres vonalkód");
   if (!args.gas_type?.trim()) throw new Error("Gáz típusa kötelező");
   if (!args.size?.trim()) throw new Error("Palack mérete kötelező");
+  if (args.manufacturer === "chinese") {
+    throw new Error("Kínai palackokat a Kínai készlet modulban kezeld, nem egyedi sorszámmal");
+  }
+
+  const manufacturer: Manufacturer =
+    args.manufacturer ?? (args.circulation === "siad" ? "siad" : "other");
 
   const { data, error } = await supabase
     .from("cylinders")
@@ -124,6 +146,7 @@ export async function createNewCylinder(args: {
       size: args.size,
       circulation: args.circulation,
       owner: args.owner,
+      manufacturer,
       status: args.status ?? "empty",
       location_type: args.location_type ?? "warehouse_empty",
       location_partner_id: args.location_partner_id ?? null,
@@ -143,7 +166,9 @@ export async function createNewCylinder(args: {
  */
 export async function findOrCreateCylinder(
   barcode: string,
-  defaults?: Partial<Pick<CylinderRow, "circulation" | "owner" | "status" | "location_type" | "gas_type" | "size">>,
+  defaults?: Partial<
+    Pick<CylinderRow, "circulation" | "owner" | "status" | "location_type" | "gas_type" | "size">
+  >,
 ): Promise<{ cyl: CylinderRow; created: boolean }> {
   const bc = normalizeBarcode(barcode);
   if (!bc) throw new Error("Üres vonalkód");
@@ -192,8 +217,133 @@ export async function recordExchange(args: {
   if (error) throw new Error(parseDbError(error.message));
   if (!data) throw new Error("A csere rögzítése sikertelen");
 
+  const exchangeId = data as string;
+  await storeExchangeProfit(exchangeId, args.outgoing_id);
   await syncRentalCylindersAfterExchange(args);
+  return exchangeId;
+}
+
+/** Eladás: csak kimenő teli palack (nincs bejövő). */
+export async function recordSale(args: {
+  partner_id: string;
+  outgoing_id: string;
+  note?: string | null;
+}): Promise<string> {
+  const { data, error } = await supabase.rpc("record_partner_sale", {
+    p_partner_id: args.partner_id,
+    p_outgoing_id: args.outgoing_id,
+    p_note: args.note ?? undefined,
+  });
+
+  if (error) throw new Error(parseDbError(error.message));
+  if (!data) throw new Error("Az eladás rögzítése sikertelen");
+
+  const exchangeId = data as string;
+  await storeExchangeProfit(exchangeId, args.outgoing_id);
+  return exchangeId;
+}
+
+/** Üres visszavétel: csak bejövő üres palack. */
+export async function recordEmptyReturn(args: {
+  partner_id: string;
+  incoming_id: string;
+  note?: string | null;
+}): Promise<string> {
+  const { data, error } = await supabase.rpc("record_empty_return", {
+    p_partner_id: args.partner_id,
+    p_incoming_id: args.incoming_id,
+    p_note: args.note ?? undefined,
+  });
+
+  if (error) throw new Error(parseDbError(error.message));
+  if (!data) throw new Error("Az üres visszavétel rögzítése sikertelen");
   return data as string;
+}
+
+/** Kínai palack eladás (darabszám alapú) + számlázható exchange sor. */
+export async function recordChineseSale(args: {
+  partner_id: string;
+  gas_type: string;
+  size: string;
+  quantity: number;
+  note?: string | null;
+}): Promise<string> {
+  const gas_type = canonicalGasType(args.gas_type);
+  const size = canonicalSize(gas_type, args.size);
+  const quantity = Math.round(args.quantity);
+  if (quantity <= 0) throw new Error("A mennyiségnek pozitívnak kell lennie");
+
+  await adjustChineseStock({
+    gas_type,
+    size,
+    movement_type: "sale",
+    quantity,
+    note: args.note?.trim() || `Eladás partnernek`,
+  });
+
+  const prices = await fetchProductPrices(true);
+  const price = lookupProductPrice(gas_type, size, prices);
+  if (!price) {
+    throw new Error(`Nincs árlista bejegyzés: ${gas_type} ${size}`);
+  }
+
+  const beszerzesi_ar = price.beszerzesi_ar * quantity;
+  const eladasi_ar = price.eladasi_ar * quantity;
+  const profit = eladasi_ar - beszerzesi_ar;
+
+  const { data: auth } = await supabase.auth.getUser();
+  const detail = `${quantity}× ${gas_type} ${size}`;
+  const { data, error } = await supabase
+    .from("exchanges")
+    .insert({
+      partner_id: args.partner_id,
+      incoming_cylinder_id: null,
+      outgoing_cylinder_id: null,
+      incoming_circulation: "own",
+      outgoing_circulation: "own",
+      is_forced_substitution: false,
+      operation_type: "chinese_sale",
+      note: [detail, args.note?.trim()].filter(Boolean).join(" · "),
+      created_by: auth.user?.id ?? null,
+      beszerzesi_ar,
+      eladasi_ar,
+      profit,
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    throw new Error(formatSupabaseError(error, "Kínai eladás rögzítése"));
+  }
+  return data.id;
+}
+
+async function storeExchangeProfit(exchangeId: string, outgoingId: string): Promise<void> {
+  const { data: cyl, error: cylErr } = await supabase
+    .from("cylinders")
+    .select("gas_type, size")
+    .eq("id", outgoingId)
+    .single();
+  if (cylErr || !cyl) {
+    throw new Error(parseDbError(cylErr?.message ?? "Palack nem található a profit számításhoz"));
+  }
+
+  const prices = await fetchProductPrices(true);
+  const price = lookupProductPrice(cyl.gas_type, cyl.size, prices);
+  if (!price) {
+    throw new Error(`Nincs árlista bejegyzés: ${cyl.gas_type} ${cyl.size}`);
+  }
+
+  const beszerzesi_ar = price.beszerzesi_ar;
+  const eladasi_ar = price.eladasi_ar;
+  const profit = eladasi_ar - beszerzesi_ar;
+
+  const { error } = await supabase
+    .from("exchanges")
+    .update({ beszerzesi_ar, eladasi_ar, profit })
+    .eq("id", exchangeId);
+
+  if (error) throw new Error(parseDbError(error.message));
 }
 
 async function syncRentalCylindersAfterExchange(args: {
@@ -212,7 +362,8 @@ async function syncRentalCylindersAfterExchange(args: {
     .select("id, status, location_type, location_partner_id")
     .eq("id", args.incoming_id)
     .single();
-  if (inCylErr || !incoming) throw new Error(parseDbError(inCylErr?.message ?? "Palack nem található"));
+  if (inCylErr || !incoming)
+    throw new Error(parseDbError(inCylErr?.message ?? "Palack nem található"));
 
   const { data: inLinks, error: inErr } = await supabase
     .from("rental_cylinders")
@@ -412,7 +563,9 @@ export async function submitSupplierExchange(args: {
       continue;
     }
 
-    const fromLoc = SUPPLIER_LOCATIONS.includes(cyl.location_type) ? cyl.location_type : supplierLoc;
+    const fromLoc = SUPPLIER_LOCATIONS.includes(cyl.location_type)
+      ? cyl.location_type
+      : supplierLoc;
     const { error: movErr } = await recordMovement({
       cylinder_id: cyl.id,
       from_location: fromLoc,
@@ -484,10 +637,29 @@ export async function reassignRentalCylinder(args: {
 /** Update cylinder. */
 export async function updateCylinder(
   id: string,
-  updates: Partial<Pick<CylinderRow, "barcode" | "gas_type" | "size" | "circulation" | "owner" | "status" | "location_type" | "location_partner_id" | "location_supplier_id" | "rental_id" | "is_temporary">>,
+  updates: Partial<
+    Pick<
+      CylinderRow,
+      | "barcode"
+      | "gas_type"
+      | "size"
+      | "circulation"
+      | "owner"
+      | "manufacturer"
+      | "status"
+      | "location_type"
+      | "location_partner_id"
+      | "location_supplier_id"
+      | "rental_id"
+      | "is_temporary"
+    >
+  >,
 ): Promise<CylinderRow> {
   const payload = { ...updates };
   if (payload.barcode) payload.barcode = normalizeBarcode(payload.barcode);
+  if (payload.manufacturer === "chinese") {
+    throw new Error("Kínai palackokat a Kínai készlet modulban kezeld, nem egyedi sorszámmal");
+  }
 
   const { data, error } = await supabase
     .from("cylinders")
@@ -512,10 +684,14 @@ export async function updateCylinderBarcode(id: string, newBarcode: string): Pro
 }
 
 /** Update barcode on existing cylinder (e.g. temp → permanent). Does not create a new record. */
-export async function finalizeCylinderBarcode(id: string, newBarcode: string): Promise<CylinderRow> {
+export async function finalizeCylinderBarcode(
+  id: string,
+  newBarcode: string,
+): Promise<CylinderRow> {
   const bc = normalizeBarcode(newBarcode);
   if (!bc) throw new Error("Üres vonalkód");
-  if (bc.startsWith("temp-") || bc.startsWith("TEMP-")) throw new Error("A végleges vonalkód nem lehet ideiglenes");
+  if (bc.startsWith("temp-") || bc.startsWith("TEMP-"))
+    throw new Error("A végleges vonalkód nem lehet ideiglenes");
 
   const existing = await tryFindCylinderByBarcode(bc);
   if (existing && existing.id !== id) throw new Error("Ez a vonalkód már foglalt");

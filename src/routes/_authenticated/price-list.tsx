@@ -6,7 +6,13 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { GAS_TYPES, getAvailableSizes } from "@/lib/gas-cylinder-form";
@@ -24,11 +30,16 @@ export const Route = createFileRoute("/_authenticated/price-list")({
   component: PriceListPage,
 });
 
+function parseFt(value: string): number {
+  return Number(value.replace(/\s/g, ""));
+}
+
 function PriceListPage() {
   const qc = useQueryClient();
   const [gasType, setGasType] = useState("Argon");
   const [size, setSize] = useState("20 L");
-  const [unitPrice, setUnitPrice] = useState("");
+  const [beszerzesiAr, setBeszerzesiAr] = useState("");
+  const [arres, setArres] = useState("");
   const [productCode, setProductCode] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -36,7 +47,16 @@ function PriceListPage() {
 
   const sizes = getAvailableSizes(gasType);
 
-  const { data: prices = [], isLoading, isError } = useQuery({
+  const beszerzesiNum = parseFt(beszerzesiAr);
+  const arresNum = parseFt(arres);
+  const eladasiAr =
+    Number.isFinite(beszerzesiNum) && Number.isFinite(arresNum) ? beszerzesiNum + arresNum : null;
+
+  const {
+    data: prices = [],
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ["product-prices"],
     queryFn: () => fetchProductPrices(false),
   });
@@ -45,7 +65,8 @@ function PriceListPage() {
     setEditing(null);
     setGasType("Argon");
     setSize("20 L");
-    setUnitPrice("");
+    setBeszerzesiAr("");
+    setArres("");
     setProductCode("");
     setNote("");
   }
@@ -54,16 +75,20 @@ function PriceListPage() {
     setEditing(row);
     setGasType(row.gas_type);
     setSize(row.size);
-    setUnitPrice(String(row.unit_price));
+    setBeszerzesiAr(String(row.beszerzesi_ar));
+    setArres(String(row.arres));
     setProductCode(row.product_code ?? "");
     setNote(row.note ?? "");
   }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    const price = Number(unitPrice.replace(/\s/g, ""));
-    if (!Number.isFinite(price) || price < 0) {
-      toast.error("Érvényes árat adj meg (Ft)");
+    if (!Number.isFinite(beszerzesiNum) || beszerzesiNum < 0) {
+      toast.error("Érvényes beszerzési árat adj meg (Ft)");
+      return;
+    }
+    if (!Number.isFinite(arresNum) || arresNum < 0) {
+      toast.error("Érvényes árrést adj meg (Ft)");
       return;
     }
     setBusy(true);
@@ -72,7 +97,8 @@ function PriceListPage() {
         id: editing?.id,
         gas_type: gasType,
         size,
-        unit_price: price,
+        beszerzesi_ar: beszerzesiNum,
+        arres: arresNum,
         product_code: productCode,
         note,
       });
@@ -104,7 +130,8 @@ function PriceListPage() {
   return (
     <AppShell title="Árlista">
       <p className="mb-4 text-sm text-muted-foreground">
-        Beszállítói csereárak (Ft/db). A gáz rendelés és a későbbi számlázás innen számol.
+        Beszerzési ár, árrés és eladási ár (Ft/db, bruttó). A gáz rendelés a beszerzési árat
+        használja.
       </p>
 
       <Card className="mb-4 p-4">
@@ -120,10 +147,14 @@ function PriceListPage() {
                   setSize(getAvailableSizes(v)[0] ?? "");
                 }}
               >
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   {GAS_TYPES.map((g) => (
-                    <SelectItem key={g} value={g}>{g}</SelectItem>
+                    <SelectItem key={g} value={g}>
+                      {g}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -131,28 +162,65 @@ function PriceListPage() {
             <div>
               <Label>Méret</Label>
               <Select value={size} onValueChange={setSize}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   {sizes.map((s) => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div>
-              <Label>Ár (Ft/db)</Label>
-              <Input type="number" min={0} step={100} value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} required />
+              <Label>Beszerzési ár (Ft)</Label>
+              <Input
+                type="number"
+                min={0}
+                step={100}
+                value={beszerzesiAr}
+                onChange={(e) => setBeszerzesiAr(e.target.value)}
+                required
+              />
             </div>
             <div>
-              <Label>Termékkód (opcionális)</Label>
-              <Input value={productCode} onChange={(e) => setProductCode(e.target.value)} placeholder="számlázáshoz később" />
+              <Label>Árrés (Ft)</Label>
+              <Input
+                type="number"
+                min={0}
+                step={100}
+                value={arres}
+                onChange={(e) => setArres(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <Label>Eladási ár (Ft)</Label>
+              <Input
+                type="text"
+                readOnly
+                value={eladasiAr != null ? formatHuf(eladasiAr) : "—"}
+                className="bg-muted"
+              />
             </div>
           </div>
-          <div>
-            <Label>Megjegyzés</Label>
-            <Input value={note} onChange={(e) => setNote(e.target.value)} />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Termékkód (opcionális)</Label>
+              <Input
+                value={productCode}
+                onChange={(e) => setProductCode(e.target.value)}
+                placeholder="számlázáshoz később"
+              />
+            </div>
+            <div>
+              <Label>Megjegyzés</Label>
+              <Input value={note} onChange={(e) => setNote(e.target.value)} />
+            </div>
           </div>
           <div className="flex gap-2">
             <Button type="submit" disabled={busy}>
@@ -183,16 +251,33 @@ function PriceListPage() {
           ) : (
             <ul className="divide-y">
               {prices.map((row) => (
-                <li key={row.id} className="flex items-center gap-3 px-4 py-3 text-sm">
-                  <div className="flex-1 font-medium">{productLabel(row.gas_type, row.size)}</div>
-                  <div className="font-mono">{formatHuf(row.unit_price)}</div>
+                <li key={row.id} className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
+                  <div className="min-w-[120px] flex-1 font-medium">
+                    {productLabel(row.gas_type, row.size)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    B: {formatHuf(row.beszerzesi_ar)} · Árrés: {formatHuf(row.arres)}
+                  </div>
+                  <div className="font-mono font-medium">{formatHuf(row.eladasi_ar)}</div>
                   {row.product_code && (
                     <div className="text-xs text-muted-foreground">{row.product_code}</div>
                   )}
-                  <Button type="button" size="icon" variant="ghost" onClick={() => startEdit(row)} disabled={busy}>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => startEdit(row)}
+                    disabled={busy}
+                  >
                     <Pencil className="h-4 w-4" />
                   </Button>
-                  <Button type="button" size="icon" variant="ghost" onClick={() => handleDelete(row)} disabled={busy}>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => handleDelete(row)}
+                    disabled={busy}
+                  >
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </li>
@@ -203,9 +288,11 @@ function PriceListPage() {
       )}
 
       <p className="mt-4 text-xs text-muted-foreground">
-        A gáz rendelés összegét a{" "}
-        <Link to="/gas-order" className="underline hover:text-foreground">Gáz rendelés</Link>
-        oldal használja.
+        Beszerzési ár →{" "}
+        <Link to="/gas-order" className="underline hover:text-foreground">
+          Gáz rendelés
+        </Link>
+        . Eladási ár (beszerzési + árrés) → gyors csere, árajánlat, profit, számlázás.
       </p>
     </AppShell>
   );
