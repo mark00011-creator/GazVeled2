@@ -31,4 +31,4 @@ ALTER TABLE public.partners
 
 ALTER TABLE public.cylinders
   ADD COLUMN IF NOT EXISTS factory_serial text,
-  ADD COLUMN IF NOT EXISTS replacement_value numeric(12, 2);
+  ADD COLUMN IF NOT EXISTS replacement_value integer NOT NULL DEFAULT 100000;

@@ -217,7 +217,7 @@ export type RentalCylinderDetail = {
 
   factory_serial: string | null;
 
-  replacement_value: number | null;
+  replacement_value: number;
 
   owner: string;
 
@@ -344,7 +344,7 @@ export async function fetchRentalCylinderDetails(rentalId: string): Promise<Rent
         size: c.size,
         manufacturer: c.manufacturer,
         factory_serial: c.factory_serial,
-        replacement_value: c.replacement_value != null ? Number(c.replacement_value) : null,
+        replacement_value: Number(c.replacement_value ?? 100_000),
         owner: c.owner,
         circulation: c.circulation,
         status: c.status,

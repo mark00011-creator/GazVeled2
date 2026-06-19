@@ -46,7 +46,7 @@ export type RentalContractCylinder = {
   owner?: string | null;
   circulation?: string | null;
   status?: string | null;
-  replacement_value?: number | null;
+  replacement_value?: number;
 };
 
 export type RentalContractData = {
@@ -259,9 +259,10 @@ function drawCylinderTable(ctx: PdfCtx, cylinders: RentalContractCylinder[]) {
   }
 
   for (const c of cylinders) {
-    const replacement = c.replacement_value != null && c.replacement_value > 0
-      ? c.replacement_value
-      : DEFAULT_REPLACEMENT_VALUE;
+    const replacement =
+      c.replacement_value != null && c.replacement_value > 0
+        ? c.replacement_value
+        : DEFAULT_REPLACEMENT_VALUE;
     drawRow([
       manufacturerLabel(c.manufacturer),
       c.gas_type,
