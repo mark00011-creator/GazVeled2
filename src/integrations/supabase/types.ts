@@ -155,6 +155,7 @@ export type Database = {
           category: string | null
           circulation: Database["public"]["Enums"]["circulation"]
           created_at: string
+          factory_serial: string | null
           first_tracked_at: string | null
           gas_type: string
           id: string
@@ -168,6 +169,7 @@ export type Database = {
           owner: Database["public"]["Enums"]["circulation"]
           photo_url: string | null
           rental_id: string | null
+          replacement_value: number | null
           size: string
           status: Database["public"]["Enums"]["cyl_status"]
           updated_at: string
@@ -178,6 +180,7 @@ export type Database = {
           category?: string | null
           circulation: Database["public"]["Enums"]["circulation"]
           created_at?: string
+          factory_serial?: string | null
           first_tracked_at?: string | null
           gas_type: string
           id?: string
@@ -191,6 +194,7 @@ export type Database = {
           owner?: Database["public"]["Enums"]["circulation"]
           photo_url?: string | null
           rental_id?: string | null
+          replacement_value?: number | null
           size: string
           status?: Database["public"]["Enums"]["cyl_status"]
           updated_at?: string
@@ -201,6 +205,7 @@ export type Database = {
           category?: string | null
           circulation?: Database["public"]["Enums"]["circulation"]
           created_at?: string
+          factory_serial?: string | null
           first_tracked_at?: string | null
           gas_type?: string
           id?: string
@@ -214,6 +219,7 @@ export type Database = {
           owner?: Database["public"]["Enums"]["circulation"]
           photo_url?: string | null
           rental_id?: string | null
+          replacement_value?: number | null
           size?: string
           status?: Database["public"]["Enums"]["cyl_status"]
           updated_at?: string
@@ -492,11 +498,16 @@ export type Database = {
       partners: {
         Row: {
           address: string | null
+          address_card_number: string | null
+          birth_date: string | null
+          birth_place: string | null
           company_name: string | null
           contact_person: string | null
           created_at: string
           email: string | null
           id: string
+          id_number: string | null
+          mother_name: string | null
           name: string
           note: string | null
           phone: string | null
@@ -506,11 +517,16 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          address_card_number?: string | null
+          birth_date?: string | null
+          birth_place?: string | null
           company_name?: string | null
           contact_person?: string | null
           created_at?: string
           email?: string | null
           id?: string
+          id_number?: string | null
+          mother_name?: string | null
           name: string
           note?: string | null
           phone?: string | null
@@ -520,11 +536,16 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          address_card_number?: string | null
+          birth_date?: string | null
+          birth_place?: string | null
           company_name?: string | null
           contact_person?: string | null
           created_at?: string
           email?: string | null
           id?: string
+          id_number?: string | null
+          mother_name?: string | null
           name?: string
           note?: string | null
           phone?: string | null
@@ -802,10 +823,12 @@ export type Database = {
         Row: {
           billing_cycle_months: number
           circulation: Database["public"]["Enums"]["circulation"] | null
+          contract_number: string | null
           contract_pdf_url: string | null
           created_at: string
           current_cylinder_id: string | null
           deposit: number
+          deposit_type: string | null
           end_date: string | null
           expiry_date: string | null
           first_invoice_date: string | null
@@ -826,10 +849,12 @@ export type Database = {
         Insert: {
           billing_cycle_months?: number
           circulation?: Database["public"]["Enums"]["circulation"] | null
+          contract_number?: string | null
           contract_pdf_url?: string | null
           created_at?: string
           current_cylinder_id?: string | null
           deposit?: number
+          deposit_type?: string | null
           end_date?: string | null
           expiry_date?: string | null
           first_invoice_date?: string | null
@@ -850,10 +875,12 @@ export type Database = {
         Update: {
           billing_cycle_months?: number
           circulation?: Database["public"]["Enums"]["circulation"] | null
+          contract_number?: string | null
           contract_pdf_url?: string | null
           created_at?: string
           current_cylinder_id?: string | null
           deposit?: number
+          deposit_type?: string | null
           end_date?: string | null
           expiry_date?: string | null
           first_invoice_date?: string | null
@@ -985,6 +1012,10 @@ export type Database = {
           p_status?: string
         }
         Returns: undefined
+      }
+      next_rental_contract_number: {
+        Args: { p_start_date: string }
+        Returns: string
       }
       find_or_create_cylinder: {
         Args: {

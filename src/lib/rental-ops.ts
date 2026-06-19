@@ -213,6 +213,12 @@ export type RentalCylinderDetail = {
 
   size: string;
 
+  manufacturer: string;
+
+  factory_serial: string | null;
+
+  replacement_value: number | null;
+
   owner: string;
 
   circulation: string;
@@ -320,7 +326,7 @@ export async function fetchRentalCylinderDetails(rentalId: string): Promise<Rent
 
   const { data: cyls, error: cylErr } = await supabase
     .from("cylinders")
-    .select("id, barcode, gas_type, size, owner, circulation, status")
+    .select("id, barcode, gas_type, size, manufacturer, factory_serial, replacement_value, owner, circulation, status")
     .in("id", allIds)
     .eq("active", true);
   if (cylErr) throwSupabaseError("fetchRentalCylinderDetails → cylinders", cylErr);
@@ -336,6 +342,9 @@ export async function fetchRentalCylinderDetails(rentalId: string): Promise<Rent
         barcode: c.barcode,
         gas_type: c.gas_type,
         size: c.size,
+        manufacturer: c.manufacturer,
+        factory_serial: c.factory_serial,
+        replacement_value: c.replacement_value != null ? Number(c.replacement_value) : null,
         owner: c.owner,
         circulation: c.circulation,
         status: c.status,
@@ -701,6 +710,13 @@ export async function createRentalWithCylinders(args: {
 
     rentalPayload.next_invoice_date = null;
 
+  }
+
+  const { data: contractNumber, error: cnErr } = await supabase.rpc("next_rental_contract_number", {
+    p_start_date: args.start_date,
+  });
+  if (!cnErr && contractNumber) {
+    rentalPayload.contract_number = contractNumber;
   }
 
 

@@ -47,7 +47,7 @@ function RentalDetail() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("rentals")
-        .select("*, partners(id, name, phone, email, address, company_name, tax_number)")
+        .select("*, partners(id, name, phone, email, address, company_name, tax_number, contact_person, birth_place, birth_date, mother_name, id_number, address_card_number)")
         .eq("id", id)
         .maybeSingle();
       if (error) throw error;
@@ -137,11 +137,18 @@ function RentalDetail() {
             phone?: string | null;
             email?: string | null;
             tax_number?: string | null;
+            contact_person?: string | null;
+            birth_place?: string | null;
+            birth_date?: string | null;
+            mother_name?: string | null;
+            id_number?: string | null;
+            address_card_number?: string | null;
           };
         }
       ).partners;
       const bytes = await generateRentalContractPdf({
         rentalId: id,
+        contractNumber: (rental as { contract_number?: string | null }).contract_number,
         rentalType: (rental.rental_type ?? "yearly") as RentalType,
         partner: {
           name: partner?.name ?? "—",
@@ -150,12 +157,29 @@ function RentalDetail() {
           phone: partner?.phone,
           email: partner?.email,
           tax_number: partner?.tax_number,
+          contact_person: partner?.contact_person,
+          birth_place: partner?.birth_place,
+          birth_date: partner?.birth_date,
+          mother_name: partner?.mother_name,
+          id_number: partner?.id_number,
+          address_card_number: partner?.address_card_number,
         },
         startDate: rental.start_date,
         expiryDate: rental.expiry_date,
         monthlyFee: Number(rental.monthly_fee),
         deposit: Number(rental.deposit),
-        cylinders: (cylLinks ?? []).map((c) => ({ barcode: c.barcode, gas_type: c.gas_type, size: c.size })),
+        depositType: (rental as { deposit_type?: string | null }).deposit_type,
+        cylinders: (cylLinks ?? []).map((c) => ({
+          barcode: c.barcode,
+          gas_type: c.gas_type,
+          size: c.size,
+          manufacturer: c.manufacturer,
+          factory_serial: c.factory_serial,
+          owner: c.owner,
+          circulation: c.circulation,
+          status: c.status,
+          replacement_value: c.replacement_value,
+        })),
       });
       downloadPdf(bytes, `berlet-${rentalNumber(id)}.pdf`);
       toast.success("PDF letöltve");
