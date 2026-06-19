@@ -7,6 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -44,6 +52,10 @@ function PriceListPage() {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<ProductPrice | null>(null);
+  const [editBeszerzesiAr, setEditBeszerzesiAr] = useState("");
+  const [editArres, setEditArres] = useState("");
+  const [editProductCode, setEditProductCode] = useState("");
+  const [editNote, setEditNote] = useState("");
 
   const sizes = getAvailableSizes(gasType);
 
@@ -51,6 +63,13 @@ function PriceListPage() {
   const arresNum = parseFt(arres);
   const eladasiAr =
     Number.isFinite(beszerzesiNum) && Number.isFinite(arresNum) ? beszerzesiNum + arresNum : null;
+
+  const editBeszerzesiNum = parseFt(editBeszerzesiAr);
+  const editArresNum = parseFt(editArres);
+  const editEladasiAr =
+    Number.isFinite(editBeszerzesiNum) && Number.isFinite(editArresNum)
+      ? editBeszerzesiNum + editArresNum
+      : null;
 
   const {
     data: prices = [],
@@ -61,8 +80,7 @@ function PriceListPage() {
     queryFn: () => fetchProductPrices(false),
   });
 
-  function resetForm() {
-    setEditing(null);
+  function resetAddForm() {
     setGasType("Argon");
     setSize("20 L");
     setBeszerzesiAr("");
@@ -73,15 +91,21 @@ function PriceListPage() {
 
   function startEdit(row: ProductPrice) {
     setEditing(row);
-    setGasType(row.gas_type);
-    setSize(row.size);
-    setBeszerzesiAr(String(row.beszerzesi_ar));
-    setArres(String(row.arres));
-    setProductCode(row.product_code ?? "");
-    setNote(row.note ?? "");
+    setEditBeszerzesiAr(String(row.beszerzesi_ar ?? row.unit_price ?? 0));
+    setEditArres(String(row.arres ?? 0));
+    setEditProductCode(row.product_code ?? "");
+    setEditNote(row.note ?? "");
   }
 
-  async function handleSave(e: React.FormEvent) {
+  function closeEditDialog() {
+    setEditing(null);
+    setEditBeszerzesiAr("");
+    setEditArres("");
+    setEditProductCode("");
+    setEditNote("");
+  }
+
+  async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!Number.isFinite(beszerzesiNum) || beszerzesiNum < 0) {
       toast.error("Érvényes beszerzési árat adj meg (Ft)");
@@ -94,7 +118,6 @@ function PriceListPage() {
     setBusy(true);
     try {
       await upsertProductPrice({
-        id: editing?.id,
         gas_type: gasType,
         size,
         beszerzesi_ar: beszerzesiNum,
@@ -103,8 +126,40 @@ function PriceListPage() {
         note,
       });
       await qc.invalidateQueries({ queryKey: ["product-prices"] });
-      toast.success(editing ? "Ár frissítve" : "Ár hozzáadva");
-      resetForm();
+      toast.success("Ár hozzáadva");
+      resetAddForm();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleEditSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editing) return;
+    if (!Number.isFinite(editBeszerzesiNum) || editBeszerzesiNum < 0) {
+      toast.error("Érvényes beszerzési árat adj meg (Ft)");
+      return;
+    }
+    if (!Number.isFinite(editArresNum) || editArresNum < 0) {
+      toast.error("Érvényes árrést adj meg (Ft)");
+      return;
+    }
+    setBusy(true);
+    try {
+      await upsertProductPrice({
+        id: editing.id,
+        gas_type: editing.gas_type,
+        size: editing.size,
+        beszerzesi_ar: editBeszerzesiNum,
+        arres: editArresNum,
+        product_code: editProductCode,
+        note: editNote,
+      });
+      await qc.invalidateQueries({ queryKey: ["product-prices"] });
+      toast.success("Ár frissítve");
+      closeEditDialog();
     } catch (err) {
       toast.error((err as Error).message);
     } finally {
@@ -119,7 +174,7 @@ function PriceListPage() {
       await deleteProductPrice(row.id);
       await qc.invalidateQueries({ queryKey: ["product-prices"] });
       toast.success("Ár törölve");
-      if (editing?.id === row.id) resetForm();
+      if (editing?.id === row.id) closeEditDialog();
     } catch (err) {
       toast.error((err as Error).message);
     } finally {
@@ -135,8 +190,8 @@ function PriceListPage() {
       </p>
 
       <Card className="mb-4 p-4">
-        <h2 className="mb-3 text-sm font-semibold">{editing ? "Ár szerkesztése" : "Új ár"}</h2>
-        <form onSubmit={handleSave} className="space-y-3">
+        <h2 className="mb-3 text-sm font-semibold">Új ár</h2>
+        <form onSubmit={handleAdd} className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Gáz</Label>
@@ -222,17 +277,10 @@ function PriceListPage() {
               <Input value={note} onChange={(e) => setNote(e.target.value)} />
             </div>
           </div>
-          <div className="flex gap-2">
-            <Button type="submit" disabled={busy}>
-              <Plus className="mr-2 h-4 w-4" />
-              {editing ? "Mentés" : "Hozzáadás"}
-            </Button>
-            {editing && (
-              <Button type="button" variant="outline" onClick={resetForm} disabled={busy}>
-                Mégse
-              </Button>
-            )}
-          </div>
+          <Button type="submit" disabled={busy}>
+            <Plus className="mr-2 h-4 w-4" />
+            Hozzáadás
+          </Button>
         </form>
       </Card>
 
@@ -266,6 +314,7 @@ function PriceListPage() {
                     type="button"
                     size="icon"
                     variant="ghost"
+                    aria-label={`${productLabel(row.gas_type, row.size)} szerkesztése`}
                     onClick={() => startEdit(row)}
                     disabled={busy}
                   >
@@ -275,6 +324,7 @@ function PriceListPage() {
                     type="button"
                     size="icon"
                     variant="ghost"
+                    aria-label={`${productLabel(row.gas_type, row.size)} törlése`}
                     onClick={() => handleDelete(row)}
                     disabled={busy}
                   >
@@ -286,6 +336,86 @@ function PriceListPage() {
           )}
         </Card>
       )}
+
+      <Dialog
+        open={editing !== null}
+        onOpenChange={(open) => {
+          if (!open) closeEditDialog();
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Ár szerkesztése</DialogTitle>
+            <DialogDescription>
+              {editing ? productLabel(editing.gas_type, editing.size) : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditSave} className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div>
+                <Label htmlFor="edit-beszerzesi-ar">Beszerzési ár (Ft)</Label>
+                <Input
+                  id="edit-beszerzesi-ar"
+                  type="number"
+                  min={0}
+                  step={100}
+                  value={editBeszerzesiAr}
+                  onChange={(e) => setEditBeszerzesiAr(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-arres">Árrés (Ft)</Label>
+                <Input
+                  id="edit-arres"
+                  type="number"
+                  min={0}
+                  step={100}
+                  value={editArres}
+                  onChange={(e) => setEditArres(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-eladasi-ar">Eladási ár (Ft)</Label>
+                <Input
+                  id="edit-eladasi-ar"
+                  type="text"
+                  readOnly
+                  value={editEladasiAr != null ? formatHuf(editEladasiAr) : "—"}
+                  className="bg-muted"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="edit-product-code">Termékkód (opcionális)</Label>
+                <Input
+                  id="edit-product-code"
+                  value={editProductCode}
+                  onChange={(e) => setEditProductCode(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-note">Megjegyzés</Label>
+                <Input
+                  id="edit-note"
+                  value={editNote}
+                  onChange={(e) => setEditNote(e.target.value)}
+                />
+              </div>
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button type="button" variant="outline" onClick={closeEditDialog} disabled={busy}>
+                Mégse
+              </Button>
+              <Button type="submit" disabled={busy}>
+                Mentés
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <p className="mt-4 text-xs text-muted-foreground">
         Beszerzési ár →{" "}
