@@ -1,5 +1,12 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { LayoutDashboard, RefreshCw, Cylinder, Users, MoreHorizontal } from "lucide-react";
+import {
+  LayoutDashboard,
+  RefreshCw,
+  Cylinder,
+  Tags,
+  Users,
+  MoreHorizontal,
+} from "lucide-react";
 import { signOut } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 
@@ -7,6 +14,7 @@ const tabs = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Áttekintés" },
   { to: "/quick-exchange", icon: RefreshCw, label: "Gyors csere" },
   { to: "/cylinders", icon: Cylinder, label: "Palackok" },
+  { to: "/price-list", icon: Tags, label: "Árlista" },
   { to: "/partners", icon: Users, label: "Partnerek" },
   { to: "/more", icon: MoreHorizontal, label: "Több" },
 ] as const;
