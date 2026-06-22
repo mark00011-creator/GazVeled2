@@ -1,6 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
 import { GAS_TYPES, getAvailableSizes } from "@/lib/gas-cylinder-form";
-import { FLAGA_GAS_TYPES, getFlagaSizes } from "@/lib/flaga-stock";
 import { FLAGA_PB_CATALOG } from "@/lib/flaga-pb-stock";
 import { PRIMA_PB_CATALOG } from "@/lib/prima-pb-stock";
 import { normalizeGasType, normalizeSize, priceKey } from "@/lib/gas-order-prices";
@@ -27,7 +26,6 @@ const PRIMA_PB_GAS_TYPES = [...new Set(PRIMA_PB_CATALOG.map((i) => i.gas_type))]
 
 export const PRICE_LIST_GAS_TYPES = [
   ...GAS_TYPES,
-  ...FLAGA_GAS_TYPES,
   ...FLAGA_PB_GAS_TYPES,
   ...PRIMA_PB_GAS_TYPES,
 ];
@@ -37,16 +35,12 @@ export function getPriceListSizes(gasType: string): string[] {
   if (flagaPbSizes.length > 0) return flagaPbSizes;
   const primaPbSizes = PRIMA_PB_CATALOG.filter((i) => i.gas_type === gasType).map((i) => i.size);
   if (primaPbSizes.length > 0) return primaPbSizes;
-  if ((FLAGA_GAS_TYPES as readonly string[]).includes(gasType)) {
-    return getFlagaSizes(gasType);
-  }
   return getAvailableSizes(gasType);
 }
 
 export function priceListCategory(gasType: string, size: string): string | null {
   if (FLAGA_PB_CATALOG.some((i) => i.gas_type === gasType && i.size === size)) return "FLAGA PB";
   if (PRIMA_PB_CATALOG.some((i) => i.gas_type === gasType && i.size === size)) return "PRÍMA PB";
-  if ((FLAGA_GAS_TYPES as readonly string[]).includes(gasType)) return "FLAGA";
   return null;
 }
 

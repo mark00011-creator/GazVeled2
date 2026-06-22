@@ -547,7 +547,7 @@ function RentalsList() {
                   onChange={(e) => setForm({ ...form, quantity_stock_lines: e.target.value })}
                 />
                 <p className="mt-1 text-xs text-muted-foreground">
-                  kind: chinese, flaga, flaga_pb, prima_pb
+                  kind: chinese, flaga_pb, prima_pb
                 </p>
               </div>
               <div>

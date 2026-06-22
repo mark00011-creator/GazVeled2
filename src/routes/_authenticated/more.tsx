@@ -34,12 +34,6 @@ const items = [
     desc: "Darabszám alapú kínai palack készlet",
   },
   {
-    to: "/flaga-stock",
-    icon: Boxes,
-    label: "FLAGA készlet",
-    desc: "Darabszám alapú FLAGA palack készlet",
-  },
-  {
     to: "/flaga-pb-stock",
     icon: Boxes,
     label: "FLAGA PB készlet",

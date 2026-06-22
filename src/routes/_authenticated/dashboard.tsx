@@ -44,7 +44,6 @@ import {
   formatProfit,
 } from "@/lib/dashboard-stats";
 import { fetchChineseStock, chineseStockLabel } from "@/lib/chinese-stock";
-import { fetchFlagaStock, flagaStockLabel } from "@/lib/flaga-stock";
 import {
   fetchFlagaPbStock,
   flagaPbStockLabel,
@@ -186,13 +185,12 @@ function Dashboard() {
 
         .reduce((s, r) => s + Number(r.monthly_fee), 0);
 
-      const [profitStats, warehouseValue, topProducts, chineseStock, flagaStock, flagaPbStock, primaPbStock, deployedQty] =
+      const [profitStats, warehouseValue, topProducts, chineseStock, flagaPbStock, primaPbStock, deployedQty] =
         await Promise.all([
         fetchExchangeProfitStats(),
         fetchWarehouseInventoryValue(),
         fetchTopExchangedProducts(5),
         fetchChineseStock(),
-        fetchFlagaStock(),
         fetchFlagaPbStock(),
         fetchPrimaPbStock(),
         fetchActiveDeployedQuantitySummary(),
@@ -259,7 +257,6 @@ function Dashboard() {
         warehouseValue,
         topProducts,
         chineseStock: chineseStock.filter((r) => r.full_count > 0 || r.empty_count > 0),
-        flagaStock: flagaStock.filter((r) => r.full_count > 0 || r.empty_count > 0),
         flagaPbStock: flagaPbStock.filter((r) => r.full_count > 0 || r.empty_count > 0),
         primaPbStock: primaPbStock.filter((r) => r.full_count > 0 || r.empty_count > 0),
         chineseTotals,
@@ -448,27 +445,6 @@ function Dashboard() {
             {stats!.chineseStock.map((row) => (
               <li key={row.id} className="flex justify-between gap-3">
                 <span>{chineseStockLabel(row.gas_type, row.size)}</span>
-                <span className="shrink-0 text-muted-foreground">
-                  Teli: <strong className="text-foreground">{row.full_count}</strong>
-                  {" · "}
-                  Üres: <strong className="text-foreground">{row.empty_count}</strong>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
-
-      {(stats?.flagaStock?.length ?? 0) > 0 && (
-        <Card className="mb-4 p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <Boxes className="h-4 w-4 text-primary" />
-            <div className="text-sm font-semibold">FLAGA készlet</div>
-          </div>
-          <ul className="space-y-2 text-sm">
-            {stats!.flagaStock.map((row) => (
-              <li key={row.id} className="flex justify-between gap-3">
-                <span>{flagaStockLabel(row.gas_type, row.size)}</span>
                 <span className="shrink-0 text-muted-foreground">
                   Teli: <strong className="text-foreground">{row.full_count}</strong>
                   {" · "}

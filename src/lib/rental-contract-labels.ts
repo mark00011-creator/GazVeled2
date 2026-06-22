@@ -1,4 +1,3 @@
-import { FLAGA_GAS_TYPES } from "@/lib/flaga-stock";
 import {
   circulationLabels,
   manufacturerLabels,
@@ -7,6 +6,10 @@ import {
 } from "@/lib/labels";
 
 export const DEFAULT_REPLACEMENT_VALUE = 100_000;
+
+const LEGACY_FLAGA_GAS_TYPES = ["PB gáz", "Targonca gáz", "Bután gáz", "Kemping gáz"] as const;
+
+export type RentalQuantityStockKindLegacy = "chinese" | "flaga_pb" | "prima_pb" | "flaga";
 
 export type RentalContractLineSource = {
   barcode?: string | null;
@@ -20,11 +23,11 @@ export type RentalContractLineSource = {
   is_temporary?: boolean;
 };
 
-/** Quantity-based stock line (Chinese / FLAGA / PB) – bérleti szerződéshez. */
+/** Quantity-based stock line (Chinese / FLAGA PB / PRÍMA PB) – bérleti szerződéshez. */
 export type RentalContractStockItem = {
   gas_type: string;
   size: string;
-  kind: "chinese" | "flaga" | "flaga_pb" | "prima_pb";
+  kind: RentalQuantityStockKindLegacy;
   quantity?: number;
   replacement_value?: number | null;
 };
@@ -39,12 +42,12 @@ export type RentalContractLine = {
   potlasiErtek: number;
 };
 
-function isFlagaGasType(gasType: string): boolean {
+function isLegacyFlagaGasType(gasType: string): boolean {
   const g = gasType.trim().toLowerCase();
-  return FLAGA_GAS_TYPES.some((t) => t.toLowerCase() === g);
+  return LEGACY_FLAGA_GAS_TYPES.some((t) => t.toLowerCase() === g);
 }
 
-function flagaSubtypeLabel(gasType: string): string {
+function legacyFlagaSubtypeLabel(gasType: string): string {
   const g = gasType.trim();
   if (/pb/i.test(g)) return "FLAGA PB körforgásos";
   if (/targonca/i.test(g)) return "FLAGA targonca körforgásos";
@@ -74,7 +77,7 @@ export function ownerDisplayLabel(
 /** Derive palacktípus from cylinder / stock fields. */
 export function derivePalackTipus(
   source: RentalContractLineSource | RentalContractStockItem,
-  opts?: { stockKind?: "chinese" | "flaga" | "flaga_pb" | "prima_pb" },
+  opts?: { stockKind?: RentalQuantityStockKindLegacy },
 ): string {
   const stockKind = opts?.stockKind ?? ("kind" in source ? source.kind : undefined);
 
@@ -85,8 +88,8 @@ export function derivePalackTipus(
   if (stockKind === "flaga_pb") return "FLAGA PB körforgásos";
   if (stockKind === "prima_pb") return "PRÍMA PB körforgásos";
 
-  if (stockKind === "flaga" || isFlagaGasType(source.gas_type)) {
-    return flagaSubtypeLabel(source.gas_type);
+  if (stockKind === "flaga" || isLegacyFlagaGasType(source.gas_type)) {
+    return legacyFlagaSubtypeLabel(source.gas_type);
   }
 
   if ("owner" in source || "circulation" in source) {
@@ -106,7 +109,7 @@ export function derivePalackTipus(
 /** Vonalkód vagy készletazonosító oszlop. */
 export function deriveVonalkodAzonosito(
   source: RentalContractLineSource,
-  opts?: { stockKind?: "chinese" | "flaga" | "flaga_pb" | "prima_pb"; quantityLine?: boolean },
+  opts?: { stockKind?: RentalQuantityStockKindLegacy; quantityLine?: boolean },
 ): string {
   if (opts?.quantityLine || opts?.stockKind) {
     return "Körforgásos készlet";

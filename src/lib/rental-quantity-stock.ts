@@ -1,16 +1,14 @@
 import { supabase } from "@/integrations/supabase/client";
 import { adjustChineseStock } from "@/lib/chinese-stock";
-import { adjustFlagaStock } from "@/lib/flaga-stock";
 import { adjustFlagaPbStock } from "@/lib/flaga-pb-stock";
 import { adjustPrimaPbStock } from "@/lib/prima-pb-stock";
 import { formatSupabaseError } from "@/lib/supabase-error";
-import type { RentalContractStockItem } from "@/lib/rental-contract-labels";
+import type { RentalContractStockItem, RentalQuantityStockKindLegacy } from "@/lib/rental-contract-labels";
 
-export type RentalQuantityStockKind = "chinese" | "flaga" | "flaga_pb" | "prima_pb";
+export type RentalQuantityStockKind = "chinese" | "flaga_pb" | "prima_pb";
 
 export const RENTAL_QUANTITY_KIND_LABELS: Record<RentalQuantityStockKind, string> = {
   chinese: "Kínai",
-  flaga: "FLAGA",
   flaga_pb: "FLAGA PB",
   prima_pb: "PRÍMA PB",
 };
@@ -18,7 +16,7 @@ export const RENTAL_QUANTITY_KIND_LABELS: Record<RentalQuantityStockKind, string
 export type RentalQuantityItem = {
   id: string;
   rental_id: string;
-  stock_kind: RentalQuantityStockKind;
+  stock_kind: RentalQuantityStockKindLegacy;
   gas_type: string;
   size: string;
   quantity: number;
@@ -55,7 +53,6 @@ export async function fetchActiveDeployedQuantitySummary(): Promise<
   const ids = (activeRentals ?? []).map((r) => r.id);
   const empty: Record<RentalQuantityStockKind, number> = {
     chinese: 0,
-    flaga: 0,
     flaga_pb: 0,
     prima_pb: 0,
   };
@@ -68,8 +65,8 @@ export async function fetchActiveDeployedQuantitySummary(): Promise<
     .is("removed_at", null);
   if (error) throw new Error(formatSupabaseError(error, "Kihelyezett darabszám"));
   for (const row of data ?? []) {
-    const kind = row.stock_kind as RentalQuantityStockKind;
-    if (kind in empty) empty[kind] += Number(row.quantity);
+    const kind = row.stock_kind as RentalQuantityStockKindLegacy;
+    if (kind in empty) empty[kind as RentalQuantityStockKind] += Number(row.quantity);
   }
   return empty;
 }
@@ -85,15 +82,6 @@ async function issueStockToRental(
   switch (item.stock_kind) {
     case "chinese":
       await adjustChineseStock({
-        gas_type: item.gas_type,
-        size: item.size,
-        movement_type: "sale",
-        quantity: qty,
-        note,
-      });
-      break;
-    case "flaga":
-      await adjustFlagaStock({
         gas_type: item.gas_type,
         size: item.size,
         movement_type: "sale",
@@ -125,9 +113,15 @@ async function issueStockToRental(
 }
 
 async function returnStockFromRental(
-  item: RentalQuantityInput,
+  item: Pick<RentalQuantityItem, "stock_kind" | "gas_type" | "size" | "quantity">,
   rentalId: string,
 ): Promise<void> {
+  if (item.stock_kind === "flaga") {
+    throw new Error(
+      "A régi FLAGA készlet modul megszűnt; a visszavételt manuálisan kezeld a FLAGA PB készletben",
+    );
+  }
+
   const note = `Visszavéve bérletből (${rentalId})`;
   const qty = Math.round(item.quantity);
   if (qty <= 0) throw new Error("A darabszámnak pozitívnak kell lennie");
@@ -135,15 +129,6 @@ async function returnStockFromRental(
   switch (item.stock_kind) {
     case "chinese":
       await adjustChineseStock({
-        gas_type: item.gas_type,
-        size: item.size,
-        movement_type: "empty_return",
-        quantity: qty,
-        note,
-      });
-      break;
-    case "flaga":
-      await adjustFlagaStock({
         gas_type: item.gas_type,
         size: item.size,
         movement_type: "empty_return",
@@ -236,8 +221,11 @@ export function parseRentalQuantityLines(text: string): RentalQuantityInput[] {
     const qty = Number(parts[parts.length - 1]);
     const size = parts[parts.length - 2];
     const gas_type = parts.slice(1, -2).join(",");
-    const stock_kind = parts[0] as RentalQuantityStockKind;
-    if (!["chinese", "flaga", "flaga_pb", "prima_pb"].includes(stock_kind)) {
+    const stock_kind = parts[0] as RentalQuantityStockKindLegacy;
+    if (stock_kind === "flaga") {
+      throw new Error(`A régi FLAGA készlet modul megszűnt; használd a flaga_pb kindot: ${line}`);
+    }
+    if (!["chinese", "flaga_pb", "prima_pb"].includes(stock_kind)) {
       throw new Error(`Ismeretlen kind: ${stock_kind}`);
     }
     if (!Number.isFinite(qty) || qty <= 0) {
