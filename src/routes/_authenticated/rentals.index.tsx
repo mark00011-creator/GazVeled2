@@ -9,8 +9,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Plus, ChevronRight, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -32,12 +45,22 @@ import {
   createRentalWithCylinders,
   defaultExpiryDate,
   fetchRentalCylinderDetails,
+  fetchRentalWithPartner,
   parseRentalCylinderSpecs,
   rentalNumber,
 } from "@/lib/rental-ops";
 import { daysUntil, invoiceUrgency } from "@/lib/rental-billing";
 import { logSupabaseError } from "@/lib/supabase-error";
-import { downloadPdf, generateRentalContractPdf } from "@/lib/rental-contract-pdf";
+import {
+  buildContractLines,
+  downloadPdf,
+  generateRentalContractPdf,
+} from "@/lib/rental-contract-pdf";
+import {
+  fetchRentalQuantityItems,
+  parseRentalQuantityLines,
+  toContractStockItems,
+} from "@/lib/rental-quantity-stock";
 
 export const Route = createFileRoute("/_authenticated/rentals/")({
   head: () => ({ meta: [{ title: "Bérletek – Gáz Veled" }] }),
@@ -72,6 +95,7 @@ function makeEmptyForm() {
     status: "active" as RentalStatus,
     cylinder_barcodes: "",
     cylinder_specs: "",
+    quantity_stock_lines: "",
     note: "",
   };
 }
@@ -94,7 +118,11 @@ function RentalsList() {
   const [lastCreatedId, setLastCreatedId] = useState<string | null>(null);
   const [pdfBusy, setPdfBusy] = useState(false);
 
-  const { data: rentals, isLoading, isError } = useQuery({
+  const {
+    data: rentals,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ["rentals", statusFilter],
     queryFn: async () => {
       let qb = supabase
@@ -158,7 +186,12 @@ function RentalsList() {
   const { data: partners } = useQuery({
     queryKey: ["partners-min"],
     queryFn: async () =>
-      (await supabase.from("partners").select("id, name, company_name, address, phone, email, tax_number").order("name")).data ?? [],
+      (
+        await supabase
+          .from("partners")
+          .select("id, name, company_name, address, phone, email, tax_number")
+          .order("name")
+      ).data ?? [],
   });
 
   const filtered = useMemo(() => {
@@ -166,7 +199,10 @@ function RentalsList() {
     if (!needle) return rentals ?? [];
     return (rentals ?? []).filter((r) => {
       const p = r.partners;
-      const hay = [p?.name, p?.company_name, rentalNumber(r.id)].filter(Boolean).join(" ").toLowerCase();
+      const hay = [p?.name, p?.company_name, rentalNumber(r.id)]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
       return hay.includes(needle);
     });
   }, [rentals, q]);
@@ -217,6 +253,15 @@ function RentalsList() {
 
     const barcodes = parseBulkBarcodes(form.cylinder_barcodes);
     const specs = parseRentalCylinderSpecs(form.cylinder_specs);
+    let quantityItems: ReturnType<typeof parseRentalQuantityLines> = [];
+    if (form.quantity_stock_lines.trim()) {
+      try {
+        quantityItems = parseRentalQuantityLines(form.quantity_stock_lines);
+      } catch (e) {
+        toast.error((e as Error).message);
+        return;
+      }
+    }
 
     setBusy(true);
     try {
@@ -233,6 +278,7 @@ function RentalsList() {
         note: form.note.trim() || null,
         cylinder_barcodes: barcodes,
         cylinder_specs: specs,
+        quantity_items: quantityItems,
       });
 
       toast.success("Bérlet létrehozva");
@@ -242,6 +288,9 @@ function RentalsList() {
       qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
       qc.invalidateQueries({ queryKey: ["cylinders"] });
       qc.invalidateQueries({ queryKey: ["partner-rental-summaries"] });
+      qc.invalidateQueries({ queryKey: ["flaga-pb-stock"] });
+      qc.invalidateQueries({ queryKey: ["prima-pb-stock"] });
+      qc.invalidateQueries({ queryKey: ["chinese-stock"] });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setSaveError(msg);
@@ -254,36 +303,16 @@ function RentalsList() {
   async function generatePdfForRental(rentalId: string) {
     setPdfBusy(true);
     try {
-      const { data: rental, error } = await supabase
-        .from("rentals")
-        .select("*, partners(name, company_name, address, phone, email, tax_number, contact_person, birth_place, birth_date, mother_name, id_number, address_card_number)")
-        .eq("id", rentalId)
-        .single();
-      if (error || !rental) throw new Error("Bérlet nem található");
+      const rental = await fetchRentalWithPartner(rentalId);
+      if (!rental) throw new Error("Bérlet nem található");
 
       const cyls = await fetchRentalCylinderDetails(rentalId);
-      const partner = (
-        rental as {
-          partners?: {
-            name: string;
-            company_name?: string | null;
-            address?: string | null;
-            phone?: string | null;
-            email?: string | null;
-            tax_number?: string | null;
-            contact_person?: string | null;
-            birth_place?: string | null;
-            birth_date?: string | null;
-            mother_name?: string | null;
-            id_number?: string | null;
-            address_card_number?: string | null;
-          };
-        }
-      ).partners;
+      const qtyItems = await fetchRentalQuantityItems(rentalId);
+      const partner = rental.partners;
 
       const bytes = await generateRentalContractPdf({
         rentalId,
-        contractNumber: (rental as { contract_number?: string | null }).contract_number,
+        contractNumber: rental.contract_number,
         rentalType: (rental.rental_type ?? "yearly") as RentalType,
         partner: {
           name: partner?.name ?? "—",
@@ -303,18 +332,20 @@ function RentalsList() {
         expiryDate: rental.expiry_date,
         monthlyFee: Number(rental.monthly_fee),
         deposit: Number(rental.deposit),
-        depositType: (rental as { deposit_type?: string | null }).deposit_type,
-        cylinders: cyls.map((c) => ({
-          barcode: c.barcode,
-          gas_type: c.gas_type,
-          size: c.size,
-          manufacturer: c.manufacturer,
-          factory_serial: c.factory_serial,
-          owner: c.owner,
-          circulation: c.circulation,
-          status: c.status,
-          replacement_value: c.replacement_value,
-        })),
+        depositType: rental.deposit_type,
+        lines: buildContractLines(
+          cyls.map((c) => ({
+            barcode: c.barcode,
+            gas_type: c.gas_type,
+            size: c.size,
+            manufacturer: c.manufacturer,
+            factory_serial: c.factory_serial,
+            owner: c.owner,
+            circulation: c.circulation,
+            replacement_value: c.replacement_value,
+          })),
+          toContractStockItems(qtyItems),
+        ),
       });
 
       downloadPdf(bytes, `berlet-${rentalNumber(rentalId)}.pdf`);
@@ -331,7 +362,12 @@ function RentalsList() {
   return (
     <AppShell title="Bérletek">
       <div className="mb-3 flex gap-2">
-        <Input placeholder="Partner, bérlet szám…" value={q} onChange={(e) => setQ(e.target.value)} className="flex-1" />
+        <Input
+          placeholder="Partner, bérlet szám…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          className="flex-1"
+        />
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[140px]">
             <SelectValue />
@@ -362,12 +398,17 @@ function RentalsList() {
           <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Új bérlet</DialogTitle>
-              <DialogDescription>Partner bérletének létrehozása és palackok kiadása.</DialogDescription>
+              <DialogDescription>
+                Partner bérletének létrehozása és palackok kiadása.
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
               <div>
                 <Label>Partner *</Label>
-                <Select value={form.partner_id} onValueChange={(v) => setForm({ ...form, partner_id: v })}>
+                <Select
+                  value={form.partner_id}
+                  onValueChange={(v) => setForm({ ...form, partner_id: v })}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Válassz…" />
                   </SelectTrigger>
@@ -383,7 +424,10 @@ function RentalsList() {
               </div>
               <div>
                 <Label>Bérlet típusa *</Label>
-                <Select value={form.rental_type} onValueChange={(v) => onTypeChange(v as RentalType)}>
+                <Select
+                  value={form.rental_type}
+                  onValueChange={(v) => onTypeChange(v as RentalType)}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -398,11 +442,19 @@ function RentalsList() {
               </div>
               <div>
                 <Label>Bérlet kezdete *</Label>
-                <Input type="date" value={form.start_date} onChange={(e) => onStartChange(e.target.value)} />
+                <Input
+                  type="date"
+                  value={form.start_date}
+                  onChange={(e) => onStartChange(e.target.value)}
+                />
               </div>
               <div>
                 <Label>Lejárat dátuma *</Label>
-                <Input type="date" value={form.expiry_date} onChange={(e) => setForm({ ...form, expiry_date: e.target.value })} />
+                <Input
+                  type="date"
+                  value={form.expiry_date}
+                  onChange={(e) => setForm({ ...form, expiry_date: e.target.value })}
+                />
               </div>
               {form.rental_type === "monthly" && (
                 <>
@@ -424,23 +476,38 @@ function RentalsList() {
                   </div>
                   <div>
                     <Label>Havi díj (Ft) *</Label>
-                    <Input type="number" value={form.monthly_fee} onChange={(e) => setForm({ ...form, monthly_fee: e.target.value })} />
+                    <Input
+                      type="number"
+                      value={form.monthly_fee}
+                      onChange={(e) => setForm({ ...form, monthly_fee: e.target.value })}
+                    />
                   </div>
                 </>
               )}
               {form.rental_type === "yearly" && (
                 <div>
                   <Label>Éves díj / havi díj (Ft)</Label>
-                  <Input type="number" value={form.monthly_fee} onChange={(e) => setForm({ ...form, monthly_fee: e.target.value })} />
+                  <Input
+                    type="number"
+                    value={form.monthly_fee}
+                    onChange={(e) => setForm({ ...form, monthly_fee: e.target.value })}
+                  />
                 </div>
               )}
               <div>
                 <Label>Kaució (Ft)</Label>
-                <Input type="number" value={form.deposit} onChange={(e) => setForm({ ...form, deposit: e.target.value })} />
+                <Input
+                  type="number"
+                  value={form.deposit}
+                  onChange={(e) => setForm({ ...form, deposit: e.target.value })}
+                />
               </div>
               <div>
                 <Label>Státusz</Label>
-                <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as RentalStatus })}>
+                <Select
+                  value={form.status}
+                  onValueChange={(v) => setForm({ ...form, status: v as RentalStatus })}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -472,8 +539,23 @@ function RentalsList() {
                 />
               </div>
               <div>
+                <Label>Darabszám alapú készlet (kind,gáz,méret,darab)</Label>
+                <Textarea
+                  className="min-h-[80px] font-mono text-sm"
+                  placeholder={"chinese,Széndioxid,10 kg,2\nflaga_pb,Motorüzemű Flaga,11 kg,1\nprima_pb,Motor,12,5 kg,1"}
+                  value={form.quantity_stock_lines}
+                  onChange={(e) => setForm({ ...form, quantity_stock_lines: e.target.value })}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  kind: chinese, flaga, flaga_pb, prima_pb
+                </p>
+              </div>
+              <div>
                 <Label>Megjegyzés</Label>
-                <Input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+                <Input
+                  value={form.note}
+                  onChange={(e) => setForm({ ...form, note: e.target.value })}
+                />
               </div>
               {saveError && (
                 <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-xs text-destructive">
@@ -482,7 +564,12 @@ function RentalsList() {
                 </div>
               )}
               {lastCreatedId && (
-                <Button variant="outline" className="w-full" disabled={pdfBusy} onClick={() => generatePdfForRental(lastCreatedId)}>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  disabled={pdfBusy}
+                  onClick={() => generatePdfForRental(lastCreatedId)}
+                >
                   <FileDown className="mr-2 h-4 w-4" /> PDF szerződés generálása
                 </Button>
               )}
@@ -494,10 +581,16 @@ function RentalsList() {
         </Dialog>
       </div>
 
-      {statusFilter === "all" && <div className="mb-3 text-xs text-muted-foreground">{activeCount} aktív bérlet</div>}
+      {statusFilter === "all" && (
+        <div className="mb-3 text-xs text-muted-foreground">{activeCount} aktív bérlet</div>
+      )}
 
       {isLoading && <div className="py-8 text-center text-sm text-muted-foreground">Betöltés…</div>}
-      {isError && <div className="py-8 text-center text-sm text-destructive">Bérletek betöltése sikertelen</div>}
+      {isError && (
+        <div className="py-8 text-center text-sm text-destructive">
+          Bérletek betöltése sikertelen
+        </div>
+      )}
 
       <div className="space-y-2">
         {filtered.map((r) => {
@@ -531,14 +624,24 @@ function RentalsList() {
                       >
                         {p?.name ?? "—"}
                       </Link>
-                      <Badge variant={statusVariant(displayStatus)}>{rentalStatusLabels[displayStatus] ?? displayStatus}</Badge>
-                      {expired && r.status !== "closed" && <Badge variant="destructive">LEJÁRT</Badge>}
+                      <Badge variant={statusVariant(displayStatus)}>
+                        {rentalStatusLabels[displayStatus] ?? displayStatus}
+                      </Badge>
+                      {expired && r.status !== "closed" && (
+                        <Badge variant="destructive">LEJÁRT</Badge>
+                      )}
                       <Badge variant="outline">{rentalTypeLabels[r.rental_type ?? "yearly"]}</Badge>
-                      <span className="font-mono text-[10px] text-muted-foreground">{rentalNumber(r.id)}</span>
+                      <span className="font-mono text-[10px] text-muted-foreground">
+                        {rentalNumber(r.id)}
+                      </span>
                     </div>
-                    {p?.company_name && <div className="text-xs text-muted-foreground">{p.company_name}</div>}
+                    {p?.company_name && (
+                      <div className="text-xs text-muted-foreground">{p.company_name}</div>
+                    )}
                     {expired && r.status !== "closed" && (
-                      <div className="mt-1 text-xs font-medium text-destructive">Lejárt: {fmtDate(expiry)}</div>
+                      <div className="mt-1 text-xs font-medium text-destructive">
+                        Lejárt: {fmtDate(expiry)}
+                      </div>
                     )}
                     {cylSummary && cylSummary.length > 0 && (
                       <div className="mt-1 space-y-0.5">
@@ -551,12 +654,18 @@ function RentalsList() {
                     )}
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       <span>Kezdés: {fmtDate(r.start_date)}</span>
-                      <span className={expired ? "font-medium text-destructive" : ""}>Lejárat: {fmtDate(expiry)}</span>
-                      {r.rental_type === "monthly" && <span>{Number(r.monthly_fee).toLocaleString("hu-HU")} Ft/hó</span>}
+                      <span className={expired ? "font-medium text-destructive" : ""}>
+                        Lejárat: {fmtDate(expiry)}
+                      </span>
+                      {r.rental_type === "monthly" && (
+                        <span>{Number(r.monthly_fee).toLocaleString("hu-HU")} Ft/hó</span>
+                      )}
                       {r.rental_type === "monthly" && r.next_invoice_date && (
                         <span className={`rounded px-1.5 py-0.5 ${urgencyCls}`}>
                           Köv. számlázás: {fmtDate(r.next_invoice_date)}
-                          {days !== null && days <= 5 && ` (${days < 0 ? `${Math.abs(days)} napja lejárt` : `${days} nap`})`}
+                          {days !== null &&
+                            days <= 5 &&
+                            ` (${days < 0 ? `${Math.abs(days)} napja lejárt` : `${days} nap`})`}
                         </span>
                       )}
                     </div>
@@ -568,7 +677,9 @@ function RentalsList() {
           );
         })}
         {!isLoading && !isError && filtered.length === 0 && (
-          <div className="py-8 text-center text-sm text-muted-foreground">Nincs bérlet a szűrésnek megfelelően</div>
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            Nincs bérlet a szűrésnek megfelelően
+          </div>
         )}
       </div>
     </AppShell>

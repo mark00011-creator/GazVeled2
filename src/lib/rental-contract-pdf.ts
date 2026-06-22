@@ -2,16 +2,20 @@ import { PDFDocument, StandardFonts, rgb, type PDFPage } from "pdf-lib";
 import QRCode from "qrcode";
 import { fmtDate } from "@/lib/labels";
 import type { RentalType } from "@/lib/labels";
+import { rentalTypeLabels } from "@/lib/labels";
 import {
-  circulationLabels,
-  manufacturerLabels,
-  rentalTypeLabels,
-  statusLabels,
-  type Circulation,
-  type Manufacturer,
-} from "@/lib/labels";
+  buildContractLines,
+  type RentalContractLine,
+  type RentalContractLineSource,
+  type RentalContractStockItem,
+} from "@/lib/rental-contract-labels";
 
-const DEFAULT_REPLACEMENT_VALUE = 100_000;
+export type {
+  RentalContractLine,
+  RentalContractLineSource,
+  RentalContractStockItem,
+} from "@/lib/rental-contract-labels";
+export { buildContractLines } from "@/lib/rental-contract-labels";
 
 const LESSOR = {
   name: "Horváth Márk E.V.",
@@ -37,16 +41,9 @@ export type RentalContractPartner = {
   address_card_number?: string | null;
 };
 
-export type RentalContractCylinder = {
-  barcode: string;
-  gas_type: string;
-  size: string;
-  manufacturer?: string | null;
-  factory_serial?: string | null;
-  owner?: string | null;
-  circulation?: string | null;
+/** @deprecated Use RentalContractLineSource – kept for route compatibility. */
+export type RentalContractCylinder = RentalContractLineSource & {
   status?: string | null;
-  replacement_value?: number;
 };
 
 export type RentalContractData = {
@@ -60,7 +57,11 @@ export type RentalContractData = {
   monthlyFee: number;
   deposit: number;
   depositType?: string | null;
-  cylinders: RentalContractCylinder[];
+  /** Pre-built table rows (preferred). */
+  lines?: RentalContractLine[];
+  /** Legacy: cylinders are converted via buildContractLines when lines omitted. */
+  cylinders?: RentalContractLineSource[];
+  stockItems?: RentalContractStockItem[];
   appOrigin?: string;
 };
 
@@ -78,21 +79,6 @@ function formatHuf(n: number): string {
   return `${Math.round(n).toLocaleString("hu-HU")} Ft`;
 }
 
-function ownerLabel(c: RentalContractCylinder): string {
-  const key = (c.owner ?? c.circulation ?? "") as Circulation;
-  return circulationLabels[key] ?? c.owner ?? c.circulation ?? "—";
-}
-
-function manufacturerLabel(m: string | null | undefined): string {
-  if (!m) return "—";
-  return manufacturerLabels[m as Manufacturer] ?? m;
-}
-
-function statusLabel(s: string | null | undefined): string {
-  if (!s) return "—";
-  return statusLabels[s] ?? s;
-}
-
 function feeLabel(rentalType: RentalType, monthlyFee: number): string {
   if (rentalType === "free") return "Dijmentes kolcson";
   if (rentalType === "yearly") {
@@ -103,9 +89,13 @@ function feeLabel(rentalType: RentalType, monthlyFee: number): string {
 
 function contractQrUrl(data: RentalContractData): string {
   const origin =
-    data.appOrigin ??
-    (typeof window !== "undefined" ? window.location.origin : PRODUCTION_ORIGIN);
+    data.appOrigin ?? (typeof window !== "undefined" ? window.location.origin : PRODUCTION_ORIGIN);
   return `${origin.replace(/\/$/, "")}/rentals/${data.rentalId}`;
+}
+
+function resolveLines(data: RentalContractData): RentalContractLine[] {
+  if (data.lines?.length) return data.lines;
+  return buildContractLines(data.cylinders ?? [], data.stockItems);
 }
 
 type PdfCtx = {
@@ -214,23 +204,21 @@ function drawLessorBlock(ctx: PdfCtx) {
   ctx.y -= 4;
 }
 
-function drawCylinderTable(ctx: PdfCtx, cylinders: RentalContractCylinder[]) {
+function drawCylinderTable(ctx: PdfCtx, lines: RentalContractLine[]) {
   drawHeading(ctx, "BERELT PALACKOK", 10);
 
   const cols = [
-    { label: "Gyarto", w: 52 },
-    { label: "Gaz", w: 58 },
-    { label: "Meret", w: 42 },
-    { label: "Vonalkod", w: 72 },
-    { label: "Gyari sz.", w: 58 },
-    { label: "Tul.", w: 38 },
-    { label: "All.", w: 38 },
-    { label: "Potlas", w: 62 },
+    { label: "Palacktipus", w: 72 },
+    { label: "Gaz", w: 52 },
+    { label: "Meret", w: 44 },
+    { label: "Gyarto", w: 44 },
+    { label: "Tul.", w: 36 },
+    { label: "Vonalk./azon.", w: 68 },
+    { label: "Potlas", w: 58 },
   ] as const;
 
   const tableX = ctx.margin;
   const rowH = 12;
-  const headerSize = 6.5;
   const cellSize = 6.5;
 
   const drawRow = (values: string[], bold = false) => {
@@ -238,7 +226,7 @@ function drawCylinderTable(ctx: PdfCtx, cylinders: RentalContractCylinder[]) {
     let x = tableX;
     for (let i = 0; i < cols.length; i++) {
       const text = pdfSafe(values[i] ?? "");
-      const clipped = text.length > 14 ? `${text.slice(0, 13)}…` : text;
+      const clipped = text.length > 16 ? `${text.slice(0, 15)}…` : text;
       ctx.page.drawText(clipped, {
         x: x + 2,
         y: ctx.y - 8,
@@ -251,27 +239,25 @@ function drawCylinderTable(ctx: PdfCtx, cylinders: RentalContractCylinder[]) {
     ctx.y -= rowH;
   };
 
-  drawRow(cols.map((c) => c.label), true);
+  drawRow(
+    cols.map((c) => c.label),
+    true,
+  );
 
-  if (cylinders.length === 0) {
+  if (lines.length === 0) {
     drawParagraph(ctx, "Nincs palack hozzarendelve.", 8);
     return;
   }
 
-  for (const c of cylinders) {
-    const replacement =
-      c.replacement_value != null && c.replacement_value > 0
-        ? c.replacement_value
-        : DEFAULT_REPLACEMENT_VALUE;
+  for (const line of lines) {
     drawRow([
-      manufacturerLabel(c.manufacturer),
-      c.gas_type,
-      c.size,
-      c.barcode,
-      c.factory_serial ?? "—",
-      ownerLabel(c),
-      statusLabel(c.status),
-      formatHuf(replacement),
+      line.palackTipus,
+      line.gaz,
+      line.meret,
+      line.gyarto,
+      line.tulajdonos,
+      line.vonalkodAzonosito,
+      formatHuf(line.potlasiErtek),
     ]);
   }
   ctx.y -= 6;
@@ -303,7 +289,7 @@ const CONTRACT_TERMS: { title: string; body: string }[] = [
   },
   {
     title: "Potlasi koltseg",
-    body: `Az Atvevo vallalja, hogy elvesztes vagy megsemmisules eseten a tablazatban szereplo potlasi erteket megfizeti. Ha nincs egyedi ertek: ${formatHuf(DEFAULT_REPLACEMENT_VALUE)} / palack.`,
+    body: "Az Atvevo vallalja, hogy elvesztes vagy megsemmisules eseten a tablazatban szereplo potlasi erteket megfizeti. Ha nincs egyedi ertek: 100 000 Ft / palack.",
   },
   {
     title: "Kesedelmes visszaszolgaltatas",
@@ -401,7 +387,7 @@ async function drawQrCode(ctx: PdfCtx, url: string) {
   });
 }
 
-/** Gázpalack bérleti szerződés – V2 */
+/** Gázpalack bérleti szerződés – egyesített palacklista */
 export async function generateRentalContractPdf(data: RentalContractData): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -429,9 +415,11 @@ export async function generateRentalContractPdf(data: RentalContractData): Promi
   drawField(ctx, "Kelt", fmtDate(contractDate));
   ctx.y -= 6;
 
+  const lines = resolveLines(data);
+
   drawLessorBlock(ctx);
   drawLesseeBlock(ctx);
-  drawCylinderTable(ctx, data.cylinders);
+  drawCylinderTable(ctx, lines);
   drawRentalDetails(ctx, data);
   drawTerms(ctx);
   drawDeclarations(ctx);

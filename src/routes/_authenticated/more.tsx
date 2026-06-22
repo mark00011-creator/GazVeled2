@@ -34,6 +34,24 @@ const items = [
     desc: "Darabszám alapú kínai palack készlet",
   },
   {
+    to: "/flaga-stock",
+    icon: Boxes,
+    label: "FLAGA készlet",
+    desc: "Darabszám alapú FLAGA palack készlet",
+  },
+  {
+    to: "/flaga-pb-stock",
+    icon: Boxes,
+    label: "FLAGA PB készlet",
+    desc: "Körforgásos FLAGA PB palack készlet",
+  },
+  {
+    to: "/prima-pb-stock",
+    icon: Boxes,
+    label: "PRÍMA PB készlet",
+    desc: "Körforgásos PRÍMA PB palack készlet",
+  },
+  {
     to: "/quotes",
     icon: FileSpreadsheet,
     label: "Árajánlat",

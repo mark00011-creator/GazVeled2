@@ -12,9 +12,19 @@ import {
   canonicalSize,
 } from "@/lib/product-prices";
 import { adjustChineseStock } from "@/lib/chinese-stock";
+import { adjustFlagaStock, canonicalFlagaGasType, canonicalFlagaSize } from "@/lib/flaga-stock";
+import { adjustFlagaPbStock } from "@/lib/flaga-pb-stock";
+import { adjustPrimaPbStock } from "@/lib/prima-pb-stock";
 import { formatSupabaseError } from "@/lib/supabase-error";
 
-export type PartnerOperationType = "exchange" | "sale" | "empty_return" | "chinese_sale";
+export type PartnerOperationType =
+  | "exchange"
+  | "sale"
+  | "empty_return"
+  | "chinese_sale"
+  | "flaga_sale"
+  | "flaga_pb_sale"
+  | "prima_pb_sale";
 
 type CylStatus = "full" | "empty" | "service";
 type LocType = "warehouse_full" | "warehouse_empty" | "customer" | "siad" | "own_supplier";
@@ -315,6 +325,168 @@ export async function recordChineseSale(args: {
   if (error || !data) {
     throw new Error(formatSupabaseError(error, "Kínai eladás rögzítése"));
   }
+  return data.id;
+}
+
+/** FLAGA palack eladás (darabszám alapú) + számlázható exchange sor. */
+export async function recordFlagaSale(args: {
+  partner_id: string;
+  gas_type: string;
+  size: string;
+  quantity: number;
+  note?: string | null;
+}): Promise<string> {
+  const gas_type = canonicalFlagaGasType(args.gas_type);
+  const size = canonicalFlagaSize(gas_type, args.size);
+  const quantity = Math.round(args.quantity);
+  if (quantity <= 0) throw new Error("A mennyiségnek pozitívnak kell lennie");
+
+  await adjustFlagaStock({
+    gas_type,
+    size,
+    movement_type: "sale",
+    quantity,
+    note: args.note?.trim() || `Eladás partnernek`,
+  });
+
+  const prices = await fetchProductPrices(true);
+  const price = lookupProductPrice(gas_type, size, prices);
+  if (!price) {
+    throw new Error(`Nincs árlista bejegyzés: ${gas_type} ${size}`);
+  }
+
+  const beszerzesi_ar = price.beszerzesi_ar * quantity;
+  const eladasi_ar = price.eladasi_ar * quantity;
+  const profit = eladasi_ar - beszerzesi_ar;
+
+  const { data: auth } = await supabase.auth.getUser();
+  const detail = `${quantity}× ${gas_type} ${size}`;
+  const { data, error } = await supabase
+    .from("exchanges")
+    .insert({
+      partner_id: args.partner_id,
+      incoming_cylinder_id: null,
+      outgoing_cylinder_id: null,
+      incoming_circulation: "own",
+      outgoing_circulation: "own",
+      is_forced_substitution: false,
+      operation_type: "flaga_sale",
+      note: [detail, args.note?.trim()].filter(Boolean).join(" · "),
+      created_by: auth.user?.id ?? null,
+      beszerzesi_ar,
+      eladasi_ar,
+      profit,
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    throw new Error(formatSupabaseError(error, "FLAGA eladás rögzítése"));
+  }
+  return data.id;
+}
+
+/** FLAGA PB palack eladás (darabszám alapú). */
+export async function recordFlagaPbSale(args: {
+  partner_id: string;
+  gas_type: string;
+  size: string;
+  quantity: number;
+  note?: string | null;
+}): Promise<string> {
+  const quantity = Math.round(args.quantity);
+  if (quantity <= 0) throw new Error("A mennyiségnek pozitívnak kell lennie");
+
+  await adjustFlagaPbStock({
+    gas_type: args.gas_type,
+    size: args.size,
+    movement_type: "sale",
+    quantity,
+    note: args.note?.trim() || "Eladás partnernek",
+  });
+
+  const prices = await fetchProductPrices(true);
+  const price = lookupProductPrice(args.gas_type, args.size, prices);
+  if (!price) throw new Error(`Nincs árlista bejegyzés: ${args.gas_type} ${args.size}`);
+
+  const beszerzesi_ar = price.beszerzesi_ar * quantity;
+  const eladasi_ar = price.eladasi_ar * quantity;
+  const profit = eladasi_ar - beszerzesi_ar;
+  const { data: auth } = await supabase.auth.getUser();
+  const detail = `${quantity}× ${args.size} ${args.gas_type}`;
+
+  const { data, error } = await supabase
+    .from("exchanges")
+    .insert({
+      partner_id: args.partner_id,
+      incoming_cylinder_id: null,
+      outgoing_cylinder_id: null,
+      incoming_circulation: "own",
+      outgoing_circulation: "own",
+      is_forced_substitution: false,
+      operation_type: "flaga_pb_sale",
+      note: [detail, args.note?.trim()].filter(Boolean).join(" · "),
+      created_by: auth.user?.id ?? null,
+      beszerzesi_ar,
+      eladasi_ar,
+      profit,
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) throw new Error(formatSupabaseError(error, "FLAGA PB eladás rögzítése"));
+  return data.id;
+}
+
+/** PRÍMA PB palack eladás (darabszám alapú). */
+export async function recordPrimaPbSale(args: {
+  partner_id: string;
+  gas_type: string;
+  size: string;
+  quantity: number;
+  note?: string | null;
+}): Promise<string> {
+  const quantity = Math.round(args.quantity);
+  if (quantity <= 0) throw new Error("A mennyiségnek pozitívnak kell lennie");
+
+  await adjustPrimaPbStock({
+    gas_type: args.gas_type,
+    size: args.size,
+    movement_type: "sale",
+    quantity,
+    note: args.note?.trim() || "Eladás partnernek",
+  });
+
+  const prices = await fetchProductPrices(true);
+  const price = lookupProductPrice(args.gas_type, args.size, prices);
+  if (!price) throw new Error(`Nincs árlista bejegyzés: ${args.gas_type} ${args.size}`);
+
+  const beszerzesi_ar = price.beszerzesi_ar * quantity;
+  const eladasi_ar = price.eladasi_ar * quantity;
+  const profit = eladasi_ar - beszerzesi_ar;
+  const { data: auth } = await supabase.auth.getUser();
+  const detail = `${quantity}× ${args.size} ${args.gas_type}`;
+
+  const { data, error } = await supabase
+    .from("exchanges")
+    .insert({
+      partner_id: args.partner_id,
+      incoming_cylinder_id: null,
+      outgoing_cylinder_id: null,
+      incoming_circulation: "own",
+      outgoing_circulation: "own",
+      is_forced_substitution: false,
+      operation_type: "prima_pb_sale",
+      note: [detail, args.note?.trim()].filter(Boolean).join(" · "),
+      created_by: auth.user?.id ?? null,
+      beszerzesi_ar,
+      eladasi_ar,
+      profit,
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) throw new Error(formatSupabaseError(error, "PRÍMA PB eladás rögzítése"));
   return data.id;
 }
 

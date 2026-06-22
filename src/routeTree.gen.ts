@@ -17,11 +17,14 @@ import { Route as AuthenticatedRentalsRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedRentalReturnRouteImport } from './routes/_authenticated/rental-return'
 import { Route as AuthenticatedQuotesRouteImport } from './routes/_authenticated/quotes'
 import { Route as AuthenticatedQuickExchangeRouteImport } from './routes/_authenticated/quick-exchange'
+import { Route as AuthenticatedPrimaPbStockRouteImport } from './routes/_authenticated/prima-pb-stock'
 import { Route as AuthenticatedPriceListRouteImport } from './routes/_authenticated/price-list'
 import { Route as AuthenticatedPartnersRouteImport } from './routes/_authenticated/partners'
 import { Route as AuthenticatedMoreRouteImport } from './routes/_authenticated/more'
 import { Route as AuthenticatedInventoryRouteImport } from './routes/_authenticated/inventory'
 import { Route as AuthenticatedGasOrderRouteImport } from './routes/_authenticated/gas-order'
+import { Route as AuthenticatedFlagaStockRouteImport } from './routes/_authenticated/flaga-stock'
+import { Route as AuthenticatedFlagaPbStockRouteImport } from './routes/_authenticated/flaga-pb-stock'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedCylindersRouteImport } from './routes/_authenticated/cylinders'
 import { Route as AuthenticatedChineseStockRouteImport } from './routes/_authenticated/chinese-stock'
@@ -74,6 +77,12 @@ const AuthenticatedQuickExchangeRoute =
     path: '/quick-exchange',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedPrimaPbStockRoute =
+  AuthenticatedPrimaPbStockRouteImport.update({
+    id: '/prima-pb-stock',
+    path: '/prima-pb-stock',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedPriceListRoute = AuthenticatedPriceListRouteImport.update({
   id: '/price-list',
   path: '/price-list',
@@ -99,6 +108,17 @@ const AuthenticatedGasOrderRoute = AuthenticatedGasOrderRouteImport.update({
   path: '/gas-order',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedFlagaStockRoute = AuthenticatedFlagaStockRouteImport.update({
+  id: '/flaga-stock',
+  path: '/flaga-stock',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedFlagaPbStockRoute =
+  AuthenticatedFlagaPbStockRouteImport.update({
+    id: '/flaga-pb-stock',
+    path: '/flaga-pb-stock',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -162,11 +182,14 @@ export interface FileRoutesByFullPath {
   '/chinese-stock': typeof AuthenticatedChineseStockRoute
   '/cylinders': typeof AuthenticatedCylindersRouteWithChildren
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/flaga-pb-stock': typeof AuthenticatedFlagaPbStockRoute
+  '/flaga-stock': typeof AuthenticatedFlagaStockRoute
   '/gas-order': typeof AuthenticatedGasOrderRoute
   '/inventory': typeof AuthenticatedInventoryRoute
   '/more': typeof AuthenticatedMoreRoute
   '/partners': typeof AuthenticatedPartnersRouteWithChildren
   '/price-list': typeof AuthenticatedPriceListRoute
+  '/prima-pb-stock': typeof AuthenticatedPrimaPbStockRoute
   '/quick-exchange': typeof AuthenticatedQuickExchangeRoute
   '/quotes': typeof AuthenticatedQuotesRoute
   '/rental-return': typeof AuthenticatedRentalReturnRoute
@@ -186,10 +209,13 @@ export interface FileRoutesByTo {
   '/chinese-stock': typeof AuthenticatedChineseStockRoute
   '/cylinders': typeof AuthenticatedCylindersRouteWithChildren
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/flaga-pb-stock': typeof AuthenticatedFlagaPbStockRoute
+  '/flaga-stock': typeof AuthenticatedFlagaStockRoute
   '/gas-order': typeof AuthenticatedGasOrderRoute
   '/inventory': typeof AuthenticatedInventoryRoute
   '/more': typeof AuthenticatedMoreRoute
   '/price-list': typeof AuthenticatedPriceListRoute
+  '/prima-pb-stock': typeof AuthenticatedPrimaPbStockRoute
   '/quick-exchange': typeof AuthenticatedQuickExchangeRoute
   '/quotes': typeof AuthenticatedQuotesRoute
   '/rental-return': typeof AuthenticatedRentalReturnRoute
@@ -210,11 +236,14 @@ export interface FileRoutesById {
   '/_authenticated/chinese-stock': typeof AuthenticatedChineseStockRoute
   '/_authenticated/cylinders': typeof AuthenticatedCylindersRouteWithChildren
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/flaga-pb-stock': typeof AuthenticatedFlagaPbStockRoute
+  '/_authenticated/flaga-stock': typeof AuthenticatedFlagaStockRoute
   '/_authenticated/gas-order': typeof AuthenticatedGasOrderRoute
   '/_authenticated/inventory': typeof AuthenticatedInventoryRoute
   '/_authenticated/more': typeof AuthenticatedMoreRoute
   '/_authenticated/partners': typeof AuthenticatedPartnersRouteWithChildren
   '/_authenticated/price-list': typeof AuthenticatedPriceListRoute
+  '/_authenticated/prima-pb-stock': typeof AuthenticatedPrimaPbStockRoute
   '/_authenticated/quick-exchange': typeof AuthenticatedQuickExchangeRoute
   '/_authenticated/quotes': typeof AuthenticatedQuotesRoute
   '/_authenticated/rental-return': typeof AuthenticatedRentalReturnRoute
@@ -236,11 +265,14 @@ export interface FileRouteTypes {
     | '/chinese-stock'
     | '/cylinders'
     | '/dashboard'
+    | '/flaga-pb-stock'
+    | '/flaga-stock'
     | '/gas-order'
     | '/inventory'
     | '/more'
     | '/partners'
     | '/price-list'
+    | '/prima-pb-stock'
     | '/quick-exchange'
     | '/quotes'
     | '/rental-return'
@@ -260,10 +292,13 @@ export interface FileRouteTypes {
     | '/chinese-stock'
     | '/cylinders'
     | '/dashboard'
+    | '/flaga-pb-stock'
+    | '/flaga-stock'
     | '/gas-order'
     | '/inventory'
     | '/more'
     | '/price-list'
+    | '/prima-pb-stock'
     | '/quick-exchange'
     | '/quotes'
     | '/rental-return'
@@ -283,11 +318,14 @@ export interface FileRouteTypes {
     | '/_authenticated/chinese-stock'
     | '/_authenticated/cylinders'
     | '/_authenticated/dashboard'
+    | '/_authenticated/flaga-pb-stock'
+    | '/_authenticated/flaga-stock'
     | '/_authenticated/gas-order'
     | '/_authenticated/inventory'
     | '/_authenticated/more'
     | '/_authenticated/partners'
     | '/_authenticated/price-list'
+    | '/_authenticated/prima-pb-stock'
     | '/_authenticated/quick-exchange'
     | '/_authenticated/quotes'
     | '/_authenticated/rental-return'
@@ -365,6 +403,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedQuickExchangeRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/prima-pb-stock': {
+      id: '/_authenticated/prima-pb-stock'
+      path: '/prima-pb-stock'
+      fullPath: '/prima-pb-stock'
+      preLoaderRoute: typeof AuthenticatedPrimaPbStockRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/price-list': {
       id: '/_authenticated/price-list'
       path: '/price-list'
@@ -398,6 +443,20 @@ declare module '@tanstack/react-router' {
       path: '/gas-order'
       fullPath: '/gas-order'
       preLoaderRoute: typeof AuthenticatedGasOrderRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/flaga-stock': {
+      id: '/_authenticated/flaga-stock'
+      path: '/flaga-stock'
+      fullPath: '/flaga-stock'
+      preLoaderRoute: typeof AuthenticatedFlagaStockRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/flaga-pb-stock': {
+      id: '/_authenticated/flaga-pb-stock'
+      path: '/flaga-pb-stock'
+      fullPath: '/flaga-pb-stock'
+      preLoaderRoute: typeof AuthenticatedFlagaPbStockRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/dashboard': {
@@ -534,11 +593,14 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedChineseStockRoute: typeof AuthenticatedChineseStockRoute
   AuthenticatedCylindersRoute: typeof AuthenticatedCylindersRouteWithChildren
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedFlagaPbStockRoute: typeof AuthenticatedFlagaPbStockRoute
+  AuthenticatedFlagaStockRoute: typeof AuthenticatedFlagaStockRoute
   AuthenticatedGasOrderRoute: typeof AuthenticatedGasOrderRoute
   AuthenticatedInventoryRoute: typeof AuthenticatedInventoryRoute
   AuthenticatedMoreRoute: typeof AuthenticatedMoreRoute
   AuthenticatedPartnersRoute: typeof AuthenticatedPartnersRouteWithChildren
   AuthenticatedPriceListRoute: typeof AuthenticatedPriceListRoute
+  AuthenticatedPrimaPbStockRoute: typeof AuthenticatedPrimaPbStockRoute
   AuthenticatedQuickExchangeRoute: typeof AuthenticatedQuickExchangeRoute
   AuthenticatedQuotesRoute: typeof AuthenticatedQuotesRoute
   AuthenticatedRentalReturnRoute: typeof AuthenticatedRentalReturnRoute
@@ -551,11 +613,14 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedChineseStockRoute: AuthenticatedChineseStockRoute,
   AuthenticatedCylindersRoute: AuthenticatedCylindersRouteWithChildren,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedFlagaPbStockRoute: AuthenticatedFlagaPbStockRoute,
+  AuthenticatedFlagaStockRoute: AuthenticatedFlagaStockRoute,
   AuthenticatedGasOrderRoute: AuthenticatedGasOrderRoute,
   AuthenticatedInventoryRoute: AuthenticatedInventoryRoute,
   AuthenticatedMoreRoute: AuthenticatedMoreRoute,
   AuthenticatedPartnersRoute: AuthenticatedPartnersRouteWithChildren,
   AuthenticatedPriceListRoute: AuthenticatedPriceListRoute,
+  AuthenticatedPrimaPbStockRoute: AuthenticatedPrimaPbStockRoute,
   AuthenticatedQuickExchangeRoute: AuthenticatedQuickExchangeRoute,
   AuthenticatedQuotesRoute: AuthenticatedQuotesRoute,
   AuthenticatedRentalReturnRoute: AuthenticatedRentalReturnRoute,

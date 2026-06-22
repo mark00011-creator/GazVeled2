@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { GAS_TYPES, getAvailableSizes } from "@/lib/gas-cylinder-form";
+import { PRICE_LIST_GAS_TYPES, getPriceListSizes } from "@/lib/product-prices";
 import {
   deleteProductPrice,
   fetchProductPrices,
@@ -57,7 +57,7 @@ function PriceListPage() {
   const [editProductCode, setEditProductCode] = useState("");
   const [editNote, setEditNote] = useState("");
 
-  const sizes = getAvailableSizes(gasType);
+  const sizes = getPriceListSizes(gasType);
 
   const beszerzesiNum = parseFt(beszerzesiAr);
   const arresNum = parseFt(arres);
@@ -199,14 +199,14 @@ function PriceListPage() {
                 value={gasType}
                 onValueChange={(v) => {
                   setGasType(v);
-                  setSize(getAvailableSizes(v)[0] ?? "");
+                  setSize(getPriceListSizes(v)[0] ?? "");
                 }}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {GAS_TYPES.map((g) => (
+                  {PRICE_LIST_GAS_TYPES.map((g) => (
                     <SelectItem key={g} value={g}>
                       {g}
                     </SelectItem>

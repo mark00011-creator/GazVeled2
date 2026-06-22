@@ -22,6 +22,7 @@ import { estimateGasOrderCost, formatHuf } from "@/lib/gas-order-prices";
 import { buildPurchasePriceMap, fetchProductPrices } from "@/lib/product-prices";
 import { downloadPdf, generateGasOrderPdf } from "@/lib/gas-order-pdf";
 import { fetchChineseStock, chineseStockLabel } from "@/lib/chinese-stock";
+import { fetchFlagaStock, flagaStockLabel } from "@/lib/flaga-stock";
 import {
   createGasOrderFromGroup,
   deleteGasOrder,
@@ -161,7 +162,13 @@ function GasOrderPage() {
     queryFn: fetchChineseStock,
   });
 
+  const { data: flagaStock = [] } = useQuery({
+    queryKey: ["flaga-stock"],
+    queryFn: fetchFlagaStock,
+  });
+
   const chineseVisible = chineseStock.filter((r) => r.full_count > 0 || r.empty_count > 0);
+  const flagaVisible = flagaStock.filter((r) => r.full_count > 0 || r.empty_count > 0);
 
   const priceMap = buildPurchasePriceMap(priceRows);
 
@@ -247,7 +254,7 @@ function GasOrderPage() {
             </h2>
             <SummaryBlock title="SIAD" lines={summary.siad} />
             <SummaryBlock title="Saját" lines={summary.own} />
-            {total === 0 && chineseVisible.length === 0 && (
+            {total === 0 && chineseVisible.length === 0 && flagaVisible.length === 0 && (
               <div className="text-sm text-muted-foreground">
                 Nincs rendelhető üres palack a telephelyen
               </div>
@@ -261,6 +268,23 @@ function GasOrderPage() {
                   {chineseVisible.map((row) => (
                     <li key={row.id} className="flex justify-between">
                       <span>{chineseStockLabel(row.gas_type, row.size)}</span>
+                      <span>
+                        Teli: {row.full_count} · Üres: <strong>{row.empty_count}</strong>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {flagaVisible.length > 0 && (
+              <div className="mt-3 border-t pt-3">
+                <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+                  FLAGA üres készlet
+                </div>
+                <ul className="space-y-1 text-sm">
+                  {flagaVisible.map((row) => (
+                    <li key={row.id} className="flex justify-between">
+                      <span>{flagaStockLabel(row.gas_type, row.size)}</span>
                       <span>
                         Teli: {row.full_count} · Üres: <strong>{row.empty_count}</strong>
                       </span>

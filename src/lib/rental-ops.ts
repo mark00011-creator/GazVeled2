@@ -24,6 +24,12 @@ import type { Circulation } from "@/lib/labels";
 import { summarizeRentalCylinders, type RentalType } from "@/lib/labels";
 
 import { logSupabaseError, throwSupabaseError } from "@/lib/supabase-error";
+import {
+  assignQuantityItemsToRental,
+  fetchRentalQuantityItems,
+  returnRentalQuantityItems,
+  type RentalQuantityInput,
+} from "@/lib/rental-quantity-stock";
 
 
 
@@ -79,7 +85,81 @@ export function defaultExpiryDate(startDate: string): string {
 
 }
 
+export const RENTAL_DETAIL_SELECT =
+  "id, partner_id, start_date, end_date, expiry_date, rental_type, monthly_fee, deposit, deposit_type, contract_number, status, next_invoice_date, first_invoice_date, billing_cycle_months, note, created_at, updated_at, current_cylinder_id, original_cylinder_id";
 
+export const PARTNER_CONTRACT_SELECT =
+  "id, name, phone, email, address, company_name, tax_number, contact_person, birth_place, birth_date, mother_name, id_number, address_card_number";
+
+export type RentalPartnerDetail = {
+  id: string;
+  name: string;
+  company_name: string | null;
+  tax_number: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  contact_person: string | null;
+  birth_place: string | null;
+  birth_date: string | null;
+  mother_name: string | null;
+  id_number: string | null;
+  address_card_number: string | null;
+};
+
+export type RentalWithPartner = {
+  id: string;
+  partner_id: string;
+  start_date: string;
+  end_date: string | null;
+  expiry_date: string | null;
+  rental_type: RentalType;
+  monthly_fee: number;
+  deposit: number;
+  deposit_type: string | null;
+  contract_number: string | null;
+  status: string;
+  next_invoice_date: string | null;
+  first_invoice_date: string | null;
+  billing_cycle_months: number;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+  current_cylinder_id: string | null;
+  original_cylinder_id: string | null;
+  partners: RentalPartnerDetail | null;
+};
+
+/** Rentals + partner külön lekérdezéssel (PostgREST nested embed hibák elkerülésére). */
+export async function fetchRentalWithPartner(rentalId: string): Promise<RentalWithPartner | null> {
+  const { data: rental, error: rentalErr } = await supabase
+    .from("rentals")
+    .select(RENTAL_DETAIL_SELECT)
+    .eq("id", rentalId)
+    .maybeSingle();
+  if (rentalErr) {
+    throwSupabaseError("fetchRentalWithPartner → rentals SELECT", rentalErr, { rentalId });
+  }
+  if (!rental) return null;
+
+  const { data: partner, error: partnerErr } = await supabase
+    .from("partners")
+    .select(PARTNER_CONTRACT_SELECT)
+    .eq("id", rental.partner_id)
+    .maybeSingle();
+  if (partnerErr) {
+    throwSupabaseError("fetchRentalWithPartner → partners SELECT", partnerErr, {
+      rentalId,
+      partnerId: rental.partner_id,
+    });
+  }
+
+  return {
+    ...rental,
+    rental_type: (rental.rental_type ?? "yearly") as RentalType,
+    partners: partner,
+  };
+}
 
 /** Cylinder IDs in active rentals (not removed). */
 
@@ -636,6 +716,7 @@ export async function createRentalWithCylinders(args: {
 
   cylinder_barcodes: string[];
   cylinder_specs?: { gas_type: string; size: string }[];
+  quantity_items?: RentalQuantityInput[];
 
 }): Promise<string> {
 
@@ -649,6 +730,11 @@ export async function createRentalWithCylinders(args: {
 
   const barcodes = [...new Set(args.cylinder_barcodes.map(normalizeBarcode).filter(Boolean))];
   const specs = args.cylinder_specs ?? [];
+  const quantityItems = args.quantity_items ?? [];
+
+  if (barcodes.length === 0 && specs.length === 0 && quantityItems.length === 0) {
+    throw new Error("Adj meg legalább egy palackot vagy darabszámú tételt");
+  }
 
   const { data: auth } = await supabase.auth.getUser();
 
@@ -745,6 +831,10 @@ export async function createRentalWithCylinders(args: {
 
       await assignCylinderToRental(rental.id, args.partner_id, cyl, uid, args.expiry_date);
 
+    }
+
+    if (quantityItems.length > 0) {
+      await assignQuantityItemsToRental(rental.id, quantityItems);
     }
 
   } catch (e) {
@@ -991,109 +1081,74 @@ export async function returnRentalCylinders(args: {
 
 
   if (linkIds.length === 0) {
+    const qtyItems = await fetchRentalQuantityItems(args.rental_id);
+    if (qtyItems.length === 0) {
+      throw new Error("Nincs visszavételezhető palack vagy darabszámú tétel");
+    }
+    await returnRentalQuantityItems(args.rental_id);
+  } else {
+    const { data: cylRows, error: cylErr } = await supabase
+      .from("cylinders")
+      .select("id, barcode, gas_type, size, status, location_type, location_partner_id")
+      .in("id", linkIds);
 
-    throw new Error("Nincs visszavételezhető palack");
+    if (cylErr) throwSupabaseError("returnRentalCylinders → cylinders", cylErr);
 
+    const now = new Date().toISOString();
+
+    for (const cyl of (cylRows ?? []) as CylinderRow[]) {
+      const whLoc = cyl.status === "full" ? "warehouse_full" : "warehouse_empty";
+
+      const { error: movErr } = await recordMovement({
+        cylinder_id: cyl.id,
+        from_location: "customer",
+        from_partner_id: rental.partner_id,
+        to_location: whLoc,
+        status_after: cyl.status,
+        note: "Visszavéve bérletből",
+        user_id: uid,
+      });
+      if (movErr) throw new Error(parseDbError(movErr.message));
+
+      await updateCylinder(cyl.id, {
+        location_type: whLoc,
+        location_partner_id: null,
+        location_supplier_id: null,
+        rental_id: null,
+      } as Parameters<typeof updateCylinder>[1]);
+
+      const { error: rcUpdErr } = await supabase
+        .from("rental_cylinders")
+        .update({ removed_at: now })
+        .eq("rental_id", args.rental_id)
+        .eq("cylinder_id", cyl.id);
+      if (rcUpdErr) throwSupabaseError("returnRentalCylinders → rental_cylinders UPDATE", rcUpdErr);
+    }
   }
-
-
-
-  const { data: cylRows, error: cylErr } = await supabase
-
-    .from("cylinders")
-
-    .select("id, barcode, gas_type, size, status, location_type, location_partner_id")
-
-    .in("id", linkIds);
-
-
-
-  if (cylErr) throwSupabaseError("returnRentalCylinders → cylinders", cylErr);
-
-
 
   const now = new Date().toISOString();
 
-
-
-  for (const cyl of (cylRows ?? []) as CylinderRow[]) {
-
-    const whLoc = cyl.status === "full" ? "warehouse_full" : "warehouse_empty";
-
-
-
-    const { error: movErr } = await recordMovement({
-
-      cylinder_id: cyl.id,
-
-      from_location: "customer",
-
-      from_partner_id: rental.partner_id,
-
-      to_location: whLoc,
-
-      status_after: cyl.status,
-
-      note: "Visszavéve bérletből",
-
-      user_id: uid,
-
-    });
-
-    if (movErr) throw new Error(parseDbError(movErr.message));
-
-
-
-    await updateCylinder(cyl.id, {
-
-      location_type: whLoc,
-
-      location_partner_id: null,
-
-      location_supplier_id: null,
-
-      rental_id: null,
-
-    } as Parameters<typeof updateCylinder>[1]);
-
-
-
-    const { error: rcUpdErr } = await supabase
-
-      .from("rental_cylinders")
-
-      .update({ removed_at: now })
-
-      .eq("rental_id", args.rental_id)
-
-      .eq("cylinder_id", cyl.id);
-
-    if (rcUpdErr) throwSupabaseError("returnRentalCylinders → rental_cylinders UPDATE", rcUpdErr);
-
-  }
-
-
-
   const { count } = await supabase
-
     .from("rental_cylinders")
-
     .select("*", { count: "exact", head: true })
-
     .eq("rental_id", args.rental_id)
-
     .is("removed_at", null);
 
-
+  const { count: qtyCount } = await supabase
+    .from("rental_quantity_items")
+    .select("*", { count: "exact", head: true })
+    .eq("rental_id", args.rental_id)
+    .is("removed_at", null);
 
   const updates: Record<string, unknown> = { updated_at: now };
 
+  if ((count ?? 0) === 0 && (qtyCount ?? 0) > 0) {
+    await returnRentalQuantityItems(args.rental_id);
+  }
+
   if ((count ?? 0) === 0) {
-
     updates.status = "closed";
-
     updates.end_date = todayLocal();
-
   }
 
   if (args.note?.trim()) {

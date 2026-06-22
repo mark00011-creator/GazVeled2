@@ -1,6 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,11 +20,22 @@ import {
   advanceRentalBilling,
   extendRental,
   fetchRentalCylinderDetails,
+  fetchRentalWithPartner,
   rentalNumber,
 } from "@/lib/rental-ops";
+import { logSupabaseError } from "@/lib/supabase-error";
 import { updateCylinderBarcode } from "@/lib/cylinder-ops";
 import { daysUntil, invoiceUrgency } from "@/lib/rental-billing";
-import { downloadPdf, generateRentalContractPdf } from "@/lib/rental-contract-pdf";
+import {
+  buildContractLines,
+  downloadPdf,
+  generateRentalContractPdf,
+} from "@/lib/rental-contract-pdf";
+import {
+  fetchRentalQuantityItems,
+  RENTAL_QUANTITY_KIND_LABELS,
+  toContractStockItems,
+} from "@/lib/rental-quantity-stock";
 import { toast } from "sonner";
 import { useState } from "react";
 
@@ -42,16 +52,23 @@ function RentalDetail() {
   const [editingBarcodeId, setEditingBarcodeId] = useState<string | null>(null);
   const [barcodeEdits, setBarcodeEdits] = useState<Record<string, string>>({});
 
-  const { data: rental, isLoading, isError, refetch: refetchRental } = useQuery({
+  const {
+    data: rental,
+    isLoading,
+    isError,
+    refetch: refetchRental,
+  } = useQuery({
     queryKey: ["rental", id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("rentals")
-        .select("*, partners(id, name, phone, email, address, company_name, tax_number, contact_person, birth_place, birth_date, mother_name, id_number, address_card_number)")
-        .eq("id", id)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
+      try {
+        return await fetchRentalWithPartner(id);
+      } catch (e) {
+        logSupabaseError("rental adatlap → fetchRentalWithPartner", null, {
+          rentalId: id,
+          thrown: e instanceof Error ? e.message : String(e),
+        });
+        throw e;
+      }
     },
   });
 
@@ -63,7 +80,27 @@ function RentalDetail() {
   } = useQuery({
     queryKey: ["rental-cyls", id],
     enabled: !!rental,
-    queryFn: () => fetchRentalCylinderDetails(id),
+    queryFn: async () => {
+      try {
+        return await fetchRentalCylinderDetails(id);
+      } catch (e) {
+        logSupabaseError("rental adatlap → fetchRentalCylinderDetails", null, {
+          rentalId: id,
+          thrown: e instanceof Error ? e.message : String(e),
+        });
+        throw e;
+      }
+    },
+  });
+
+  const {
+    data: qtyItems,
+    isLoading: qtyLoading,
+    refetch: refetchQty,
+  } = useQuery({
+    queryKey: ["rental-qty-items", id],
+    enabled: !!rental,
+    queryFn: () => fetchRentalQuantityItems(id),
   });
 
   async function markInvoiced() {
@@ -128,27 +165,10 @@ function RentalDetail() {
     if (!rental) return;
     setPdfBusy(true);
     try {
-      const partner = (
-        rental as {
-          partners?: {
-            name: string;
-            company_name?: string | null;
-            address?: string | null;
-            phone?: string | null;
-            email?: string | null;
-            tax_number?: string | null;
-            contact_person?: string | null;
-            birth_place?: string | null;
-            birth_date?: string | null;
-            mother_name?: string | null;
-            id_number?: string | null;
-            address_card_number?: string | null;
-          };
-        }
-      ).partners;
+      const partner = rental.partners;
       const bytes = await generateRentalContractPdf({
         rentalId: id,
-        contractNumber: (rental as { contract_number?: string | null }).contract_number,
+        contractNumber: rental.contract_number,
         rentalType: (rental.rental_type ?? "yearly") as RentalType,
         partner: {
           name: partner?.name ?? "—",
@@ -168,18 +188,20 @@ function RentalDetail() {
         expiryDate: rental.expiry_date,
         monthlyFee: Number(rental.monthly_fee),
         deposit: Number(rental.deposit),
-        depositType: (rental as { deposit_type?: string | null }).deposit_type,
-        cylinders: (cylLinks ?? []).map((c) => ({
-          barcode: c.barcode,
-          gas_type: c.gas_type,
-          size: c.size,
-          manufacturer: c.manufacturer,
-          factory_serial: c.factory_serial,
-          owner: c.owner,
-          circulation: c.circulation,
-          status: c.status,
-          replacement_value: c.replacement_value,
-        })),
+        depositType: rental.deposit_type,
+        lines: buildContractLines(
+          (cylLinks ?? []).map((c) => ({
+            barcode: c.barcode,
+            gas_type: c.gas_type,
+            size: c.size,
+            manufacturer: c.manufacturer,
+            factory_serial: c.factory_serial,
+            owner: c.owner,
+            circulation: c.circulation,
+            replacement_value: c.replacement_value,
+          })),
+          toContractStockItems(qtyItems ?? []),
+        ),
       });
       downloadPdf(bytes, `berlet-${rentalNumber(id)}.pdf`);
       toast.success("PDF letöltve");
@@ -206,7 +228,7 @@ function RentalDetail() {
     );
   }
 
-  const partner = (rental as { partners?: { id: string; name: string } }).partners;
+  const partner = rental.partners;
   const rentalType = (rental.rental_type ?? "yearly") as RentalType;
   const rentalExpiry = effectiveRentalExpiry(rental.start_date, rental.expiry_date);
   const expired = isRentalExpired(rentalExpiry);
@@ -235,14 +257,12 @@ function RentalDetail() {
       {rental.status !== "closed" && (
         <Card
           className={`mb-4 p-4 text-center text-sm font-semibold ${
-            expired ? "border-destructive/50 bg-destructive/10 text-destructive" : "border-primary/30 bg-primary/5"
+            expired
+              ? "border-destructive/50 bg-destructive/10 text-destructive"
+              : "border-primary/30 bg-primary/5"
           }`}
         >
-          {expired ? (
-            "LEJÁRT"
-          ) : (
-            <>Hosszabbítás szükséges: {fmtDate(rentalExpiry)}</>
-          )}
+          {expired ? "LEJÁRT" : <>Hosszabbítás szükséges: {fmtDate(rentalExpiry)}</>}
         </Card>
       )}
 
@@ -261,7 +281,12 @@ function RentalDetail() {
           <Info label="Partner" value={partner?.name ?? "—"} bold />
           <Info label="Bérlet típusa" value={rentalTypeLabels[rentalType]} />
           <Info label="Kezdő dátum" value={fmtDate(rental.start_date)} />
-          <Info label="Lejárati dátum" value={fmtDate(rentalExpiry)} highlight={expired} highlightTone="red" />
+          <Info
+            label="Lejárati dátum"
+            value={fmtDate(rentalExpiry)}
+            highlight={expired}
+            highlightTone="red"
+          />
           {rental.next_invoice_date && (
             <Info
               label="Következő számlázás"
@@ -279,13 +304,66 @@ function RentalDetail() {
         </div>
 
         {rental.status === "active" && rentalType === "monthly" && rental.next_invoice_date && (
-          <Button className="mt-4 w-full" variant="outline" size="sm" disabled={busyId === "invoice"} onClick={markInvoiced}>
+          <Button
+            className="mt-4 w-full"
+            variant="outline"
+            size="sm"
+            disabled={busyId === "invoice"}
+            onClick={markInvoiced}
+          >
             Számlázás rögzítve – következő hónap
           </Button>
         )}
-        <Button className="mt-2 w-full" variant="outline" size="sm" disabled={pdfBusy} onClick={generatePdf}>
+        <Button
+          className="mt-2 w-full"
+          variant="outline"
+          size="sm"
+          disabled={pdfBusy}
+          onClick={generatePdf}
+        >
           <FileDown className="mr-2 h-4 w-4" /> PDF szerződés generálása
         </Button>
+      </Card>
+
+      <Card className="mb-4 overflow-hidden p-0">
+        <h2 className="border-b px-4 py-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Darabszám alapú tételek ({(qtyItems ?? []).length})
+        </h2>
+        {qtyLoading ? (
+          <div className="p-4 text-sm text-muted-foreground">Betöltés…</div>
+        ) : (qtyItems ?? []).length === 0 ? (
+          <div className="p-4 text-sm text-muted-foreground">Nincs darabszám alapú tétel</div>
+        ) : (
+          <div>
+            {(qtyItems ?? []).map((item) => (
+              <div
+                key={item.id}
+                className="border-b border-border/40 p-4 last:border-b-0"
+              >
+                <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs sm:grid-cols-4">
+                  <div>
+                    <div className="text-muted-foreground">Típus</div>
+                    <div className="font-semibold">
+                      {RENTAL_QUANTITY_KIND_LABELS[item.stock_kind]}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Gáz</div>
+                    <div>{item.gas_type}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Méret</div>
+                    <div>{item.size}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Darabszám</div>
+                    <div className="font-bold">{item.quantity}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
 
       <Card className="mb-4 overflow-hidden p-0">
@@ -323,7 +401,10 @@ function RentalDetail() {
                             className="h-8 font-mono text-xs"
                             value={editValue}
                             onChange={(e) =>
-                              setBarcodeEdits((prev) => ({ ...prev, [c.cylinder_id]: e.target.value }))
+                              setBarcodeEdits((prev) => ({
+                                ...prev,
+                                [c.cylinder_id]: e.target.value,
+                              }))
                             }
                           />
                           <Button
@@ -350,7 +431,11 @@ function RentalDetail() {
                       <div>{circulationLabels[owner] ?? owner}</div>
                     </div>
                   </div>
-                  {cylExpired && <Badge variant="destructive" className="mt-2">LEJÁRT</Badge>}
+                  {cylExpired && (
+                    <Badge variant="destructive" className="mt-2">
+                      LEJÁRT
+                    </Badge>
+                  )}
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button
                       size="sm"
@@ -363,7 +448,12 @@ function RentalDetail() {
                       <Pencil className="mr-1 h-3.5 w-3.5" /> Vonalkód szerkesztése
                     </Button>
                     {canExtend && (
-                      <Button size="sm" variant="outline" disabled={busyId === "extend"} onClick={doExtend}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busyId === "extend"}
+                        onClick={doExtend}
+                      >
                         <CalendarPlus className="mr-1 h-3.5 w-3.5" /> Tovább bérli
                       </Button>
                     )}

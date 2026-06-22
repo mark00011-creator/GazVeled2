@@ -44,6 +44,14 @@ import {
   formatProfit,
 } from "@/lib/dashboard-stats";
 import { fetchChineseStock, chineseStockLabel } from "@/lib/chinese-stock";
+import { fetchFlagaStock, flagaStockLabel } from "@/lib/flaga-stock";
+import {
+  fetchFlagaPbStock,
+  flagaPbStockLabel,
+  sumFlagaPbCounts,
+} from "@/lib/flaga-pb-stock";
+import { fetchPrimaPbStock, primaPbStockLabel, sumPrimaPbCounts } from "@/lib/prima-pb-stock";
+import { fetchActiveDeployedQuantitySummary } from "@/lib/rental-quantity-stock";
 import { UninvoicedExchangesCard } from "@/components/UninvoicedExchangesCard";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -178,12 +186,24 @@ function Dashboard() {
 
         .reduce((s, r) => s + Number(r.monthly_fee), 0);
 
-      const [profitStats, warehouseValue, topProducts, chineseStock] = await Promise.all([
+      const [profitStats, warehouseValue, topProducts, chineseStock, flagaStock, flagaPbStock, primaPbStock, deployedQty] =
+        await Promise.all([
         fetchExchangeProfitStats(),
         fetchWarehouseInventoryValue(),
         fetchTopExchangedProducts(5),
         fetchChineseStock(),
+        fetchFlagaStock(),
+        fetchFlagaPbStock(),
+        fetchPrimaPbStock(),
+        fetchActiveDeployedQuantitySummary(),
       ]);
+
+      const chineseTotals = (chineseStock ?? []).reduce(
+        (acc, r) => ({ full: acc.full + r.full_count, empty: acc.empty + r.empty_count }),
+        { full: 0, empty: 0 },
+      );
+      const flagaPbTotals = sumFlagaPbCounts(flagaPbStock ?? []);
+      const primaPbTotals = sumPrimaPbCounts(primaPbStock ?? []);
 
       return {
         fullSiad: by((c) => c.status === "full" && c.circulation === "siad"),
@@ -232,10 +252,20 @@ function Dashboard() {
             c.circulation === "own",
         ),
 
+        warehouseFullSerial: by((c) => c.location_type === "warehouse_full"),
+        warehouseEmptySerial: by((c) => c.location_type === "warehouse_empty"),
+
         profitStats,
         warehouseValue,
         topProducts,
         chineseStock: chineseStock.filter((r) => r.full_count > 0 || r.empty_count > 0),
+        flagaStock: flagaStock.filter((r) => r.full_count > 0 || r.empty_count > 0),
+        flagaPbStock: flagaPbStock.filter((r) => r.full_count > 0 || r.empty_count > 0),
+        primaPbStock: primaPbStock.filter((r) => r.full_count > 0 || r.empty_count > 0),
+        chineseTotals,
+        flagaPbTotals,
+        primaPbTotals,
+        deployedQty,
       };
     },
   });
@@ -272,6 +302,82 @@ function Dashboard() {
 
         <RefreshCw className="h-8 w-8" />
       </Link>
+
+      <h2 className="mb-2 text-sm font-semibold">Telephelyi készlet</h2>
+      <div className="mb-4 grid grid-cols-2 gap-3">
+        <Card className="p-4">
+          <div className="text-xs text-muted-foreground">Sorszámos palackok</div>
+          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+            <div>
+              <div className="text-lg font-bold">{stats?.warehouseFullSerial ?? "—"}</div>
+              <div className="text-xs text-muted-foreground">Teli</div>
+            </div>
+            <div>
+              <div className="text-lg font-bold">{stats?.warehouseEmptySerial ?? "—"}</div>
+              <div className="text-xs text-muted-foreground">Üres</div>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs text-muted-foreground">Kínai készlet</div>
+          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+            <div>
+              <div className="text-lg font-bold">{stats?.chineseTotals?.full ?? "—"}</div>
+              <div className="text-xs text-muted-foreground">Teli</div>
+            </div>
+            <div>
+              <div className="text-lg font-bold">{stats?.chineseTotals?.empty ?? "—"}</div>
+              <div className="text-xs text-muted-foreground">Üres</div>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs text-muted-foreground">FLAGA PB készlet</div>
+          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+            <div>
+              <div className="text-lg font-bold">{stats?.flagaPbTotals?.full ?? "—"}</div>
+              <div className="text-xs text-muted-foreground">Teli</div>
+            </div>
+            <div>
+              <div className="text-lg font-bold">{stats?.flagaPbTotals?.empty ?? "—"}</div>
+              <div className="text-xs text-muted-foreground">Üres</div>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs text-muted-foreground">PRÍMA PB készlet</div>
+          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+            <div>
+              <div className="text-lg font-bold">{stats?.primaPbTotals?.full ?? "—"}</div>
+              <div className="text-xs text-muted-foreground">Teli</div>
+            </div>
+            <div>
+              <div className="text-lg font-bold">{stats?.primaPbTotals?.empty ?? "—"}</div>
+              <div className="text-xs text-muted-foreground">Üres</div>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <h2 className="mb-2 text-sm font-semibold">Kihelyezett készlet (aktív bérletek)</h2>
+      <div className="mb-4 grid grid-cols-2 gap-3">
+        <Card className="p-4">
+          <div className="text-xs text-muted-foreground">Sorszámos palackok</div>
+          <div className="mt-1 text-2xl font-bold">{stats?.rentedCylinders ?? "—"}</div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs text-muted-foreground">Kínai</div>
+          <div className="mt-1 text-2xl font-bold">{stats?.deployedQty?.chinese ?? "—"}</div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs text-muted-foreground">FLAGA PB</div>
+          <div className="mt-1 text-2xl font-bold">{stats?.deployedQty?.flaga_pb ?? "—"}</div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs text-muted-foreground">PRÍMA PB</div>
+          <div className="mt-1 text-2xl font-bold">{stats?.deployedQty?.prima_pb ?? "—"}</div>
+        </Card>
+      </div>
 
       <h2 className="mb-2 text-sm font-semibold">Nyereség (csere)</h2>
       <div className="mb-4 grid grid-cols-2 gap-3">
@@ -352,6 +458,89 @@ function Dashboard() {
           </ul>
         </Card>
       )}
+
+      {(stats?.flagaStock?.length ?? 0) > 0 && (
+        <Card className="mb-4 p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Boxes className="h-4 w-4 text-primary" />
+            <div className="text-sm font-semibold">FLAGA készlet</div>
+          </div>
+          <ul className="space-y-2 text-sm">
+            {stats!.flagaStock.map((row) => (
+              <li key={row.id} className="flex justify-between gap-3">
+                <span>{flagaStockLabel(row.gas_type, row.size)}</span>
+                <span className="shrink-0 text-muted-foreground">
+                  Teli: <strong className="text-foreground">{row.full_count}</strong>
+                  {" · "}
+                  Üres: <strong className="text-foreground">{row.empty_count}</strong>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      <Card className="mb-4 p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <Boxes className="h-4 w-4 text-primary" />
+          <div className="text-sm font-semibold">FLAGA PB készlet</div>
+        </div>
+        <div className="mb-3 flex justify-between text-sm font-medium">
+          <span>Összesen</span>
+          <span>
+            Teli: <strong>{stats?.flagaPbTotals?.full ?? 0}</strong>
+            {" · "}
+            Üres: <strong>{stats?.flagaPbTotals?.empty ?? 0}</strong>
+          </span>
+        </div>
+        {(stats?.flagaPbStock?.length ?? 0) > 0 ? (
+          <ul className="space-y-2 text-sm">
+            {stats!.flagaPbStock.map((row) => (
+              <li key={row.id} className="flex justify-between gap-3">
+                <span>{flagaPbStockLabel(row.gas_type, row.size)}</span>
+                <span className="shrink-0 text-muted-foreground">
+                  Teli: <strong className="text-foreground">{row.full_count}</strong>
+                  {" · "}
+                  Üres: <strong className="text-foreground">{row.empty_count}</strong>
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="text-xs text-muted-foreground">Nincs készleten lévő tétel</div>
+        )}
+      </Card>
+
+      <Card className="mb-4 p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <Boxes className="h-4 w-4 text-primary" />
+          <div className="text-sm font-semibold">PRÍMA PB készlet</div>
+        </div>
+        <div className="mb-3 flex justify-between text-sm font-medium">
+          <span>Összesen</span>
+          <span>
+            Teli: <strong>{stats?.primaPbTotals?.full ?? 0}</strong>
+            {" · "}
+            Üres: <strong>{stats?.primaPbTotals?.empty ?? 0}</strong>
+          </span>
+        </div>
+        {(stats?.primaPbStock?.length ?? 0) > 0 ? (
+          <ul className="space-y-2 text-sm">
+            {stats!.primaPbStock.map((row) => (
+              <li key={row.id} className="flex justify-between gap-3">
+                <span>{primaPbStockLabel(row.gas_type, row.size)}</span>
+                <span className="shrink-0 text-muted-foreground">
+                  Teli: <strong className="text-foreground">{row.full_count}</strong>
+                  {" · "}
+                  Üres: <strong className="text-foreground">{row.empty_count}</strong>
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="text-xs text-muted-foreground">Nincs készleten lévő tétel</div>
+        )}
+      </Card>
 
       {(stats?.topProducts?.length ?? 0) > 0 && (
         <Card className="mb-4 p-4">

@@ -148,6 +148,228 @@ export type Database = {
           },
         ]
       }
+      flaga_cylinder_stock: {
+        Row: {
+          created_at: string
+          empty_count: number
+          full_count: number
+          gas_type: string
+          id: string
+          size: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          empty_count?: number
+          full_count?: number
+          gas_type: string
+          id?: string
+          size: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          empty_count?: number
+          full_count?: number
+          gas_type?: string
+          id?: string
+          size?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      flaga_stock_movements: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          empty_delta: number
+          full_delta: number
+          id: string
+          movement_type: string
+          note: string | null
+          quantity: number
+          stock_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          empty_delta: number
+          full_delta: number
+          id?: string
+          movement_type: string
+          note?: string | null
+          quantity: number
+          stock_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          empty_delta?: number
+          full_delta?: number
+          id?: string
+          movement_type?: string
+          note?: string | null
+          quantity?: number
+          stock_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "flaga_stock_movements_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "flaga_cylinder_stock"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      flaga_pb_stock: {
+        Row: {
+          created_at: string
+          empty_count: number
+          full_count: number
+          gas_type: string
+          id: string
+          size: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          empty_count?: number
+          full_count?: number
+          gas_type: string
+          id?: string
+          size: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          empty_count?: number
+          full_count?: number
+          gas_type?: string
+          id?: string
+          size?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      flaga_pb_stock_movements: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          empty_delta: number
+          full_delta: number
+          id: string
+          movement_type: string
+          note: string | null
+          quantity: number
+          stock_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          empty_delta: number
+          full_delta: number
+          id?: string
+          movement_type: string
+          note?: string | null
+          quantity: number
+          stock_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          empty_delta?: number
+          full_delta?: number
+          id?: string
+          movement_type?: string
+          note?: string | null
+          quantity?: number
+          stock_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "flaga_pb_stock_movements_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "flaga_pb_stock"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prima_pb_stock: {
+        Row: {
+          created_at: string
+          empty_count: number
+          full_count: number
+          gas_type: string
+          id: string
+          size: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          empty_count?: number
+          full_count?: number
+          gas_type: string
+          id?: string
+          size: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          empty_count?: number
+          full_count?: number
+          gas_type?: string
+          id?: string
+          size?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      prima_pb_stock_movements: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          empty_delta: number
+          full_delta: number
+          id: string
+          movement_type: string
+          note: string | null
+          quantity: number
+          stock_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          empty_delta: number
+          full_delta: number
+          id?: string
+          movement_type: string
+          note?: string | null
+          quantity: number
+          stock_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          empty_delta?: number
+          full_delta?: number
+          id?: string
+          movement_type?: string
+          note?: string | null
+          quantity?: number
+          stock_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prima_pb_stock_movements_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "prima_pb_stock"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cylinders: {
         Row: {
           active: boolean
@@ -169,7 +391,7 @@ export type Database = {
           owner: Database["public"]["Enums"]["circulation"]
           photo_url: string | null
           rental_id: string | null
-          replacement_value: number | null
+          replacement_value: number
           size: string
           status: Database["public"]["Enums"]["cyl_status"]
           updated_at: string
@@ -194,7 +416,7 @@ export type Database = {
           owner?: Database["public"]["Enums"]["circulation"]
           photo_url?: string | null
           rental_id?: string | null
-          replacement_value?: number | null
+          replacement_value?: number
           size: string
           status?: Database["public"]["Enums"]["cyl_status"]
           updated_at?: string
@@ -219,7 +441,7 @@ export type Database = {
           owner?: Database["public"]["Enums"]["circulation"]
           photo_url?: string | null
           rental_id?: string | null
-          replacement_value?: number | null
+          replacement_value?: number
           size?: string
           status?: Database["public"]["Enums"]["cyl_status"]
           updated_at?: string
@@ -715,6 +937,47 @@ export type Database = {
         }
         Relationships: []
       }
+      rental_quantity_items: {
+        Row: {
+          added_at: string
+          gas_type: string
+          id: string
+          quantity: number
+          removed_at: string | null
+          rental_id: string
+          size: string
+          stock_kind: string
+        }
+        Insert: {
+          added_at?: string
+          gas_type: string
+          id?: string
+          quantity: number
+          removed_at?: string | null
+          rental_id: string
+          size: string
+          stock_kind: string
+        }
+        Update: {
+          added_at?: string
+          gas_type?: string
+          id?: string
+          quantity?: number
+          removed_at?: string | null
+          rental_id?: string
+          size?: string
+          stock_kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_quantity_items_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rental_cylinders: {
         Row: {
           added_at: string
@@ -1003,6 +1266,36 @@ export type Database = {
         }
         Returns: string
       }
+      adjust_flaga_stock: {
+        Args: {
+          p_gas_type: string
+          p_movement_type: string
+          p_note?: string
+          p_quantity: number
+          p_size: string
+        }
+        Returns: string
+      }
+      adjust_flaga_pb_stock: {
+        Args: {
+          p_gas_type: string
+          p_movement_type: string
+          p_note?: string
+          p_quantity: number
+          p_size: string
+        }
+        Returns: string
+      }
+      adjust_prima_pb_stock: {
+        Args: {
+          p_gas_type: string
+          p_movement_type: string
+          p_note?: string
+          p_quantity: number
+          p_size: string
+        }
+        Returns: string
+      }
       close_rental: {
         Args: {
           p_deposit_returned: boolean
@@ -1090,7 +1383,14 @@ export type Database = {
       app_role: "admin" | "user"
       circulation: "siad" | "own" | "berpalack"
       cylinder_manufacturer: "siad" | "messer" | "linde" | "chinese" | "other"
-      exchange_operation_type: "exchange" | "sale" | "empty_return" | "chinese_sale"
+      exchange_operation_type:
+        | "exchange"
+        | "sale"
+        | "empty_return"
+        | "chinese_sale"
+        | "flaga_sale"
+        | "flaga_pb_sale"
+        | "prima_pb_sale"
       cyl_status: "full" | "empty" | "service"
       gas_order_status: "planned" | "ordered" | "received"
       location_type:

@@ -114,6 +114,18 @@ function mapUninvoicedRow(row: {
     incomingLabel = "—";
     outgoingLabel = row.note?.split(" · ")[0] ?? "Kínai eladás";
   }
+  if (op === "flaga_sale") {
+    incomingLabel = "—";
+    outgoingLabel = row.note?.split(" · ")[0] ?? "FLAGA eladás";
+  }
+  if (op === "flaga_pb_sale") {
+    incomingLabel = "—";
+    outgoingLabel = row.note?.split(" · ")[0] ?? "FLAGA PB eladás";
+  }
+  if (op === "prima_pb_sale") {
+    incomingLabel = "—";
+    outgoingLabel = row.note?.split(" · ")[0] ?? "PRÍMA PB eladás";
+  }
   return {
     id: row.id,
     created_at: row.created_at,

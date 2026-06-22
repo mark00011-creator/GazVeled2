@@ -51,11 +51,19 @@ import {
   recordSale,
   recordEmptyReturn,
   recordChineseSale,
+  recordFlagaPbSale,
+  recordPrimaPbSale,
   type CylinderRow,
   type PartnerOperationType,
 } from "@/lib/cylinder-ops";
 import { findActiveRentalIdForCylinder } from "@/lib/rental-ops";
 import { GAS_TYPES, getAvailableSizes } from "@/lib/gas-cylinder-form";
+import {
+  FLAGA_PB_CATALOG,
+  flagaPbProductKey,
+  flagaPbStockLabel,
+} from "@/lib/flaga-pb-stock";
+import { PRIMA_PB_CATALOG, primaPbProductKey } from "@/lib/prima-pb-stock";
 
 export const Route = createFileRoute("/_authenticated/quick-exchange")({
   head: () => ({ meta: [{ title: "Gyors csere – Gáz Veled" }] }),
@@ -63,13 +71,16 @@ export const Route = createFileRoute("/_authenticated/quick-exchange")({
 });
 
 type IncomingKind = "rental" | "own" | "new";
-type SaleMode = "barcode" | "chinese";
+type SaleMode = "barcode" | "chinese" | "flaga_pb" | "prima_pb";
 
 const OP_LABELS: Record<PartnerOperationType, string> = {
   exchange: "Csere",
   sale: "Eladás",
   empty_return: "Üres visszavétel",
   chinese_sale: "Kínai eladás",
+  flaga_sale: "FLAGA eladás",
+  flaga_pb_sale: "FLAGA PB eladás",
+  prima_pb_sale: "PRÍMA PB eladás",
 };
 
 function QuickExchange() {
@@ -99,6 +110,23 @@ function QuickExchange() {
   const [chineseGas, setChineseGas] = useState("Széndioxid");
   const [chineseSize, setChineseSize] = useState("10 kg");
   const [chineseQty, setChineseQty] = useState("1");
+
+  const [flagaPbKey, setFlagaPbKey] = useState(
+    flagaPbProductKey(FLAGA_PB_CATALOG[0].gas_type, FLAGA_PB_CATALOG[0].size),
+  );
+  const [flagaPbQty, setFlagaPbQty] = useState("1");
+
+  const [primaPbKey, setPrimaPbKey] = useState(
+    primaPbProductKey(PRIMA_PB_CATALOG[0].gas_type, PRIMA_PB_CATALOG[0].size),
+  );
+  const [primaPbQty, setPrimaPbQty] = useState("1");
+
+  const selectedFlagaPb =
+    FLAGA_PB_CATALOG.find((i) => flagaPbProductKey(i.gas_type, i.size) === flagaPbKey) ??
+    FLAGA_PB_CATALOG[0];
+  const selectedPrimaPb =
+    PRIMA_PB_CATALOG.find((i) => primaPbProductKey(i.gas_type, i.size) === primaPbKey) ??
+    PRIMA_PB_CATALOG[0];
 
   const [reassign, setReassign] = useState<"yes" | "no" | null>(null);
   const [busy, setBusy] = useState(false);
@@ -286,6 +314,8 @@ function QuickExchange() {
     ((operation === "exchange" && incoming && outgoing) ||
       (operation === "sale" && saleMode === "barcode" && outgoing) ||
       (operation === "sale" && saleMode === "chinese" && Number(chineseQty) > 0) ||
+      (operation === "sale" && saleMode === "flaga_pb" && Number(flagaPbQty) > 0) ||
+      (operation === "sale" && saleMode === "prima_pb" && Number(primaPbQty) > 0) ||
       (operation === "empty_return" && incoming));
 
   async function complete() {
@@ -340,6 +370,34 @@ function QuickExchange() {
             note: note || null,
           });
           toast.success("Kínai eladás rögzítve");
+        } else if (saleMode === "flaga_pb") {
+          const qty = Number(flagaPbQty);
+          if (!Number.isFinite(qty) || qty <= 0) {
+            toast.error("Érvényes darabszámot adj meg");
+            return;
+          }
+          await recordFlagaPbSale({
+            partner_id: partnerId,
+            gas_type: selectedFlagaPb.gas_type,
+            size: selectedFlagaPb.size,
+            quantity: qty,
+            note: note || null,
+          });
+          toast.success("FLAGA PB eladás rögzítve");
+        } else if (saleMode === "prima_pb") {
+          const qty = Number(primaPbQty);
+          if (!Number.isFinite(qty) || qty <= 0) {
+            toast.error("Érvényes darabszámot adj meg");
+            return;
+          }
+          await recordPrimaPbSale({
+            partner_id: partnerId,
+            gas_type: selectedPrimaPb.gas_type,
+            size: selectedPrimaPb.size,
+            quantity: qty,
+            note: note || null,
+          });
+          toast.success("PRÍMA PB eladás rögzítve");
         } else {
           if (!outgoing) {
             toast.error("Válassz kiadandó palackot");
@@ -388,6 +446,8 @@ function QuickExchange() {
     qc.invalidateQueries({ queryKey: ["history"] });
     qc.invalidateQueries({ queryKey: ["chinese-stock"] });
     qc.invalidateQueries({ queryKey: ["chinese-empty-summary"] });
+    qc.invalidateQueries({ queryKey: ["flaga-pb-stock"] });
+    qc.invalidateQueries({ queryKey: ["prima-pb-stock"] });
   }
 
   const chineseSizes = getAvailableSizes(chineseGas);
@@ -545,7 +605,7 @@ function QuickExchange() {
 
       <p className="mb-3 text-xs text-muted-foreground">
         {operation === "exchange" && "Üres be + teli ki. Mindkét palack kötelező."}
-        {operation === "sale" && "Teli palack kiadása bejövő nélkül. Kínai palack darabszámmal is."}
+        {operation === "sale" && "Teli palack kiadása bejövő nélkül. Kínai vagy FLAGA palack darabszámmal is."}
         {operation === "empty_return" && "Üres palack visszavétele a partnertől, kiadás nélkül."}
       </p>
 
@@ -589,7 +649,7 @@ function QuickExchange() {
       {partnerId && operation === "sale" && (
         <Card className="mb-3 p-4">
           <Label className="mb-2 block">Eladás típusa</Label>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <Button
               type="button"
               variant={saleMode === "barcode" ? "default" : "outline"}
@@ -607,7 +667,29 @@ function QuickExchange() {
                 setOutgoing(null);
               }}
             >
-              Kínai (darabszám)
+              Kínai készlet
+            </Button>
+            <Button
+              type="button"
+              variant={saleMode === "flaga_pb" ? "default" : "outline"}
+              className="flex-1"
+              onClick={() => {
+                setSaleMode("flaga_pb");
+                setOutgoing(null);
+              }}
+            >
+              FLAGA PB
+            </Button>
+            <Button
+              type="button"
+              variant={saleMode === "prima_pb" ? "default" : "outline"}
+              className="flex-1"
+              onClick={() => {
+                setSaleMode("prima_pb");
+                setOutgoing(null);
+              }}
+            >
+              PRÍMA PB
             </Button>
           </div>
         </Card>
@@ -771,6 +853,76 @@ function QuickExchange() {
                 min={1}
                 value={chineseQty}
                 onChange={(e) => setChineseQty(e.target.value)}
+              />
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {partnerId && operation === "sale" && saleMode === "flaga_pb" && (
+        <Card className="mb-3 p-4">
+          <Label className="mb-2 block">FLAGA PB palack eladás</Label>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <Label className="text-xs">Tétel</Label>
+              <Select value={flagaPbKey} onValueChange={setFlagaPbKey}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FLAGA_PB_CATALOG.map((item) => {
+                    const key = flagaPbProductKey(item.gas_type, item.size);
+                    return (
+                      <SelectItem key={key} value={key}>
+                        {flagaPbStockLabel(item.gas_type, item.size)}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-2">
+              <Label className="text-xs">Darabszám</Label>
+              <Input
+                type="number"
+                min={1}
+                value={flagaPbQty}
+                onChange={(e) => setFlagaPbQty(e.target.value)}
+              />
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {partnerId && operation === "sale" && saleMode === "prima_pb" && (
+        <Card className="mb-3 p-4">
+          <Label className="mb-2 block">PRÍMA PB palack eladás</Label>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <Label className="text-xs">Tétel</Label>
+              <Select value={primaPbKey} onValueChange={setPrimaPbKey}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PRIMA_PB_CATALOG.map((item) => {
+                    const key = primaPbProductKey(item.gas_type, item.size);
+                    return (
+                      <SelectItem key={key} value={key}>
+                        {item.size} {item.gas_type}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-2">
+              <Label className="text-xs">Darabszám</Label>
+              <Input
+                type="number"
+                min={1}
+                value={primaPbQty}
+                onChange={(e) => setPrimaPbQty(e.target.value)}
               />
             </div>
           </div>
