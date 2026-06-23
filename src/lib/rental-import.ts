@@ -1,54 +1,18 @@
 import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { newTempBarcode } from "@/lib/cylinder-ops";
 import { formatDateOnly, parseDateOnly, todayLocal } from "@/lib/date-utils";
+import { normalizeGasType, normalizeSize, priceKey } from "@/lib/gas-order-prices";
 import type { RentalStatus } from "@/lib/rental-ops";
 import { formatSupabaseError } from "@/lib/supabase-error";
 
-export type BottleTypeKey =
-  | "prima_motor_11kg"
-  | "flaga_motor_11kg"
-  | "flaga_propan_10_5kg"
-  | "flaga_kompozit_7_5kg"
-  | "pb_11_5kg"
-  | "pb_23kg"
-  | "kinai_stargon_20l";
+export type CylinderManufacturer = Database["public"]["Enums"]["cylinder_manufacturer"];
 
-export type BottleSpec = {
-  key: BottleTypeKey;
+export type CylinderTypeCatalogEntry = {
   gas_type: string;
   size: string;
-  manufacturer: "chinese" | "other";
-};
-
-export const BOTTLE_SPECS: Record<BottleTypeKey, BottleSpec> = {
-  prima_motor_11kg: { key: "prima_motor_11kg", gas_type: "Motor", size: "11 kg", manufacturer: "other" },
-  flaga_motor_11kg: {
-    key: "flaga_motor_11kg",
-    gas_type: "Motorüzemű Flaga",
-    size: "11 kg",
-    manufacturer: "other",
-  },
-  flaga_propan_10_5kg: {
-    key: "flaga_propan_10_5kg",
-    gas_type: "Propán",
-    size: "10,5 kg",
-    manufacturer: "other",
-  },
-  flaga_kompozit_7_5kg: {
-    key: "flaga_kompozit_7_5kg",
-    gas_type: "Kompozit",
-    size: "7,5 kg",
-    manufacturer: "other",
-  },
-  pb_11_5kg: { key: "pb_11_5kg", gas_type: "Propán-Bután", size: "11,5 kg", manufacturer: "other" },
-  pb_23kg: { key: "pb_23kg", gas_type: "Propán-Bután", size: "23 kg", manufacturer: "other" },
-  kinai_stargon_20l: {
-    key: "kinai_stargon_20l",
-    gas_type: "Stargon",
-    size: "20 L",
-    manufacturer: "chinese",
-  },
+  manufacturer: CylinderManufacturer;
 };
 
 export type RentalImportRowError = {
@@ -59,10 +23,11 @@ export type RentalImportRowError = {
 
 export type RentalImportCylinderPlan = {
   row: number;
-  bottleType: BottleTypeKey;
   gas_type: string;
   size: string;
+  manufacturer: CylinderManufacturer;
   expiry_date: string | null;
+  rawLabel: string;
 };
 
 export type RentalImportRentalPlan = {
@@ -80,12 +45,15 @@ export type RentalImportPreview = {
   fileName: string;
   totalRows: number;
   validRows: number;
+  skippedRows: number;
   rentalCount: number;
   cylinderCount: number;
   partnerCount: number;
+  catalogSize: number;
   rentals: RentalImportRentalPlan[];
   errors: RentalImportRowError[];
   missingPartners: string[];
+  skippedPartners: string[];
 };
 
 export type RentalImportResult = {
@@ -116,6 +84,8 @@ type ColumnMap = {
   bottle_type: string;
 };
 
+const EXCLUDED_PARTNER_KEYS = new Set(["dreska andras"]);
+
 function normalizeText(value: string): string {
   return value
     .trim()
@@ -129,6 +99,10 @@ function normalizePartnerName(value: string): string {
   return normalizeText(value);
 }
 
+export function isExcludedImportPartner(partnerName: string): boolean {
+  return EXCLUDED_PARTNER_KEYS.has(normalizePartnerName(partnerName));
+}
+
 function stripVendorPrefix(value: string): string {
   return value
     .trim()
@@ -136,41 +110,262 @@ function stripVendorPrefix(value: string): string {
     .trim();
 }
 
-export function mapBottleType(raw: string): BottleTypeKey | null {
-  const stripped = stripVendorPrefix(raw);
-  const n = normalizeText(stripped);
+function stripImportLabelPrefixes(raw: string): { text: string; preferChinese: boolean } {
+  let text = raw.trim();
+  let preferChinese = false;
 
-  if (!n) return null;
+  if (/^(kinai|chinese|kínai)\s+/i.test(text)) {
+    preferChinese = true;
+    text = text.replace(/^(kínai|kinai|chinese)\s+/i, "").trim();
+  }
 
-  if ((n.includes("kek") || n.includes("prima")) && n.includes("11") && n.includes("motor")) {
-    return "prima_motor_11kg";
+  text = stripVendorPrefix(text);
+  return { text, preferChinese };
+}
+
+function sizeTokens(size: string): string[] {
+  const norm = normalizeSize(size);
+  const tokens = new Set([norm, normalizeText(norm)]);
+  if (norm.includes(",")) tokens.add(normalizeText(norm.replace(",", ".")));
+  if (norm.includes(".")) tokens.add(normalizeText(norm.replace(".", ",")));
+  return [...tokens];
+}
+
+function gasTokens(gas_type: string): string[] {
+  const norm = normalizeText(gas_type);
+  const viaAlias = normalizeGasType(gas_type);
+  const tokens = new Set([norm, normalizeText(viaAlias)]);
+  for (const word of norm.split(" ").filter((w) => w.length > 2)) {
+    tokens.add(word);
   }
-  if (n.includes("flaga") && n.includes("11") && n.includes("motor")) {
-    return "flaga_motor_11kg";
+  return [...tokens];
+}
+
+function textContainsSize(text: string, size: string): boolean {
+  const normText = normalizeText(text);
+  return sizeTokens(size).some((token) => token.length > 0 && normText.includes(token));
+}
+
+function textMatchesGas(text: string, gas_type: string): boolean {
+  const normText = normalizeText(text);
+  const full = normalizeText(gas_type);
+  if (full.length > 0 && normText.includes(full)) return true;
+
+  const words = gasTokens(gas_type).filter((w) => w.length > 2);
+  if (words.length === 0) return false;
+  const matched = words.filter((w) => normText.includes(w));
+  const unmatched = words.filter((w) => !normText.includes(w));
+  if (matched.length === 0) return false;
+  if (unmatched.length === 0) return true;
+  return matched.length >= Math.min(words.length, Math.max(1, words.length - 1));
+}
+
+function catalogMatchScore(normText: string, entry: CylinderTypeCatalogEntry): number {
+  if (!textContainsSize(normText, entry.size)) return 0;
+
+  const gasNorm = normalizeText(entry.gas_type);
+  if (gasNorm.length > 0 && normText.includes(gasNorm)) {
+    return 200 + gasNorm.length;
   }
-  if (n.includes("propan") && (n.includes("10,5") || n.includes("10.5") || n.includes("10 5"))) {
-    return "flaga_propan_10_5kg";
+
+  const words = gasTokens(entry.gas_type).filter((w) => w.length > 2);
+  if (words.length === 0) return 0;
+
+  const matched = words.filter((w) => normText.includes(w));
+  const unmatched = words.filter((w) => !normText.includes(w));
+  if (matched.length === 0) return 0;
+
+  let score = 40 + matched.length * 15 - unmatched.length * 45;
+  if (unmatched.some((w) => /\d/.test(w))) score -= 60;
+  return score;
+}
+
+function findCatalogEntry(
+  catalog: CylinderTypeCatalogEntry[],
+  gas_type: string,
+  size: string,
+): CylinderTypeCatalogEntry | null {
+  const key = priceKey(gas_type, size);
+  return catalog.find((c) => priceKey(c.gas_type, c.size) === key) ?? null;
+}
+
+/** Excel rövidítések → katalógus-bejegyzés (a katalógus továbbra is DB-ből jön). */
+function resolvePbLabelHints(
+  normText: string,
+  catalog: CylinderTypeCatalogEntry[],
+): CylinderTypeCatalogEntry | null {
+  if ((normText.includes("kek") || normText.includes("prima")) && normText.includes("motor")) {
+    return (
+      findCatalogEntry(catalog, "Motor", "12,5 kg") ??
+      catalog.find((c) => normalizeText(c.gas_type) === "motor") ??
+      null
+    );
   }
-  if (n.includes("flaga") && n.includes("7,5") && n.includes("kompozit")) {
-    return "flaga_kompozit_7_5kg";
+
+  if (normText.includes("flaga") && normText.includes("motor") && normText.includes("11")) {
+    return findCatalogEntry(catalog, "Motorüzemű Flaga", "11 kg");
   }
-  if (n.includes("7,5") && n.includes("kompozit")) {
-    return "flaga_kompozit_7_5kg";
+
+  if (normText.includes("propan") && (normText.includes("10,5") || normText.includes("10.5"))) {
+    return findCatalogEntry(catalog, "Propán", "10,5 kg");
   }
-  if (n.includes("11,5") && (n.includes("pb") || n.includes("propán-bután") || n.includes("propan-butan"))) {
-    return "pb_11_5kg";
+
+  if (normText.includes("kompozit") && (normText.includes("7,5") || normText.includes("7.5"))) {
+    return findCatalogEntry(catalog, "Kompozit", "7,5 kg");
   }
-  if (n.includes("23") && n.includes("kg") && (n.includes("pb") || n.includes("propán-bután") || n.includes("propan-butan"))) {
-    return "pb_23kg";
+
+  if (
+    (normText.includes("11,5") || normText.includes("11.5")) &&
+    (normText.includes("pb") ||
+      normText.includes("propan-butan") ||
+      normText.includes("propán-bután"))
+  ) {
+    return findCatalogEntry(catalog, "Propán-Bután", "11,5 kg");
   }
-  if ((n.includes("kinai") || n.includes("chinese")) && n.includes("stargon") && n.includes("20")) {
-    return "kinai_stargon_20l";
+
+  if (
+    normText.includes("23") &&
+    normText.includes("kg") &&
+    (normText.includes("pb") ||
+      normText.includes("propan-butan") ||
+      normText.includes("propán-bután"))
+  ) {
+    return findCatalogEntry(catalog, "Propán-Bután", "23 kg");
   }
-  if (n.includes("stargon") && n.includes("20")) {
-    return "kinai_stargon_20l";
+
+  if (normText.includes("pb") || normText.includes("flaga pb") || normText.includes("prima pb")) {
+    const sizeInText = normText.match(/(\d+(?:[.,]\d+)?)\s*kg/);
+    if (sizeInText) {
+      const normSize = normalizeSize(`${sizeInText[1]} kg`);
+      const pbCandidates = catalog.filter(
+        (c) =>
+          normalizeSize(c.size) === normSize &&
+          (normalizeText(c.gas_type).includes("propan") ||
+            normalizeText(c.gas_type) === "motor" ||
+            normalizeText(c.gas_type).includes("kompozit") ||
+            normalizeText(c.gas_type).includes("flaga")),
+      );
+      if (pbCandidates.length === 1) return pbCandidates[0] ?? null;
+      if (normText.includes("motor") || normText.includes("flaga")) {
+        return (
+          pbCandidates.find((c) => normalizeText(c.gas_type).includes("flaga")) ??
+          pbCandidates.find((c) => normalizeText(c.gas_type) === "motor") ??
+          null
+        );
+      }
+    }
   }
 
   return null;
+}
+
+function pickCatalogEntry(
+  candidates: CylinderTypeCatalogEntry[],
+  preferChinese: boolean,
+): CylinderTypeCatalogEntry | null {
+  if (candidates.length === 0) return null;
+  if (preferChinese) {
+    const chinese = candidates.find((c) => c.manufacturer === "chinese");
+    if (chinese) return chinese;
+  }
+  return [...candidates].sort((a, b) => b.gas_type.length - a.gas_type.length)[0] ?? null;
+}
+
+export function resolveBottleType(
+  raw: string,
+  catalog: CylinderTypeCatalogEntry[],
+): CylinderTypeCatalogEntry | null {
+  const { text, preferChinese } = stripImportLabelPrefixes(raw);
+  if (!text) return null;
+
+  const normText = normalizeText(text);
+  const catalogByKey = new Map(catalog.map((c) => [priceKey(c.gas_type, c.size), c]));
+
+  const pbHint = resolvePbLabelHints(normText, catalog);
+  if (pbHint) return pbHint;
+
+  const gasSizeMatch = text.match(/^(.+?)\s+(\d+(?:[.,]\d+)?\s*(?:kg|l))$/i);
+  if (gasSizeMatch) {
+    const direct = catalogByKey.get(priceKey(gasSizeMatch[1].trim(), gasSizeMatch[2].trim()));
+    if (direct) return direct;
+  }
+
+  const sizeGasMatch = text.match(/^(\d+(?:[.,]\d+)?\s*(?:kg|l))\s+(.+)$/i);
+  if (sizeGasMatch) {
+    const direct = catalogByKey.get(priceKey(sizeGasMatch[2].trim(), sizeGasMatch[1].trim()));
+    if (direct) return direct;
+  }
+
+  const scored = catalog
+    .map((entry) => ({ entry, score: catalogMatchScore(normText, entry) }))
+    .filter((row) => row.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  if (scored.length > 0) {
+    const topScore = scored[0]!.score;
+    const topCandidates = scored.filter((row) => row.score >= topScore - 5).map((row) => row.entry);
+    return pickCatalogEntry(topCandidates, preferChinese);
+  }
+
+  const sizeInText = text.match(/(\d+(?:[.,]\d+)?\s*(?:kg|l))/i);
+  if (sizeInText) {
+    const normSize = normalizeSize(sizeInText[1]);
+    const sizeCandidates = catalog.filter((c) => normalizeSize(c.size) === normSize);
+    const gasMatched = sizeCandidates.filter((c) => textMatchesGas(text, c.gas_type));
+    const picked = pickCatalogEntry(gasMatched, preferChinese);
+    if (picked) return picked;
+  }
+
+  return null;
+}
+
+export async function buildCylinderTypeCatalog(): Promise<CylinderTypeCatalogEntry[]> {
+  const { data, error } = await supabase
+    .from("cylinders")
+    .select("gas_type, size, manufacturer")
+    .eq("active", true);
+
+  if (error) {
+    throw new Error(formatSupabaseError(error, "Palacktípus katalógus betöltése"));
+  }
+
+  const { data: priceData, error: priceError } = await supabase
+    .from("product_prices")
+    .select("gas_type, size")
+    .eq("active", true);
+
+  if (priceError) {
+    throw new Error(formatSupabaseError(priceError, "Árlista palacktípusok betöltése"));
+  }
+
+  const map = new Map<string, CylinderTypeCatalogEntry>();
+
+  for (const row of data ?? []) {
+    const key = priceKey(row.gas_type, row.size);
+    if (!map.has(key)) {
+      map.set(key, {
+        gas_type: row.gas_type,
+        size: row.size,
+        manufacturer: row.manufacturer,
+      });
+    }
+  }
+
+  for (const row of priceData ?? []) {
+    const key = priceKey(row.gas_type, row.size);
+    if (!map.has(key)) {
+      map.set(key, {
+        gas_type: row.gas_type,
+        size: row.size,
+        manufacturer: "other",
+      });
+    }
+  }
+
+  return [...map.values()].sort((a, b) => {
+    const byGas = a.gas_type.localeCompare(b.gas_type, "hu");
+    return byGas !== 0 ? byGas : a.size.localeCompare(b.size, "hu");
+  });
 }
 
 function parseExcelDate(value: unknown): string | null {
@@ -286,17 +481,22 @@ function rentalStatusFromExpiry(expiry_date: string | null): RentalStatus {
 function parseWorkbookRows(buffer: ArrayBuffer, fileName: string): {
   rows: ParsedRow[];
   errors: RentalImportRowError[];
+  skippedRows: number;
+  skippedPartners: Set<string>;
 } {
   const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
   const sheetName = workbook.SheetNames[0];
+  const skippedPartners = new Set<string>();
+  let skippedRows = 0;
+
   if (!sheetName) {
-    return { rows: [], errors: [{ row: 0, message: "Az Excel fájl üres" }] };
+    return { rows: [], errors: [{ row: 0, message: "Az Excel fájl üres" }], skippedRows: 0, skippedPartners };
   }
 
   const sheet = workbook.Sheets[sheetName];
   const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
   if (json.length === 0) {
-    return { rows: [], errors: [{ row: 0, message: "Nincs adatsor az Excelben" }] };
+    return { rows: [], errors: [{ row: 0, message: "Nincs adatsor az Excelben" }], skippedRows: 0, skippedPartners };
   }
 
   const headers = Object.keys(json[0] ?? {});
@@ -310,6 +510,8 @@ function parseWorkbookRows(buffer: ArrayBuffer, fileName: string): {
           message: `Nem található partner vagy palack típus oszlop. Fejlécek: ${headers.join(", ")}`,
         },
       ],
+      skippedRows: 0,
+      skippedPartners,
     };
   }
 
@@ -322,6 +524,12 @@ function parseWorkbookRows(buffer: ArrayBuffer, fileName: string): {
     const bottleTypeRaw = String(record[columns.bottle_type] ?? "").trim();
 
     if (!partnerName && !bottleTypeRaw) return;
+
+    if (isExcludedImportPartner(partnerName)) {
+      skippedRows += 1;
+      skippedPartners.add(partnerName);
+      return;
+    }
 
     if (!partnerName) {
       errors.push({ row, message: "Hiányzó partnernév" });
@@ -343,11 +551,11 @@ function parseWorkbookRows(buffer: ArrayBuffer, fileName: string): {
     });
   });
 
-  if (rows.length === 0 && errors.length === 0) {
+  if (rows.length === 0 && errors.length === 0 && skippedRows === 0) {
     errors.push({ row: 0, message: `Nem sikerült feldolgozni a fájlt: ${fileName}` });
   }
 
-  return { rows, errors };
+  return { rows, errors, skippedRows, skippedPartners };
 }
 
 export async function buildPartnerNameIndex(): Promise<Map<string, { id: string; name: string }>> {
@@ -365,20 +573,31 @@ export async function buildPartnerNameIndex(): Promise<Map<string, { id: string;
 export function buildRentalImportPreview(
   parsedRows: ParsedRow[],
   partnerIndex: Map<string, { id: string; name: string }>,
+  catalog: CylinderTypeCatalogEntry[],
   fileName: string,
   parseErrors: RentalImportRowError[],
+  skippedRows = 0,
+  skippedPartners: string[] = [],
 ): RentalImportPreview {
   const errors = [...parseErrors];
   const missingPartners = new Set<string>();
   const grouped = new Map<string, ParsedRow[]>();
 
+  if (catalog.length === 0) {
+    errors.push({
+      row: 0,
+        message:
+        "Nincs ismert palacktípus a cylinders táblában – előbb legyenek rögzített palackok",
+    });
+  }
+
   for (const row of parsedRows) {
-    const bottleKey = mapBottleType(row.bottleTypeRaw);
-    if (!bottleKey) {
+    const spec = resolveBottleType(row.bottleTypeRaw, catalog);
+    if (!spec) {
       errors.push({
         row: row.row,
         partner: row.partnerName,
-        message: `Ismeretlen palack típus: „${row.bottleTypeRaw}”`,
+        message: `Ismeretlen palack típus: „${row.bottleTypeRaw}” (nincs egyező gas_type + size a cylinders / árlista alapján)`,
       });
       continue;
     }
@@ -415,15 +634,16 @@ export function buildRentalImportPreview(
 
     const cylinders: RentalImportCylinderPlan[] = [];
     for (const row of partnerRows) {
-      const bottleKey = mapBottleType(row.bottleTypeRaw);
-      if (!bottleKey) continue;
-      const spec = BOTTLE_SPECS[bottleKey];
+      const spec = resolveBottleType(row.bottleTypeRaw, catalog);
+      if (!spec) continue;
+      const { preferChinese } = stripImportLabelPrefixes(row.bottleTypeRaw);
       cylinders.push({
         row: row.row,
-        bottleType: bottleKey,
         gas_type: spec.gas_type,
         size: spec.size,
+        manufacturer: preferChinese ? "chinese" : spec.manufacturer,
         expiry_date: row.expiry_date ?? expiry_date,
+        rawLabel: row.bottleTypeRaw,
       });
     }
 
@@ -445,14 +665,17 @@ export function buildRentalImportPreview(
 
   return {
     fileName,
-    totalRows: parsedRows.length,
+    totalRows: parsedRows.length + skippedRows,
     validRows: cylinderCount,
+    skippedRows,
     rentalCount: rentals.length,
     cylinderCount,
     partnerCount: rentals.length,
+    catalogSize: catalog.length,
     rentals,
     errors,
     missingPartners: [...missingPartners].sort((a, b) => a.localeCompare(b, "hu")),
+    skippedPartners: [...skippedPartners].sort((a, b) => a.localeCompare(b, "hu")),
   };
 }
 
@@ -460,9 +683,20 @@ export async function parseRentalImportFile(
   buffer: ArrayBuffer,
   fileName: string,
 ): Promise<RentalImportPreview> {
-  const { rows, errors } = parseWorkbookRows(buffer, fileName);
-  const partnerIndex = await buildPartnerNameIndex();
-  return buildRentalImportPreview(rows, partnerIndex, fileName, errors);
+  const { rows, errors, skippedRows, skippedPartners } = parseWorkbookRows(buffer, fileName);
+  const [partnerIndex, catalog] = await Promise.all([
+    buildPartnerNameIndex(),
+    buildCylinderTypeCatalog(),
+  ]);
+  return buildRentalImportPreview(
+    rows,
+    partnerIndex,
+    catalog,
+    fileName,
+    errors,
+    skippedRows,
+    [...skippedPartners],
+  );
 }
 
 export async function executeRentalImport(preview: RentalImportPreview): Promise<RentalImportResult> {
@@ -516,7 +750,6 @@ export async function executeRentalImport(preview: RentalImportPreview): Promise
 
       for (const cyl of plan.cylinders) {
         const barcode = await newTempBarcode();
-        const spec = BOTTLE_SPECS[cyl.bottleType];
 
         const { data: cylinder, error: cylErr } = await supabase
           .from("cylinders")
@@ -532,7 +765,7 @@ export async function executeRentalImport(preview: RentalImportPreview): Promise
             location_partner_id: plan.partner_id,
             rental_id: rental.id,
             is_temporary: true,
-            manufacturer: spec.manufacturer,
+            manufacturer: cyl.manufacturer,
             replacement_value: 0,
             active: true,
             note: "Bérleti migráció import",

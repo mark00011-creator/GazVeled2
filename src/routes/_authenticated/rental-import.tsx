@@ -103,7 +103,9 @@ function RentalImportPage() {
         </h2>
         <p className="mb-3 text-sm text-muted-foreground">
           Elvárt oszlopok: <strong>Partner</strong>, <strong>Palack típus</strong> (opcionális:
-          kezdet, lejárat, vége, kaució). Partnernév egyezés a <code>partners.name</code> mezővel.
+          kezdet, lejárat, vége, kaució). A palacktípus a meglévő{" "}
+          <code>cylinders</code> tábla (és szükség esetén az árlista) alapján kerül felismerésre.
+          LINDE/MESSER előtag figyelmen kívül hagyva. Dreska András automatikusan kihagyva.
         </p>
         <input
           ref={fileRef}
@@ -148,9 +150,16 @@ function RentalImportPage() {
           </div>
 
           <p className="mb-3 text-sm text-muted-foreground">
-            Összes sor: {preview.totalRows} · Importálható palack: {preview.validRows} · Hibák:{" "}
-            {preview.errors.length}
+            Összes sor: {preview.totalRows} · Importálható palack: {preview.validRows}
+            {preview.skippedRows > 0 && ` · Kihagyva: ${preview.skippedRows}`} · Ismert típusok:{" "}
+            {preview.catalogSize} · Hibák: {preview.errors.length}
           </p>
+
+          {preview.skippedPartners.length > 0 && (
+            <p className="mb-3 text-sm text-muted-foreground">
+              Kihagyott partnerek: {preview.skippedPartners.join(", ")}
+            </p>
+          )}
 
           {preview.rentals.length > 0 && (
             <div className="mb-4 max-h-64 overflow-y-auto rounded-lg border">
