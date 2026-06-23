@@ -19,6 +19,15 @@ export const Route = createFileRoute("/_authenticated/more")({
   component: More,
 });
 
+const adminItems = [
+  {
+    to: "/rental-import",
+    icon: FileSpreadsheet,
+    label: "Bérlet import",
+    desc: "Excel bérlések migrálása (egyszeri admin)",
+  },
+] as const;
+
 const items = [
   {
     to: "/gas-order",
@@ -63,12 +72,6 @@ const items = [
     label: "Leltár",
     desc: "Meglévő palackállomány feltöltése",
   },
-  {
-    to: "/rental-import",
-    icon: FileSpreadsheet,
-    label: "Bérlet import",
-    desc: "Excel bérlések migrálása (egyszeri)",
-  },
   { to: "/suppliers", icon: Truck, label: "Beszállítói cserék", desc: "SIAD / Saját szolgáltató" },
   {
     to: "/rental-return",
@@ -80,27 +83,68 @@ const items = [
   { to: "/audit", icon: ScrollText, label: "Audit napló", desc: "Műveleti előzmények" },
 ] as const;
 
+function MoreLink({
+  to,
+  icon: Icon,
+  label,
+  desc,
+  highlight,
+}: {
+  to: string;
+  icon: typeof Package;
+  label: string;
+  desc: string;
+  highlight?: boolean;
+}) {
+  return (
+    <Link to={to as never}>
+      <Card
+        className={`flex items-center gap-3 p-3 transition-colors hover:bg-accent/50 ${
+          highlight ? "border-amber-500/40 bg-amber-500/5" : ""
+        }`}
+      >
+        <div
+          className={`rounded-md p-2 ${
+            highlight ? "bg-amber-500/15 text-amber-700 dark:text-amber-400" : "bg-primary/15 text-primary"
+          }`}
+        >
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="flex-1">
+          <div className="text-sm font-semibold">{label}</div>
+          <div className="text-xs text-muted-foreground">{desc}</div>
+        </div>
+        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+      </Card>
+    </Link>
+  );
+}
+
 function More() {
   return (
     <AppShell title="Több">
-      <div className="space-y-2">
-        {items.map((it) => {
-          const Icon = it.icon;
-          return (
-            <Link key={it.to} to={it.to as never}>
-              <Card className="flex items-center gap-3 p-3 transition-colors hover:bg-accent/50">
-                <div className="rounded-md bg-primary/15 p-2 text-primary">
-                  <Icon className="h-5 w-5" />
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm font-semibold">{it.label}</div>
-                  <div className="text-xs text-muted-foreground">{it.desc}</div>
-                </div>
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              </Card>
-            </Link>
-          );
-        })}
+      <div className="space-y-4">
+        <section>
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Admin / migráció
+          </h2>
+          <div className="space-y-2">
+            {adminItems.map((it) => (
+              <MoreLink key={it.to} {...it} highlight />
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Műveletek
+          </h2>
+          <div className="space-y-2">
+            {items.map((it) => (
+              <MoreLink key={it.to} {...it} />
+            ))}
+          </div>
+        </section>
       </div>
     </AppShell>
   );
