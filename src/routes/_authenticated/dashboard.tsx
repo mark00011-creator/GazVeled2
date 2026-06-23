@@ -43,13 +43,9 @@ import {
   fetchWarehouseInventoryValue,
   formatProfit,
 } from "@/lib/dashboard-stats";
-import { fetchChineseStock, chineseStockLabel } from "@/lib/chinese-stock";
-import {
-  fetchFlagaPbStock,
-  flagaPbStockLabel,
-  sumFlagaPbCounts,
-} from "@/lib/flaga-pb-stock";
-import { fetchPrimaPbStock, primaPbStockLabel, sumPrimaPbCounts } from "@/lib/prima-pb-stock";
+import { fetchChineseStock } from "@/lib/chinese-stock";
+import { fetchFlagaPbStock, sumFlagaPbCounts } from "@/lib/flaga-pb-stock";
+import { fetchPrimaPbStock, sumPrimaPbCounts } from "@/lib/prima-pb-stock";
 import { fetchActiveDeployedQuantitySummary } from "@/lib/rental-quantity-stock";
 import { UninvoicedExchangesCard } from "@/components/UninvoicedExchangesCard";
 
@@ -256,9 +252,6 @@ function Dashboard() {
         profitStats,
         warehouseValue,
         topProducts,
-        chineseStock: chineseStock.filter((r) => r.full_count > 0 || r.empty_count > 0),
-        flagaPbStock: flagaPbStock.filter((r) => r.full_count > 0 || r.empty_count > 0),
-        primaPbStock: primaPbStock.filter((r) => r.full_count > 0 || r.empty_count > 0),
         chineseTotals,
         flagaPbTotals,
         primaPbTotals,
@@ -428,89 +421,6 @@ function Dashboard() {
       </div>
 
       <UninvoicedExchangesCard />
-
-      {(stats?.chineseStock?.length ?? 0) > 0 && (
-        <Card className="mb-4 p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <Boxes className="h-4 w-4 text-primary" />
-            <div className="text-sm font-semibold">Kínai palack készlet</div>
-          </div>
-          <ul className="space-y-2 text-sm">
-            {stats!.chineseStock.map((row) => (
-              <li key={row.id} className="flex justify-between gap-3">
-                <span>{chineseStockLabel(row.gas_type, row.size)}</span>
-                <span className="shrink-0 text-muted-foreground">
-                  Teli: <strong className="text-foreground">{row.full_count}</strong>
-                  {" · "}
-                  Üres: <strong className="text-foreground">{row.empty_count}</strong>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
-
-      <Card className="mb-4 p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <Boxes className="h-4 w-4 text-primary" />
-          <div className="text-sm font-semibold">FLAGA PB készlet</div>
-        </div>
-        <div className="mb-3 flex justify-between text-sm font-medium">
-          <span>Összesen</span>
-          <span>
-            Teli: <strong>{stats?.flagaPbTotals?.full ?? 0}</strong>
-            {" · "}
-            Üres: <strong>{stats?.flagaPbTotals?.empty ?? 0}</strong>
-          </span>
-        </div>
-        {(stats?.flagaPbStock?.length ?? 0) > 0 ? (
-          <ul className="space-y-2 text-sm">
-            {stats!.flagaPbStock.map((row) => (
-              <li key={row.id} className="flex justify-between gap-3">
-                <span>{flagaPbStockLabel(row.gas_type, row.size)}</span>
-                <span className="shrink-0 text-muted-foreground">
-                  Teli: <strong className="text-foreground">{row.full_count}</strong>
-                  {" · "}
-                  Üres: <strong className="text-foreground">{row.empty_count}</strong>
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="text-xs text-muted-foreground">Nincs készleten lévő tétel</div>
-        )}
-      </Card>
-
-      <Card className="mb-4 p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <Boxes className="h-4 w-4 text-primary" />
-          <div className="text-sm font-semibold">PRÍMA PB készlet</div>
-        </div>
-        <div className="mb-3 flex justify-between text-sm font-medium">
-          <span>Összesen</span>
-          <span>
-            Teli: <strong>{stats?.primaPbTotals?.full ?? 0}</strong>
-            {" · "}
-            Üres: <strong>{stats?.primaPbTotals?.empty ?? 0}</strong>
-          </span>
-        </div>
-        {(stats?.primaPbStock?.length ?? 0) > 0 ? (
-          <ul className="space-y-2 text-sm">
-            {stats!.primaPbStock.map((row) => (
-              <li key={row.id} className="flex justify-between gap-3">
-                <span>{primaPbStockLabel(row.gas_type, row.size)}</span>
-                <span className="shrink-0 text-muted-foreground">
-                  Teli: <strong className="text-foreground">{row.full_count}</strong>
-                  {" · "}
-                  Üres: <strong className="text-foreground">{row.empty_count}</strong>
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="text-xs text-muted-foreground">Nincs készleten lévő tétel</div>
-        )}
-      </Card>
 
       {(stats?.topProducts?.length ?? 0) > 0 && (
         <Card className="mb-4 p-4">

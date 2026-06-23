@@ -63,6 +63,12 @@ const items = [
     label: "Leltár",
     desc: "Meglévő palackállomány feltöltése",
   },
+  {
+    to: "/rental-import",
+    icon: FileSpreadsheet,
+    label: "Bérlet import",
+    desc: "Excel bérlések migrálása (egyszeri)",
+  },
   { to: "/suppliers", icon: Truck, label: "Beszállítói cserék", desc: "SIAD / Saját szolgáltató" },
   {
     to: "/rental-return",

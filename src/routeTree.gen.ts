@@ -15,6 +15,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedSuppliersRouteImport } from './routes/_authenticated/suppliers'
 import { Route as AuthenticatedRentalsRouteImport } from './routes/_authenticated/rentals'
 import { Route as AuthenticatedRentalReturnRouteImport } from './routes/_authenticated/rental-return'
+import { Route as AuthenticatedRentalImportRouteImport } from './routes/_authenticated/rental-import'
 import { Route as AuthenticatedQuotesRouteImport } from './routes/_authenticated/quotes'
 import { Route as AuthenticatedQuickExchangeRouteImport } from './routes/_authenticated/quick-exchange'
 import { Route as AuthenticatedPrimaPbStockRouteImport } from './routes/_authenticated/prima-pb-stock'
@@ -64,6 +65,12 @@ const AuthenticatedRentalReturnRoute =
   AuthenticatedRentalReturnRouteImport.update({
     id: '/rental-return',
     path: '/rental-return',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRentalImportRoute =
+  AuthenticatedRentalImportRouteImport.update({
+    id: '/rental-import',
+    path: '/rental-import',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedQuotesRoute = AuthenticatedQuotesRouteImport.update({
@@ -193,6 +200,7 @@ export interface FileRoutesByFullPath {
   '/prima-pb-stock': typeof AuthenticatedPrimaPbStockRoute
   '/quick-exchange': typeof AuthenticatedQuickExchangeRoute
   '/quotes': typeof AuthenticatedQuotesRoute
+  '/rental-import': typeof AuthenticatedRentalImportRoute
   '/rental-return': typeof AuthenticatedRentalReturnRoute
   '/rentals': typeof AuthenticatedRentalsRouteWithChildren
   '/suppliers': typeof AuthenticatedSuppliersRoute
@@ -219,6 +227,7 @@ export interface FileRoutesByTo {
   '/prima-pb-stock': typeof AuthenticatedPrimaPbStockRoute
   '/quick-exchange': typeof AuthenticatedQuickExchangeRoute
   '/quotes': typeof AuthenticatedQuotesRoute
+  '/rental-import': typeof AuthenticatedRentalImportRoute
   '/rental-return': typeof AuthenticatedRentalReturnRoute
   '/suppliers': typeof AuthenticatedSuppliersRoute
   '/cylinders/$id': typeof AuthenticatedCylindersIdRoute
@@ -247,6 +256,7 @@ export interface FileRoutesById {
   '/_authenticated/prima-pb-stock': typeof AuthenticatedPrimaPbStockRoute
   '/_authenticated/quick-exchange': typeof AuthenticatedQuickExchangeRoute
   '/_authenticated/quotes': typeof AuthenticatedQuotesRoute
+  '/_authenticated/rental-import': typeof AuthenticatedRentalImportRoute
   '/_authenticated/rental-return': typeof AuthenticatedRentalReturnRoute
   '/_authenticated/rentals': typeof AuthenticatedRentalsRouteWithChildren
   '/_authenticated/suppliers': typeof AuthenticatedSuppliersRoute
@@ -276,6 +286,7 @@ export interface FileRouteTypes {
     | '/prima-pb-stock'
     | '/quick-exchange'
     | '/quotes'
+    | '/rental-import'
     | '/rental-return'
     | '/rentals'
     | '/suppliers'
@@ -302,6 +313,7 @@ export interface FileRouteTypes {
     | '/prima-pb-stock'
     | '/quick-exchange'
     | '/quotes'
+    | '/rental-import'
     | '/rental-return'
     | '/suppliers'
     | '/cylinders/$id'
@@ -329,6 +341,7 @@ export interface FileRouteTypes {
     | '/_authenticated/prima-pb-stock'
     | '/_authenticated/quick-exchange'
     | '/_authenticated/quotes'
+    | '/_authenticated/rental-import'
     | '/_authenticated/rental-return'
     | '/_authenticated/rentals'
     | '/_authenticated/suppliers'
@@ -388,6 +401,13 @@ declare module '@tanstack/react-router' {
       path: '/rental-return'
       fullPath: '/rental-return'
       preLoaderRoute: typeof AuthenticatedRentalReturnRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/rental-import': {
+      id: '/_authenticated/rental-import'
+      path: '/rental-import'
+      fullPath: '/rental-import'
+      preLoaderRoute: typeof AuthenticatedRentalImportRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/quotes': {
@@ -604,6 +624,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPrimaPbStockRoute: typeof AuthenticatedPrimaPbStockRoute
   AuthenticatedQuickExchangeRoute: typeof AuthenticatedQuickExchangeRoute
   AuthenticatedQuotesRoute: typeof AuthenticatedQuotesRoute
+  AuthenticatedRentalImportRoute: typeof AuthenticatedRentalImportRoute
   AuthenticatedRentalReturnRoute: typeof AuthenticatedRentalReturnRoute
   AuthenticatedRentalsRoute: typeof AuthenticatedRentalsRouteWithChildren
   AuthenticatedSuppliersRoute: typeof AuthenticatedSuppliersRoute
@@ -624,6 +645,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPrimaPbStockRoute: AuthenticatedPrimaPbStockRoute,
   AuthenticatedQuickExchangeRoute: AuthenticatedQuickExchangeRoute,
   AuthenticatedQuotesRoute: AuthenticatedQuotesRoute,
+  AuthenticatedRentalImportRoute: AuthenticatedRentalImportRoute,
   AuthenticatedRentalReturnRoute: AuthenticatedRentalReturnRoute,
   AuthenticatedRentalsRoute: AuthenticatedRentalsRouteWithChildren,
   AuthenticatedSuppliersRoute: AuthenticatedSuppliersRoute,
