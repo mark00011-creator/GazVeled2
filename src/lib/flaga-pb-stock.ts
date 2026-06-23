@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { formatSupabaseError } from "@/lib/supabase-error";
+import { isSchemaMissingError } from "@/lib/supabase-schema";
 
 export const FLAGA_PB_CATALOG = [
   { gas_type: "Motorüzemű Flaga", size: "11 kg" },
@@ -51,7 +52,10 @@ export async function fetchFlagaPbStock(): Promise<FlagaPbStockRow[]> {
     .select("*")
     .order("gas_type")
     .order("size");
-  if (error) throw new Error(formatSupabaseError(error, "FLAGA PB készlet betöltése"));
+  if (error) {
+    if (isSchemaMissingError(error)) return [];
+    throw new Error(formatSupabaseError(error, "FLAGA PB készlet betöltése"));
+  }
   return (data ?? []) as FlagaPbStockRow[];
 }
 

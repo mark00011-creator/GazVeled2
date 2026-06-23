@@ -3,6 +3,7 @@ import { adjustChineseStock } from "@/lib/chinese-stock";
 import { adjustFlagaPbStock } from "@/lib/flaga-pb-stock";
 import { adjustPrimaPbStock } from "@/lib/prima-pb-stock";
 import { formatSupabaseError } from "@/lib/supabase-error";
+import { isSchemaMissingError } from "@/lib/supabase-schema";
 import type { RentalContractStockItem, RentalQuantityStockKindLegacy } from "@/lib/rental-contract-labels";
 
 export type RentalQuantityStockKind = "chinese" | "flaga_pb" | "prima_pb";
@@ -38,7 +39,10 @@ export async function fetchRentalQuantityItems(rentalId: string): Promise<Rental
     .eq("rental_id", rentalId)
     .is("removed_at", null)
     .order("added_at", { ascending: true });
-  if (error) throw new Error(formatSupabaseError(error, "Bérleti darabszám tételek"));
+  if (error) {
+    if (isSchemaMissingError(error)) return [];
+    throw new Error(formatSupabaseError(error, "Bérleti darabszám tételek"));
+  }
   return (data ?? []) as RentalQuantityItem[];
 }
 
@@ -63,7 +67,10 @@ export async function fetchActiveDeployedQuantitySummary(): Promise<
     .select("stock_kind, quantity")
     .in("rental_id", ids)
     .is("removed_at", null);
-  if (error) throw new Error(formatSupabaseError(error, "Kihelyezett darabszám"));
+  if (error) {
+    if (isSchemaMissingError(error)) return empty;
+    throw new Error(formatSupabaseError(error, "Kihelyezett darabszám"));
+  }
   for (const row of data ?? []) {
     const kind = row.stock_kind as RentalQuantityStockKindLegacy;
     if (kind in empty) empty[kind as RentalQuantityStockKind] += Number(row.quantity);

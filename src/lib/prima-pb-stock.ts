@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { formatSupabaseError } from "@/lib/supabase-error";
+import { isSchemaMissingError } from "@/lib/supabase-schema";
 import { PB_MOVEMENT_LABELS, type PbMovementType } from "@/lib/flaga-pb-stock";
 
 export const PRIMA_PB_CATALOG = [{ gas_type: "Motor", size: "12,5 kg" }] as const;
@@ -38,7 +39,10 @@ export async function fetchPrimaPbStock(): Promise<PrimaPbStockRow[]> {
     .select("*")
     .order("gas_type")
     .order("size");
-  if (error) throw new Error(formatSupabaseError(error, "PRÍMA PB készlet betöltése"));
+  if (error) {
+    if (isSchemaMissingError(error)) return [];
+    throw new Error(formatSupabaseError(error, "PRÍMA PB készlet betöltése"));
+  }
   return (data ?? []) as PrimaPbStockRow[];
 }
 

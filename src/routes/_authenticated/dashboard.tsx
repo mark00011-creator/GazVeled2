@@ -300,24 +300,11 @@ function Dashboard() {
         <RefreshCw className="h-8 w-8" />
       </Link>
 
-      <h2 className="mb-2 text-sm font-semibold">Telephelyi készlet</h2>
-      <div className="mb-4 grid grid-cols-2 gap-3">
+      <h2 className="mb-2 text-sm font-semibold">Készlet áttekintés</h2>
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Card className="p-4">
-          <div className="text-xs text-muted-foreground">Sorszámos palackok</div>
-          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-            <div>
-              <div className="text-lg font-bold">{stats?.warehouseFullSerial ?? "—"}</div>
-              <div className="text-xs text-muted-foreground">Teli</div>
-            </div>
-            <div>
-              <div className="text-lg font-bold">{stats?.warehouseEmptySerial ?? "—"}</div>
-              <div className="text-xs text-muted-foreground">Üres</div>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs text-muted-foreground">Kínai készlet</div>
-          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+          <div className="mb-3 text-sm font-semibold">Chinese</div>
+          <div className="grid grid-cols-3 gap-2 text-center text-sm">
             <div>
               <div className="text-lg font-bold">{stats?.chineseTotals?.full ?? "—"}</div>
               <div className="text-xs text-muted-foreground">Teli</div>
@@ -326,11 +313,15 @@ function Dashboard() {
               <div className="text-lg font-bold">{stats?.chineseTotals?.empty ?? "—"}</div>
               <div className="text-xs text-muted-foreground">Üres</div>
             </div>
+            <div>
+              <div className="text-lg font-bold">{stats?.deployedQty?.chinese ?? "—"}</div>
+              <div className="text-xs text-muted-foreground">Bérletben</div>
+            </div>
           </div>
         </Card>
         <Card className="p-4">
-          <div className="text-xs text-muted-foreground">FLAGA PB készlet</div>
-          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+          <div className="mb-3 text-sm font-semibold">FLAGA PB</div>
+          <div className="grid grid-cols-3 gap-2 text-center text-sm">
             <div>
               <div className="text-lg font-bold">{stats?.flagaPbTotals?.full ?? "—"}</div>
               <div className="text-xs text-muted-foreground">Teli</div>
@@ -339,11 +330,15 @@ function Dashboard() {
               <div className="text-lg font-bold">{stats?.flagaPbTotals?.empty ?? "—"}</div>
               <div className="text-xs text-muted-foreground">Üres</div>
             </div>
+            <div>
+              <div className="text-lg font-bold">{stats?.deployedQty?.flaga_pb ?? "—"}</div>
+              <div className="text-xs text-muted-foreground">Bérletben</div>
+            </div>
           </div>
         </Card>
         <Card className="p-4">
-          <div className="text-xs text-muted-foreground">PRÍMA PB készlet</div>
-          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+          <div className="mb-3 text-sm font-semibold">PRÍMA PB</div>
+          <div className="grid grid-cols-3 gap-2 text-center text-sm">
             <div>
               <div className="text-lg font-bold">{stats?.primaPbTotals?.full ?? "—"}</div>
               <div className="text-xs text-muted-foreground">Teli</div>
@@ -352,27 +347,26 @@ function Dashboard() {
               <div className="text-lg font-bold">{stats?.primaPbTotals?.empty ?? "—"}</div>
               <div className="text-xs text-muted-foreground">Üres</div>
             </div>
+            <div>
+              <div className="text-lg font-bold">{stats?.deployedQty?.prima_pb ?? "—"}</div>
+              <div className="text-xs text-muted-foreground">Bérletben</div>
+            </div>
           </div>
         </Card>
       </div>
 
-      <h2 className="mb-2 text-sm font-semibold">Kihelyezett készlet (aktív bérletek)</h2>
       <div className="mb-4 grid grid-cols-2 gap-3">
         <Card className="p-4">
-          <div className="text-xs text-muted-foreground">Sorszámos palackok</div>
+          <div className="text-xs text-muted-foreground">Sorszámos – telephelyen (teli)</div>
+          <div className="mt-1 text-2xl font-bold">{stats?.warehouseFullSerial ?? "—"}</div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs text-muted-foreground">Sorszámos – telephelyen (üres)</div>
+          <div className="mt-1 text-2xl font-bold">{stats?.warehouseEmptySerial ?? "—"}</div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs text-muted-foreground">Sorszámos – bérletben</div>
           <div className="mt-1 text-2xl font-bold">{stats?.rentedCylinders ?? "—"}</div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs text-muted-foreground">Kínai</div>
-          <div className="mt-1 text-2xl font-bold">{stats?.deployedQty?.chinese ?? "—"}</div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs text-muted-foreground">FLAGA PB</div>
-          <div className="mt-1 text-2xl font-bold">{stats?.deployedQty?.flaga_pb ?? "—"}</div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs text-muted-foreground">PRÍMA PB</div>
-          <div className="mt-1 text-2xl font-bold">{stats?.deployedQty?.prima_pb ?? "—"}</div>
         </Card>
       </div>
 

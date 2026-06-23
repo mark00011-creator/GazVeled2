@@ -26,6 +26,12 @@ const items = [
     label: "Gáz rendelés",
     desc: "Üres telephelyi palackok rendelése",
   },
+  {
+    to: "/gas-order-flaga",
+    icon: Package,
+    label: "Gáz rendelés FLAGA",
+    desc: "FLAGA PB üres palackok rendelése",
+  },
   { to: "/price-list", icon: Tags, label: "Árlista", desc: "Beszerzési ár, árrés, eladási ár" },
   {
     to: "/chinese-stock",

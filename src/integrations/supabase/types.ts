@@ -609,12 +609,54 @@ export type Database = {
           },
         ]
       }
+      gas_order_quantity_items: {
+        Row: {
+          beszerzesi_ar: number | null
+          created_at: string
+          gas_order_id: string
+          gas_type: string
+          id: string
+          quantity: number
+          size: string
+          stock_kind: string
+        }
+        Insert: {
+          beszerzesi_ar?: number | null
+          created_at?: string
+          gas_order_id: string
+          gas_type: string
+          id?: string
+          quantity: number
+          size: string
+          stock_kind: string
+        }
+        Update: {
+          beszerzesi_ar?: number | null
+          created_at?: string
+          gas_order_id?: string
+          gas_type?: string
+          id?: string
+          quantity?: number
+          size?: string
+          stock_kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gas_order_quantity_items_gas_order_id_fkey"
+            columns: ["gas_order_id"]
+            isOneToOne: false
+            referencedRelation: "gas_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       gas_orders: {
         Row: {
           created_at: string
           created_by: string | null
           id: string
           note: string | null
+          order_kind: string
           status: Database["public"]["Enums"]["gas_order_status"]
           updated_at: string
         }
@@ -623,6 +665,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           note?: string | null
+          order_kind?: string
           status?: Database["public"]["Enums"]["gas_order_status"]
           updated_at?: string
         }
@@ -631,6 +674,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           note?: string | null
+          order_kind?: string
           status?: Database["public"]["Enums"]["gas_order_status"]
           updated_at?: string
         }
