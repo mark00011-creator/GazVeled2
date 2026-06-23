@@ -1,5 +1,9 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { buildGasOrderText, type GasOrderGroup } from "@/lib/gas-order";
+import {
+  buildSupplier1GasOrderText,
+  type GasOrderGroup,
+  type Supplier1QuantityLine,
+} from "@/lib/gas-order";
 
 function pdfSafe(text: string): string {
   return text
@@ -31,7 +35,10 @@ function wrapLines(text: string, maxLen: number): string[] {
   return lines;
 }
 
-export async function generateGasOrderPdf(group: GasOrderGroup): Promise<Uint8Array> {
+export async function generateSupplier1GasOrderPdf(
+  group: GasOrderGroup,
+  quantityLines: Supplier1QuantityLine[] = [],
+): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -58,17 +65,19 @@ export async function generateGasOrderPdf(group: GasOrderGroup): Promise<Uint8Ar
     y -= lineH;
   };
 
-  const body = buildGasOrderText(group);
+  const body = buildSupplier1GasOrderText(group, quantityLines);
   for (const line of wrapLines(body, 85)) {
     const safe = pdfSafe(line);
-    const bold =
-      safe.startsWith("SIAD palackok:") ||
-      safe.startsWith("Sajat palackok:") ||
-      safe.startsWith("Kedves");
+    const bold = safe.startsWith("Kedves");
     drawLine(line, 11, bold);
   }
 
   return doc.save();
+}
+
+/** @deprecated Use generateSupplier1GasOrderPdf */
+export async function generateGasOrderPdf(group: GasOrderGroup): Promise<Uint8Array> {
+  return generateSupplier1GasOrderPdf(group, []);
 }
 
 export function downloadPdf(bytes: Uint8Array, filename: string) {

@@ -13,30 +13,36 @@ import {
 import { Copy, FileDown, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
 import {
-  buildGasOrderText,
+  buildSupplier1GasOrderText,
   fetchOrderableCylinders,
   summarizeGasOrder,
   type OrderableCylinder,
 } from "@/lib/gas-order";
 import { estimateGasOrderCost, formatHuf } from "@/lib/gas-order-prices";
 import { buildPurchasePriceMap, fetchProductPrices } from "@/lib/product-prices";
-import { downloadPdf, generateGasOrderPdf } from "@/lib/gas-order-pdf";
+import { downloadPdf, generateSupplier1GasOrderPdf } from "@/lib/gas-order-pdf";
 import {
   fetchOrderableChineseLines,
   fetchOrderablePrimaPbLines,
+  summarizeQuantityLines,
 } from "@/lib/gas-order-quantity";
-import { GasQuantityOrderPanel } from "@/components/GasQuantityOrderPanel";
 import {
-  createGasOrderFromGroup,
+  GasQuantityLineSelector,
+  initQuantitySelection,
+  toSelectedQuantityLines,
+  type QuantitySelectionState,
+} from "@/components/GasQuantityLineSelector";
+import {
+  createSupplier1GasOrder,
   deleteGasOrder,
-  fetchGasOrders,
+  fetchSupplier1GasOrders,
   gasOrderStatusLabels,
   updateGasOrderStatus,
   type GasOrderRow,
   type GasOrderStatus,
 } from "@/lib/gas-orders";
 import { fmtDate } from "@/lib/labels";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export const Route = createFileRoute("/_authenticated/gas-order")({
   head: () => ({ meta: [{ title: "Gáz rendelés – Gáz Veled" }] }),
@@ -126,6 +132,7 @@ function OrderEstimateCard({
 function GasOrderPage() {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [orderBusy, setOrderBusy] = useState(false);
+  const [qtySelection, setQtySelection] = useState<QuantitySelectionState>({});
   const qc = useQueryClient();
 
   const { data, isLoading, isError } = useQuery({
@@ -145,9 +152,18 @@ function GasOrderPage() {
 
   const quantityLines = useMemo(() => [...chineseLines, ...primaLines], [chineseLines, primaLines]);
 
-  const { data: serialOrders = [], isLoading: serialOrdersLoading } = useQuery({
-    queryKey: ["gas-orders", "serial"],
-    queryFn: () => fetchGasOrders("serial"),
+  useEffect(() => {
+    setQtySelection(initQuantitySelection(quantityLines));
+  }, [quantityLines]);
+
+  const selectedQuantityLines = useMemo(
+    () => toSelectedQuantityLines(quantityLines, qtySelection),
+    [quantityLines, qtySelection],
+  );
+
+  const { data: orders = [], isLoading: ordersLoading } = useQuery({
+    queryKey: ["gas-orders", "supplier-1"],
+    queryFn: fetchSupplier1GasOrders,
   });
 
   const { data: priceRows = [] } = useQuery({
@@ -159,14 +175,21 @@ function GasOrderPage() {
 
   const group = data ?? { siad: [], own: [] };
   const summary = summarizeGasOrder(group);
-  const total = group.siad.length + group.own.length;
+  const serialTotal = group.siad.length + group.own.length;
+  const quantitySummary = summarizeQuantityLines(selectedQuantityLines);
+  const quantityTotal = selectedQuantityLines.reduce((s, l) => s + l.quantity, 0);
+  const orderTotal = serialTotal + quantityTotal;
+  const hasOrderable = serialTotal > 0 || quantityLines.length > 0;
 
-  async function handleCreateSerialOrder() {
-    if (total === 0) return;
+  async function handleCreateOrder() {
+    if (orderTotal === 0) {
+      toast.error("Válassz legalább egy tételt");
+      return;
+    }
     setOrderBusy(true);
     try {
-      await createGasOrderFromGroup(group);
-      await qc.invalidateQueries({ queryKey: ["gas-orders", "serial"] });
+      await createSupplier1GasOrder(group, selectedQuantityLines);
+      await qc.invalidateQueries({ queryKey: ["gas-orders", "supplier-1"] });
       toast.success("Rendelés létrehozva (Tervezet)");
     } catch (e) {
       toast.error((e as Error).message);
@@ -178,7 +201,7 @@ function GasOrderPage() {
   async function handleStatusChange(orderId: string, status: GasOrderStatus) {
     try {
       await updateGasOrderStatus(orderId, status);
-      await qc.invalidateQueries({ queryKey: ["gas-orders", "serial"] });
+      await qc.invalidateQueries({ queryKey: ["gas-orders", "supplier-1"] });
       toast.success("Státusz frissítve");
     } catch (e) {
       toast.error((e as Error).message);
@@ -189,7 +212,7 @@ function GasOrderPage() {
     if (!confirm(`Törlöd a rendelést (${order.item_count ?? 0} tétel)?`)) return;
     try {
       await deleteGasOrder(order.id);
-      await qc.invalidateQueries({ queryKey: ["gas-orders", "serial"] });
+      await qc.invalidateQueries({ queryKey: ["gas-orders", "supplier-1"] });
       toast.success("Rendelés törölve");
     } catch (e) {
       toast.error((e as Error).message);
@@ -199,7 +222,7 @@ function GasOrderPage() {
   async function handlePdf() {
     setPdfBusy(true);
     try {
-      const bytes = await generateGasOrderPdf(group);
+      const bytes = await generateSupplier1GasOrderPdf(group, selectedQuantityLines);
       const date = new Date().toISOString().slice(0, 10);
       downloadPdf(bytes, `gaz-rendeles-${date}.pdf`);
       toast.success("PDF letöltve");
@@ -212,7 +235,7 @@ function GasOrderPage() {
 
   async function handleCopy() {
     try {
-      const text = buildGasOrderText(group);
+      const text = buildSupplier1GasOrderText(group, selectedQuantityLines);
       await navigator.clipboard.writeText(text);
       toast.success("Szöveg a vágólapra másolva");
     } catch {
@@ -223,7 +246,8 @@ function GasOrderPage() {
   return (
     <AppShell title="Gáz rendelés">
       <p className="mb-4 text-sm text-muted-foreground">
-        Sorszámos üres palackok (SIAD / saját), kínai és PRÍMA PB üres készlet rendelése.
+        Beszállító 1: sorszámos üres palackok (SIAD / saját), kínai és PRÍMA PB üres készlet – egy
+        rendelésben.
       </p>
 
       {isLoading && <div className="py-8 text-center text-sm text-muted-foreground">Betöltés…</div>}
@@ -235,54 +259,82 @@ function GasOrderPage() {
         <>
           <Card className="mb-4 p-4">
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Sorszámos palackok – összesítés
+              Rendelés összesítés
             </h2>
-            <SummaryBlock title="SIAD" lines={summary.siad} />
-            <SummaryBlock title="Saját" lines={summary.own} />
-            {total === 0 && quantityLines.length === 0 && (
+            <SummaryBlock title="Sorszámos – SIAD" lines={summary.siad} />
+            <SummaryBlock title="Sorszámos – Saját" lines={summary.own} />
+            {quantitySummary.length > 0 && (
+              <div className="mb-3">
+                <div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
+                  Darabszámos (Chinese / PRÍMA PB)
+                </div>
+                <ul className="space-y-0.5 text-sm">
+                  {quantitySummary.map((l) => (
+                    <li key={l.label}>
+                      {l.label}: <span className="font-medium">{l.count} db</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {!hasOrderable && (
               <div className="text-sm text-muted-foreground">
                 Nincs rendelhető üres palack a telephelyen
               </div>
             )}
+            {orderTotal > 0 && (
+              <div className="mt-3 border-t pt-3 text-sm font-medium">
+                Összesen kijelölve: {orderTotal} db
+              </div>
+            )}
           </Card>
 
+          <h2 className="mb-3 text-sm font-semibold">Sorszámos palackok</h2>
           <div className="mb-6 space-y-3">
             <CylinderList title="SIAD palackok" cylinders={group.siad} />
             <CylinderList title="Saját palackok" cylinders={group.own} />
             <OrderEstimateCard group={group} priceMap={priceMap} />
           </div>
 
+          <h2 className="mb-3 text-sm font-semibold">Darabszámos készlet (Chinese / PRÍMA PB)</h2>
+          <GasQuantityLineSelector
+            title="Rendelhető üres palackok"
+            lines={quantityLines}
+            selection={qtySelection}
+            onSelectionChange={setQtySelection}
+          />
+
           <div className="mb-6 flex flex-col gap-2">
-            <Button size="lg" disabled={orderBusy || total === 0} onClick={handleCreateSerialOrder}>
+            <Button size="lg" disabled={orderBusy || orderTotal === 0} onClick={handleCreateOrder}>
               <ClipboardList className="mr-2 h-5 w-5" />
-              Sorszámos rendelés rögzítése (Tervezet)
+              Rendelés rögzítése (Tervezet)
             </Button>
-            <Button size="lg" disabled={pdfBusy || total === 0} onClick={handlePdf}>
+            <Button size="lg" disabled={pdfBusy || orderTotal === 0} onClick={handlePdf}>
               <FileDown className="mr-2 h-5 w-5" />
-              PDF rendelés (sorszámos)
+              PDF rendelés
             </Button>
-            <Button size="lg" variant="outline" disabled={total === 0} onClick={handleCopy}>
+            <Button size="lg" variant="outline" disabled={orderTotal === 0} onClick={handleCopy}>
               <Copy className="mr-2 h-5 w-5" />
-              Szöveg másolása (sorszámos)
+              Szöveg másolása
             </Button>
           </div>
 
           <Card className="mb-6 p-4">
-            <h2 className="mb-3 text-sm font-semibold">Sorszámos rendelés státuszok</h2>
-            {serialOrdersLoading && (
+            <h2 className="mb-3 text-sm font-semibold">Rendelés státuszok</h2>
+            {ordersLoading && (
               <div className="text-sm text-muted-foreground">Betöltés…</div>
             )}
-            {!serialOrdersLoading && serialOrders.length === 0 && (
+            {!ordersLoading && orders.length === 0 && (
               <div className="text-sm text-muted-foreground">Még nincs rögzített rendelés.</div>
             )}
             <ul className="space-y-2">
-              {serialOrders.map((order) => (
+              {orders.map((order) => (
                 <li key={order.id} className="rounded-lg border p-3 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <div className="font-medium">{fmtDate(order.created_at)}</div>
                       <div className="text-xs text-muted-foreground">
-                        {order.item_count ?? 0} palack
+                        {order.item_count ?? 0} tétel
                       </div>
                     </div>
                     <Select
@@ -315,18 +367,9 @@ function GasOrderPage() {
             </ul>
           </Card>
 
-          <h2 className="mb-3 text-sm font-semibold">Kínai és PRÍMA PB üres készlet</h2>
-          <GasQuantityOrderPanel
-            title="Rendelhető üres palackok (darabszám)"
-            orderKind="chinese_prima"
-            lines={quantityLines}
-            copyTitle="kínai és PRÍMA PB"
-            ordersQueryKey={["gas-orders", "chinese_prima"]}
-          />
-
-          <p className="mt-4 text-center text-sm text-muted-foreground">
+          <p className="text-center text-sm text-muted-foreground">
             <Link to="/gas-order-flaga" className="underline hover:text-foreground">
-              FLAGA PB gáz rendelés →
+              FLAGA PB gáz rendelés (külön beszállító) →
             </Link>
           </p>
         </>

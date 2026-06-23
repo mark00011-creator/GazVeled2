@@ -10,9 +10,11 @@ import { isSchemaMissingError } from "@/lib/supabase-schema";
 export type GasOrderStatus = Database["public"]["Enums"]["gas_order_status"];
 export type GasOrderKind = "serial" | "chinese_prima" | "flaga_pb";
 
+export const SUPPLIER1_ORDER_KINDS: GasOrderKind[] = ["serial", "chinese_prima"];
+
 export const gasOrderKindLabels: Record<GasOrderKind, string> = {
-  serial: "Sorszámos",
-  chinese_prima: "Kínai + PRÍMA PB",
+  serial: "Beszállító 1",
+  chinese_prima: "Beszállító 1 (régi)",
   flaga_pb: "FLAGA PB",
 };
 
@@ -42,6 +44,43 @@ export type GasOrderQuantityItemRow = {
   quantity: number;
   beszerzesi_ar: number | null;
 };
+
+export async function fetchSupplier1GasOrders(): Promise<GasOrderRow[]> {
+  let query = supabase
+    .from("gas_orders")
+    .select("*, gas_order_items(count), gas_order_quantity_items(count)")
+    .in("order_kind", SUPPLIER1_ORDER_KINDS)
+    .order("created_at", { ascending: false });
+
+  let { data, error } = await query;
+
+  if (error && isSchemaMissingError(error)) {
+    const res = await supabase
+      .from("gas_orders")
+      .select("*, gas_order_items(count)")
+      .order("created_at", { ascending: false });
+    data = res.data;
+    error = res.error;
+  }
+
+  if (error) throw new Error(formatSupabaseError(error, "Rendelések betöltése"));
+
+  return (data ?? []).map((row) => {
+    const cylCount = (row.gas_order_items as { count: number }[] | null)?.[0]?.count ?? 0;
+    const qtyCount =
+      (row.gas_order_quantity_items as { count: number }[] | null)?.[0]?.count ?? 0;
+    return {
+      id: row.id,
+      status: row.status,
+      order_kind: ((row as { order_kind?: string }).order_kind ?? "serial") as GasOrderKind,
+      note: row.note,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      created_by: row.created_by,
+      item_count: cylCount + qtyCount,
+    };
+  });
+}
 
 export async function fetchGasOrders(orderKind?: GasOrderKind): Promise<GasOrderRow[]> {
   let query = supabase
@@ -111,14 +150,19 @@ export async function fetchGasOrderItems(orderId: string): Promise<GasOrderItemR
   return (data ?? []) as GasOrderItemRow[];
 }
 
-export async function createGasOrderFromGroup(
+export async function createSupplier1GasOrder(
   group: GasOrderGroup,
+  quantityLines: SelectedQuantityLine[],
   note?: string,
 ): Promise<string> {
+  const serialCount = group.siad.length + group.own.length;
+  if (serialCount === 0 && quantityLines.length === 0) {
+    throw new Error("Válassz legalább egy tételt");
+  }
+
   const { data: auth } = await supabase.auth.getUser();
   const prices = await fetchProductPrices(true);
   const purchaseMap = buildPurchasePriceMap(prices);
-  const all: OrderableCylinder[] = [...group.siad, ...group.own];
 
   const { data: order, error: orderErr } = await supabase
     .from("gas_orders")
@@ -133,26 +177,47 @@ export async function createGasOrderFromGroup(
 
   if (orderErr || !order) throw new Error(formatSupabaseError(orderErr, "Rendelés létrehozása"));
 
-  const items = all.map((c) => ({
-    gas_order_id: order.id,
-    cylinder_id: c.id,
-    barcode: c.barcode,
-    gas_type: c.gas_type,
-    size: c.size,
-    circulation: c.circulation,
-    beszerzesi_ar: purchaseMap.get(priceKey(c.gas_type, c.size)) ?? null,
-  }));
-
-  if (items.length > 0) {
+  const all: OrderableCylinder[] = [...group.siad, ...group.own];
+  if (all.length > 0) {
+    const items = all.map((c) => ({
+      gas_order_id: order.id,
+      cylinder_id: c.id,
+      barcode: c.barcode,
+      gas_type: c.gas_type,
+      size: c.size,
+      circulation: c.circulation,
+      beszerzesi_ar: purchaseMap.get(priceKey(c.gas_type, c.size)) ?? null,
+    }));
     const { error: itemsErr } = await supabase.from("gas_order_items").insert(items);
     if (itemsErr) throw new Error(formatSupabaseError(itemsErr, "Rendelés tételek mentése"));
+  }
+
+  if (quantityLines.length > 0) {
+    const qtyItems = quantityLines.map((l) => ({
+      gas_order_id: order.id,
+      stock_kind: l.stock_kind,
+      gas_type: l.gas_type,
+      size: l.size,
+      quantity: l.quantity,
+      beszerzesi_ar: purchaseMap.get(priceKey(l.gas_type, l.size)) ?? null,
+    }));
+    const { error: qtyErr } = await supabase.from("gas_order_quantity_items").insert(qtyItems);
+    if (qtyErr) throw new Error(formatSupabaseError(qtyErr, "Rendelés tételek mentése"));
   }
 
   return order.id;
 }
 
+/** @deprecated Use createSupplier1GasOrder */
+export async function createGasOrderFromGroup(
+  group: GasOrderGroup,
+  note?: string,
+): Promise<string> {
+  return createSupplier1GasOrder(group, [], note);
+}
+
 export async function createGasOrderFromQuantityLines(
-  orderKind: Extract<GasOrderKind, "chinese_prima" | "flaga_pb">,
+  orderKind: Extract<GasOrderKind, "flaga_pb">,
   lines: SelectedQuantityLine[],
   note?: string,
 ): Promise<string> {

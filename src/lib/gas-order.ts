@@ -73,28 +73,62 @@ export async function fetchOrderableCylinders(): Promise<GasOrderGroup> {
   return { siad, own };
 }
 
-function formatCylinderLine(c: OrderableCylinder): string {
-  return `${c.barcode} - ${c.gas_type} ${c.size}`;
+function formatDottedLine(label: string, count: number): string {
+  const right = `${count} db`;
+  const dots = ".".repeat(Math.max(4, 36 - label.length - right.length));
+  return `${label} ${dots} ${right}`;
 }
 
-function formatListBlock(cylinders: OrderableCylinder[]): string {
-  if (cylinders.length === 0) return "(nincs)";
-  return cylinders.map(formatCylinderLine).join("\n");
+function mergedSerialSummary(group: GasOrderGroup): GasOrderSummaryLine[] {
+  const counts = new Map<string, number>();
+  for (const c of [...group.siad, ...group.own]) {
+    const label = `${c.gas_type} ${c.size}`;
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => a.label.localeCompare(b.label, "hu"));
 }
 
-export function buildGasOrderText(group: GasOrderGroup): string {
+export type Supplier1QuantityLine = {
+  stock_kind: "chinese" | "prima_pb";
+  gas_type: string;
+  size: string;
+  quantity: number;
+  label: string;
+};
+
+export function quantityOrderLabel(line: Supplier1QuantityLine): string {
+  if (line.stock_kind === "prima_pb") return `${line.size} ${line.gas_type} (PRÍMA PB)`;
+  return `${line.gas_type} ${line.size} (Chinese)`;
+}
+
+export function buildSupplier1GasOrderText(
+  group: GasOrderGroup,
+  quantityLines: Supplier1QuantityLine[],
+): string {
+  const bodyLines: string[] = [];
+
+  for (const line of mergedSerialSummary(group)) {
+    bodyLines.push(formatDottedLine(line.label, line.count));
+  }
+
+  const sortedQty = [...quantityLines].sort((a, b) =>
+    quantityOrderLabel(a).localeCompare(quantityOrderLabel(b), "hu"),
+  );
+  if (sortedQty.length > 0 && bodyLines.length > 0) bodyLines.push("");
+  for (const line of sortedQty) {
+    bodyLines.push(formatDottedLine(quantityOrderLabel(line), line.quantity));
+  }
+
+  const body = bodyLines.length === 0 ? "(nincs)" : bodyLines.join("\n");
+
   return [
     "Kedves Géza!",
     "",
     "Szeretném megrendelni a következő palackok cseréjét.",
     "",
-    "SIAD palackok:",
-    "",
-    formatListBlock(group.siad),
-    "",
-    "Saját palackok:",
-    "",
-    formatListBlock(group.own),
+    body,
     "",
     "Előre is köszönöm!",
     "",
@@ -102,6 +136,11 @@ export function buildGasOrderText(group: GasOrderGroup): string {
     "Horváth Márk",
     "Gáz Veled",
   ].join("\n");
+}
+
+/** @deprecated Use buildSupplier1GasOrderText for supplier-1 orders */
+export function buildGasOrderText(group: GasOrderGroup): string {
+  return buildSupplier1GasOrderText(group, []);
 }
 
 export function countOrderable(group: GasOrderGroup): { siad: number; own: number } {

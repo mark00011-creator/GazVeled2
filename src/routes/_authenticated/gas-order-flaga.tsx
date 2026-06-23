@@ -36,7 +36,6 @@ function GasOrderFlagaPage() {
       {!isLoading && !isError && (
         <GasQuantityOrderPanel
           title="FLAGA PB – rendelhető üres palackok"
-          orderKind="flaga_pb"
           lines={lines}
           copyTitle="FLAGA PB"
           ordersQueryKey={["gas-orders", "flaga_pb"]}
