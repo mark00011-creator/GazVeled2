@@ -26,7 +26,7 @@ import {
   Warehouse,
 } from "lucide-react";
 
-import { fmtDate, isRentalExpired, rentalTypeLabels, type RentalType } from "@/lib/labels";
+import { fmtDate, isRentalExpired, rentalTypeLabels, effectiveRentalExpiry, rentalDisplayStatus, type RentalType } from "@/lib/labels";
 
 import {
   daysUntil,
@@ -97,12 +97,24 @@ function Dashboard() {
         .from("rentals")
 
         .select(
-          "id, monthly_fee, status, next_invoice_date, expiry_date, rental_type, partners(name)",
+          "id, monthly_fee, status, start_date, next_invoice_date, expiry_date, rental_type, partners(name)",
         )
 
         .eq("status", "active");
 
       if (rentErr) throw rentErr;
+
+      const { data: openRentals, error: openRentErr } = await supabase
+        .from("rentals")
+        .select("id, status, start_date, expiry_date")
+        .neq("status", "closed");
+
+      if (openRentErr) throw openRentErr;
+
+      const expiredRentalCount = (openRentals ?? []).filter((r) => {
+        const expiry = effectiveRentalExpiry(r.start_date, r.expiry_date);
+        return rentalDisplayStatus(r.status, expiry) === "expired";
+      }).length;
 
       const activeRentalIds = (rentals ?? []).map((r) => r.id);
 
@@ -218,6 +230,8 @@ function Dashboard() {
 
         activeRentals: activeRentals.length,
 
+        expiredRentalCount,
+
         rentedCylinders: rentedCylCount ?? 0,
 
         monthlyRevenue,
@@ -280,18 +294,35 @@ function Dashboard() {
 
   return (
     <AppShell title="Áttekintés">
-      <Link
-        to="/quick-exchange"
-        className="mb-4 flex items-center justify-between rounded-xl bg-gradient-to-r from-primary to-primary/70 p-5 text-primary-foreground shadow-lg transition-transform active:scale-[0.98]"
-      >
-        <div>
-          <div className="text-xs uppercase tracking-wider opacity-80">Egy érintésre</div>
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Link
+          to="/quick-exchange"
+          className="flex items-center justify-between rounded-xl bg-gradient-to-r from-primary to-primary/70 p-5 text-primary-foreground shadow-lg transition-transform active:scale-[0.98]"
+        >
+          <div>
+            <div className="text-xs uppercase tracking-wider opacity-80">Egy érintésre</div>
 
-          <div className="mt-1 text-xl font-bold">Gyors csere</div>
-        </div>
+            <div className="mt-1 text-xl font-bold">Gyors csere</div>
+          </div>
 
-        <RefreshCw className="h-8 w-8" />
-      </Link>
+          <RefreshCw className="h-8 w-8" />
+        </Link>
+
+        <Link
+          to="/rentals"
+          className="flex items-center justify-between rounded-xl bg-gradient-to-r from-destructive to-destructive/80 p-5 text-destructive-foreground shadow-lg transition-transform active:scale-[0.98]"
+        >
+          <div>
+            <div className="text-xs uppercase tracking-wider opacity-90">Figyelmeztetés</div>
+
+            <div className="mt-1 text-xl font-bold">Lejárt bérletek</div>
+
+            <div className="mt-1 text-2xl font-bold">{stats?.expiredRentalCount ?? 0} db</div>
+          </div>
+
+          <AlertTriangle className="h-8 w-8" />
+        </Link>
+      </div>
 
       <h2 className="mb-2 text-sm font-semibold">Készlet áttekintés</h2>
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">

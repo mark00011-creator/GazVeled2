@@ -109,7 +109,7 @@ function statusVariant(status: string): "default" | "secondary" | "destructive" 
 
 function RentalsList() {
   const qc = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<string>("active");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(makeEmptyForm);
