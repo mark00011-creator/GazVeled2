@@ -14,7 +14,7 @@ import {
 import { adjustChineseStock } from "@/lib/chinese-stock";
 import { adjustFlagaPbStock } from "@/lib/flaga-pb-stock";
 import { adjustPrimaPbStock } from "@/lib/prima-pb-stock";
-import { formatSupabaseError } from "@/lib/supabase-error";
+import { formatSupabaseError, isMissingRentalCylinderColumnError } from "@/lib/supabase-error";
 
 export type PartnerOperationType =
   | "exchange"
@@ -514,13 +514,34 @@ async function syncRentalCylindersAfterExchange(args: {
   });
 
   if (args.reassign_rental && args.rental_id) {
-    const { data: oldLink } = await supabase
-      .from("rental_cylinders")
+    const linkBase = () =>
+      supabase
+        .from("rental_cylinders")
+        .eq("rental_id", args.rental_id)
+        .eq("cylinder_id", args.incoming_id)
+        .is("removed_at", null);
+
+    let oldLink: {
+      expiry_date: string | null;
+      rental_start_date?: string | null;
+      rental_end_date?: string | null;
+      rental_deposit?: number | null;
+    } | null = null;
+
+    const { data: fullLink, error: fullLinkErr } = await linkBase()
       .select("expiry_date, rental_start_date, rental_end_date, rental_deposit")
-      .eq("rental_id", args.rental_id)
-      .eq("cylinder_id", args.incoming_id)
-      .is("removed_at", null)
       .maybeSingle();
+    if (fullLinkErr && isMissingRentalCylinderColumnError(fullLinkErr)) {
+      const { data: legacyLink, error: legacyLinkErr } = await linkBase()
+        .select("expiry_date")
+        .maybeSingle();
+      if (legacyLinkErr) throw new Error(parseDbError(legacyLinkErr.message));
+      oldLink = legacyLink;
+    } else if (fullLinkErr) {
+      throw new Error(parseDbError(fullLinkErr.message));
+    } else {
+      oldLink = fullLink;
+    }
 
     const { error: rmErr } = await supabase
       .from("rental_cylinders")
@@ -529,15 +550,25 @@ async function syncRentalCylindersAfterExchange(args: {
       .is("removed_at", null);
     if (rmErr) throw new Error(parseDbError(rmErr.message));
 
-    const { error: insErr } = await supabase.from("rental_cylinders").insert({
+    const insertPayload = {
       rental_id: args.rental_id,
       cylinder_id: args.outgoing_id,
       expiry_date: oldLink?.expiry_date ?? null,
       rental_start_date: oldLink?.rental_start_date ?? null,
       rental_end_date: oldLink?.rental_end_date ?? null,
       rental_deposit: oldLink?.rental_deposit ?? null,
-    });
-    if (insErr) throw new Error(parseDbError(insErr.message));
+    };
+    const { error: insErr } = await supabase.from("rental_cylinders").insert(insertPayload);
+    if (insErr && isMissingRentalCylinderColumnError(insErr)) {
+      const { error: legacyInsErr } = await supabase.from("rental_cylinders").insert({
+        rental_id: insertPayload.rental_id,
+        cylinder_id: insertPayload.cylinder_id,
+        expiry_date: insertPayload.expiry_date,
+      });
+      if (legacyInsErr) throw new Error(parseDbError(legacyInsErr.message));
+    } else if (insErr) {
+      throw new Error(parseDbError(insErr.message));
+    }
 
     await recordMovement({
       cylinder_id: args.outgoing_id,

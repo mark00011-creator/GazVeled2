@@ -23,7 +23,11 @@ import type { Circulation } from "@/lib/labels";
 
 import { summarizeRentalCylinders, type RentalType } from "@/lib/labels";
 
-import { logSupabaseError, throwSupabaseError } from "@/lib/supabase-error";
+import {
+  isMissingRentalCylinderColumnError,
+  logSupabaseError,
+  throwSupabaseError,
+} from "@/lib/supabase-error";
 import {
   assignQuantityItemsToRental,
   fetchRentalQuantityItems,
@@ -313,7 +317,67 @@ export type RentalCylinderDetail = {
 
 };
 
+const RENTAL_CYLINDER_LINK_SELECT_FULL =
+  "cylinder_id, added_at, expiry_date, rental_start_date, rental_end_date, rental_deposit, rental_id";
+const RENTAL_CYLINDER_LINK_SELECT_LEGACY = "cylinder_id, added_at, expiry_date, rental_id";
 
+type RentalCylinderLinkRow = {
+  cylinder_id: string;
+  added_at: string;
+  expiry_date: string | null;
+  rental_id: string;
+  rental_start_date?: string | null;
+  rental_end_date?: string | null;
+  rental_deposit?: number | null;
+};
+
+async function insertRentalCylinderLinks(
+  rows: Array<{
+    rental_id: string;
+    cylinder_id: string;
+    expiry_date: string | null;
+    rental_start_date?: string;
+    rental_end_date?: string | null;
+    rental_deposit?: number;
+  }>,
+  label: string,
+): Promise<void> {
+  const { error } = await supabase.from("rental_cylinders").insert(rows);
+  if (!error) return;
+
+  if (isMissingRentalCylinderColumnError(error)) {
+    const legacyRows = rows.map(({ rental_id, cylinder_id, expiry_date }) => ({
+      rental_id,
+      cylinder_id,
+      expiry_date,
+    }));
+    const { error: legacyErr } = await supabase.from("rental_cylinders").insert(legacyRows);
+    if (legacyErr) throwSupabaseError(`${label} (legacy)`, legacyErr);
+    return;
+  }
+
+  throwSupabaseError(label, error);
+}
+
+async function fetchRentalCylinderLinkRows(rentalId: string): Promise<RentalCylinderLinkRow[]> {
+  const base = () =>
+    supabase
+      .from("rental_cylinders")
+      .eq("rental_id", rentalId)
+      .is("removed_at", null)
+      .order("added_at", { ascending: true });
+
+  const { data, error } = await base().select(RENTAL_CYLINDER_LINK_SELECT_FULL);
+  if (!error) return (data ?? []) as RentalCylinderLinkRow[];
+
+  if (isMissingRentalCylinderColumnError(error)) {
+    const { data: legacyData, error: legacyErr } = await base().select(RENTAL_CYLINDER_LINK_SELECT_LEGACY);
+    if (legacyErr) throwSupabaseError("fetchRentalCylinderLinkRows → rental_cylinders (legacy)", legacyErr);
+    return (legacyData ?? []) as RentalCylinderLinkRow[];
+  }
+
+  throwSupabaseError("fetchRentalCylinderLinkRows → rental_cylinders", error);
+}
 
 /** Backfill rental_cylinders from cylinders.rental_id (legacy data). */
 async function ensureRentalCylinderLinks(
@@ -345,8 +409,7 @@ async function ensureRentalCylinderLinks(
     rental_end_date: defaults.end_date,
     rental_deposit: defaults.deposit,
   }));
-  const { error: insErr } = await supabase.from("rental_cylinders").insert(rows);
-  if (insErr) throwSupabaseError("ensureRentalCylinderLinks → rental_cylinders INSERT", insErr);
+  await insertRentalCylinderLinks(rows, "ensureRentalCylinderLinks → rental_cylinders INSERT");
 }
 
 /** Collect cylinder IDs for a rental from all sources (links + cylinders.rental_id + legacy fields). */
@@ -417,15 +480,8 @@ export async function fetchRentalCylinderDetails(rentalId: string): Promise<Rent
     allIds,
   );
 
-  const { data: links, error: linkErr } = await supabase
-    .from("rental_cylinders")
-    .select("cylinder_id, added_at, expiry_date, rental_start_date, rental_end_date, rental_deposit, rental_id")
-    .eq("rental_id", rentalId)
-    .is("removed_at", null)
-    .order("added_at", { ascending: true });
-  if (linkErr) throwSupabaseError("fetchRentalCylinderDetails → rental_cylinders reload", linkErr);
-
-  const linkByCyl = new Map((links ?? []).map((l) => [l.cylinder_id, l]));
+  const links = await fetchRentalCylinderLinkRows(rentalId);
+  const linkByCyl = new Map(links.map((l) => [l.cylinder_id, l]));
 
   const { data: cyls, error: cylErr } = await supabase
     .from("cylinders")
@@ -656,21 +712,18 @@ async function assignCylinderToRental(
 
 ): Promise<void> {
 
-  const { error: rcErr } = await supabase.from("rental_cylinders").insert({
-
-    rental_id: rentalId,
-
-    cylinder_id: cyl.id,
-
-    expiry_date: cylinderExpiryDate,
-
-    rental_start_date: rentalStartDate,
-
-    rental_deposit: rentalDeposit,
-
-  });
-
-  if (rcErr) throwSupabaseError("assignCylinderToRental → rental_cylinders INSERT", rcErr, { rentalId, cylinderId: cyl.id });
+  await insertRentalCylinderLinks(
+    [
+      {
+        rental_id: rentalId,
+        cylinder_id: cyl.id,
+        expiry_date: cylinderExpiryDate,
+        rental_start_date: rentalStartDate,
+        rental_deposit: rentalDeposit,
+      },
+    ],
+    "assignCylinderToRental → rental_cylinders INSERT",
+  );
 
 
 
@@ -1159,12 +1212,24 @@ export async function returnRentalCylinders(args: {
         rental_id: null,
       } as Parameters<typeof updateCylinder>[1]);
 
+      const endDate = now.slice(0, 10);
       const { error: rcUpdErr } = await supabase
         .from("rental_cylinders")
-        .update({ removed_at: now, rental_end_date: now.slice(0, 10) })
+        .update({ removed_at: now, rental_end_date: endDate })
         .eq("rental_id", args.rental_id)
         .eq("cylinder_id", cyl.id);
-      if (rcUpdErr) throwSupabaseError("returnRentalCylinders → rental_cylinders UPDATE", rcUpdErr);
+      if (rcUpdErr && isMissingRentalCylinderColumnError(rcUpdErr)) {
+        const { error: legacyUpdErr } = await supabase
+          .from("rental_cylinders")
+          .update({ removed_at: now })
+          .eq("rental_id", args.rental_id)
+          .eq("cylinder_id", cyl.id);
+        if (legacyUpdErr) {
+          throwSupabaseError("returnRentalCylinders → rental_cylinders UPDATE (legacy)", legacyUpdErr);
+        }
+      } else if (rcUpdErr) {
+        throwSupabaseError("returnRentalCylinders → rental_cylinders UPDATE", rcUpdErr);
+      }
     }
   }
 
