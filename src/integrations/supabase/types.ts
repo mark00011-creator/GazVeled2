@@ -1028,21 +1028,30 @@ export type Database = {
           cylinder_id: string
           expiry_date: string | null
           removed_at: string | null
+          rental_deposit: number | null
+          rental_end_date: string | null
           rental_id: string
+          rental_start_date: string | null
         }
         Insert: {
           added_at?: string
           cylinder_id: string
           expiry_date?: string | null
           removed_at?: string | null
+          rental_deposit?: number | null
+          rental_end_date?: string | null
           rental_id: string
+          rental_start_date?: string | null
         }
         Update: {
           added_at?: string
           cylinder_id?: string
           expiry_date?: string | null
           removed_at?: string | null
+          rental_deposit?: number | null
+          rental_end_date?: string | null
           rental_id?: string
+          rental_start_date?: string | null
         }
         Relationships: [
           {

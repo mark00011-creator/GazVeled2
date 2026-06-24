@@ -26,7 +26,10 @@ export type RentalImportCylinderPlan = {
   gas_type: string;
   size: string;
   manufacturer: CylinderManufacturer;
+  start_date: string;
+  end_date: string | null;
   expiry_date: string | null;
+  deposit: number;
   rawLabel: string;
 };
 
@@ -632,6 +635,9 @@ export function buildRentalImportPreview(
     const end_date = endDates.sort().at(-1) ?? null;
     const deposit = partnerRows.find((r) => r.deposit > 0)?.deposit ?? partnerRows[0]?.deposit ?? 0;
 
+    // Partner-level rental record: earliest start, latest end/expiry, representative deposit.
+    // Per-cylinder dates/deposit are stored on rental_cylinders from each Excel row.
+
     const cylinders: RentalImportCylinderPlan[] = [];
     for (const row of partnerRows) {
       const spec = resolveBottleType(row.bottleTypeRaw, catalog);
@@ -642,7 +648,10 @@ export function buildRentalImportPreview(
         gas_type: spec.gas_type,
         size: spec.size,
         manufacturer: preferChinese ? "chinese" : spec.manufacturer,
+        start_date: row.start_date ?? start_date,
+        end_date: row.end_date ?? null,
         expiry_date: row.expiry_date ?? expiry_date,
+        deposit: row.deposit,
         rawLabel: row.bottleTypeRaw,
       });
     }
@@ -784,7 +793,10 @@ export async function executeRentalImport(preview: RentalImportPreview): Promise
           rental_id: rental.id,
           cylinder_id: cylinder.id,
           expiry_date: cyl.expiry_date,
-          added_at: `${plan.start_date}T12:00:00.000Z`,
+          rental_start_date: cyl.start_date,
+          rental_end_date: cyl.end_date,
+          rental_deposit: cyl.deposit,
+          added_at: `${cyl.start_date}T12:00:00.000Z`,
         });
 
         if (linkErr) {

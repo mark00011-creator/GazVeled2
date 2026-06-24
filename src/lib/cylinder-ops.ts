@@ -516,7 +516,7 @@ async function syncRentalCylindersAfterExchange(args: {
   if (args.reassign_rental && args.rental_id) {
     const { data: oldLink } = await supabase
       .from("rental_cylinders")
-      .select("expiry_date")
+      .select("expiry_date, rental_start_date, rental_end_date, rental_deposit")
       .eq("rental_id", args.rental_id)
       .eq("cylinder_id", args.incoming_id)
       .is("removed_at", null)
@@ -533,6 +533,9 @@ async function syncRentalCylindersAfterExchange(args: {
       rental_id: args.rental_id,
       cylinder_id: args.outgoing_id,
       expiry_date: oldLink?.expiry_date ?? null,
+      rental_start_date: oldLink?.rental_start_date ?? null,
+      rental_end_date: oldLink?.rental_end_date ?? null,
+      rental_deposit: oldLink?.rental_deposit ?? null,
     });
     if (insErr) throw new Error(parseDbError(insErr.message));
 

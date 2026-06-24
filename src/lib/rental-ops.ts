@@ -287,6 +287,12 @@ export type RentalCylinderDetail = {
 
   expiry_date: string | null;
 
+  rental_start_date: string | null;
+
+  rental_end_date: string | null;
+
+  rental_deposit: number | null;
+
   barcode: string;
 
   gas_type: string;
@@ -312,7 +318,12 @@ export type RentalCylinderDetail = {
 /** Backfill rental_cylinders from cylinders.rental_id (legacy data). */
 async function ensureRentalCylinderLinks(
   rentalId: string,
-  defaultExpiry: string | null,
+  defaults: {
+    expiry_date: string | null;
+    start_date: string;
+    end_date: string | null;
+    deposit: number;
+  },
   legacyCylinderIds: string[],
 ): Promise<void> {
   const { data: existing, error } = await supabase
@@ -329,7 +340,10 @@ async function ensureRentalCylinderLinks(
   const rows = toLink.map((cylinder_id) => ({
     rental_id: rentalId,
     cylinder_id,
-    expiry_date: defaultExpiry,
+    expiry_date: defaults.expiry_date,
+    rental_start_date: defaults.start_date,
+    rental_end_date: defaults.end_date,
+    rental_deposit: defaults.deposit,
   }));
   const { error: insErr } = await supabase.from("rental_cylinders").insert(rows);
   if (insErr) throwSupabaseError("ensureRentalCylinderLinks → rental_cylinders INSERT", insErr);
@@ -381,7 +395,7 @@ async function collectRentalCylinderIds(
 export async function fetchRentalCylinderDetails(rentalId: string): Promise<RentalCylinderDetail[]> {
   const { data: rental, error: rentErr } = await supabase
     .from("rentals")
-    .select("partner_id, start_date, expiry_date, current_cylinder_id, original_cylinder_id")
+    .select("partner_id, start_date, end_date, deposit, expiry_date, current_cylinder_id, original_cylinder_id")
     .eq("id", rentalId)
     .single();
   if (rentErr) throwSupabaseError("fetchRentalCylinderDetails → rentals", rentErr);
@@ -392,11 +406,20 @@ export async function fetchRentalCylinderDetails(rentalId: string): Promise<Rent
   const allIds = await collectRentalCylinderIds(rentalId, rental.partner_id, legacyIds);
   if (allIds.length === 0) return [];
 
-  await ensureRentalCylinderLinks(rentalId, defaultExpiry, allIds);
+  await ensureRentalCylinderLinks(
+    rentalId,
+    {
+      expiry_date: defaultExpiry,
+      start_date: rental.start_date,
+      end_date: rental.end_date,
+      deposit: Number(rental.deposit ?? 0),
+    },
+    allIds,
+  );
 
   const { data: links, error: linkErr } = await supabase
     .from("rental_cylinders")
-    .select("cylinder_id, added_at, expiry_date, rental_id")
+    .select("cylinder_id, added_at, expiry_date, rental_start_date, rental_end_date, rental_deposit, rental_id")
     .eq("rental_id", rentalId)
     .is("removed_at", null)
     .order("added_at", { ascending: true });
@@ -419,6 +442,9 @@ export async function fetchRentalCylinderDetails(rentalId: string): Promise<Rent
         cylinder_id: c.id,
         added_at: link?.added_at ?? rental.start_date,
         expiry_date: link?.expiry_date ?? defaultExpiry,
+        rental_start_date: link?.rental_start_date ?? rental.start_date,
+        rental_end_date: link?.rental_end_date ?? rental.end_date,
+        rental_deposit: link?.rental_deposit != null ? Number(link.rental_deposit) : Number(rental.deposit ?? 0),
         barcode: c.barcode,
         gas_type: c.gas_type,
         size: c.size,
@@ -624,6 +650,10 @@ async function assignCylinderToRental(
 
   cylinderExpiryDate: string,
 
+  rentalStartDate: string,
+
+  rentalDeposit: number,
+
 ): Promise<void> {
 
   const { error: rcErr } = await supabase.from("rental_cylinders").insert({
@@ -633,6 +663,10 @@ async function assignCylinderToRental(
     cylinder_id: cyl.id,
 
     expiry_date: cylinderExpiryDate,
+
+    rental_start_date: rentalStartDate,
+
+    rental_deposit: rentalDeposit,
 
   });
 
@@ -829,7 +863,15 @@ export async function createRentalWithCylinders(args: {
 
     for (const cyl of cylinders) {
 
-      await assignCylinderToRental(rental.id, args.partner_id, cyl, uid, args.expiry_date);
+      await assignCylinderToRental(
+        rental.id,
+        args.partner_id,
+        cyl,
+        uid,
+        args.expiry_date,
+        args.start_date,
+        args.deposit,
+      );
 
     }
 
@@ -1119,7 +1161,7 @@ export async function returnRentalCylinders(args: {
 
       const { error: rcUpdErr } = await supabase
         .from("rental_cylinders")
-        .update({ removed_at: now })
+        .update({ removed_at: now, rental_end_date: now.slice(0, 10) })
         .eq("rental_id", args.rental_id)
         .eq("cylinder_id", cyl.id);
       if (rcUpdErr) throwSupabaseError("returnRentalCylinders → rental_cylinders UPDATE", rcUpdErr);

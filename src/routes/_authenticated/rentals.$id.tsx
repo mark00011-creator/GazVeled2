@@ -380,6 +380,8 @@ function RentalDetail() {
         ) : (
           <div>
             {(cylLinks ?? []).map((c) => {
+              const cylStart = c.rental_start_date ?? rental.start_date;
+              const cylEnd = c.rental_end_date ?? c.expiry_date ?? rentalExpiry;
               const cylExpiry = c.expiry_date ?? rentalExpiry;
               const cylExpired = isRentalExpired(cylExpiry);
               const owner = (c.owner ?? c.circulation ?? "own") as keyof typeof circulationLabels;
@@ -429,6 +431,14 @@ function RentalDetail() {
                     <div>
                       <div className="text-muted-foreground">Tulajdonos</div>
                       <div>{circulationLabels[owner] ?? owner}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Kezdet</div>
+                      <div>{fmtDate(cylStart)}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Lejárat</div>
+                      <div className={cylExpired ? "font-medium text-destructive" : ""}>{fmtDate(cylEnd)}</div>
                     </div>
                   </div>
                   {cylExpired && (
