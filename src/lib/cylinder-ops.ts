@@ -514,13 +514,6 @@ async function syncRentalCylindersAfterExchange(args: {
   });
 
   if (args.reassign_rental && args.rental_id) {
-    const linkBase = () =>
-      supabase
-        .from("rental_cylinders")
-        .eq("rental_id", args.rental_id)
-        .eq("cylinder_id", args.incoming_id)
-        .is("removed_at", null);
-
     let oldLink: {
       expiry_date: string | null;
       rental_start_date?: string | null;
@@ -528,12 +521,20 @@ async function syncRentalCylindersAfterExchange(args: {
       rental_deposit?: number | null;
     } | null = null;
 
-    const { data: fullLink, error: fullLinkErr } = await linkBase()
+    const { data: fullLink, error: fullLinkErr } = await supabase
+      .from("rental_cylinders")
       .select("expiry_date, rental_start_date, rental_end_date, rental_deposit")
+      .eq("rental_id", args.rental_id)
+      .eq("cylinder_id", args.incoming_id)
+      .is("removed_at", null)
       .maybeSingle();
     if (fullLinkErr && isMissingRentalCylinderColumnError(fullLinkErr)) {
-      const { data: legacyLink, error: legacyLinkErr } = await linkBase()
+      const { data: legacyLink, error: legacyLinkErr } = await supabase
+        .from("rental_cylinders")
         .select("expiry_date")
+        .eq("rental_id", args.rental_id)
+        .eq("cylinder_id", args.incoming_id)
+        .is("removed_at", null)
         .maybeSingle();
       if (legacyLinkErr) throw new Error(parseDbError(legacyLinkErr.message));
       oldLink = legacyLink;

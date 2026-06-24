@@ -360,18 +360,21 @@ async function insertRentalCylinderLinks(
 }
 
 async function fetchRentalCylinderLinkRows(rentalId: string): Promise<RentalCylinderLinkRow[]> {
-  const base = () =>
-    supabase
-      .from("rental_cylinders")
-      .eq("rental_id", rentalId)
-      .is("removed_at", null)
-      .order("added_at", { ascending: true });
-
-  const { data, error } = await base().select(RENTAL_CYLINDER_LINK_SELECT_FULL);
+  const { data, error } = await supabase
+    .from("rental_cylinders")
+    .select(RENTAL_CYLINDER_LINK_SELECT_FULL)
+    .eq("rental_id", rentalId)
+    .is("removed_at", null)
+    .order("added_at", { ascending: true });
   if (!error) return (data ?? []) as RentalCylinderLinkRow[];
 
   if (isMissingRentalCylinderColumnError(error)) {
-    const { data: legacyData, error: legacyErr } = await base().select(RENTAL_CYLINDER_LINK_SELECT_LEGACY);
+    const { data: legacyData, error: legacyErr } = await supabase
+      .from("rental_cylinders")
+      .select(RENTAL_CYLINDER_LINK_SELECT_LEGACY)
+      .eq("rental_id", rentalId)
+      .is("removed_at", null)
+      .order("added_at", { ascending: true });
     if (legacyErr) throwSupabaseError("fetchRentalCylinderLinkRows → rental_cylinders (legacy)", legacyErr);
     return (legacyData ?? []) as RentalCylinderLinkRow[];
   }
