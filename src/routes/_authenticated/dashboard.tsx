@@ -310,6 +310,7 @@ function Dashboard() {
 
         <Link
           to="/rentals"
+          search={{ status: "expired" }}
           className="flex items-center justify-between rounded-xl bg-gradient-to-r from-destructive to-destructive/80 p-5 text-destructive-foreground shadow-lg transition-transform active:scale-[0.98]"
         >
           <div>

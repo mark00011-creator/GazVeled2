@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
@@ -62,7 +62,27 @@ import {
   toContractStockItems,
 } from "@/lib/rental-quantity-stock";
 
+function statusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
+  if (status === "active") return "default";
+  if (status === "expired") return "destructive";
+  if (status === "cancelled") return "outline";
+  return "secondary";
+}
+
+const RENTAL_LIST_STATUS_FILTERS = ["all", "active", "expired", "cancelled", "closed"] as const;
+type RentalListStatusFilter = (typeof RENTAL_LIST_STATUS_FILTERS)[number];
+
+function parseRentalListStatusFilter(value: unknown): RentalListStatusFilter | undefined {
+  if (typeof value !== "string") return undefined;
+  return (RENTAL_LIST_STATUS_FILTERS as readonly string[]).includes(value)
+    ? (value as RentalListStatusFilter)
+    : undefined;
+}
+
 export const Route = createFileRoute("/_authenticated/rentals/")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    status: parseRentalListStatusFilter(search.status),
+  }),
   head: () => ({ meta: [{ title: "Bérletek – Gáz Veled" }] }),
   component: RentalsList,
 });
@@ -100,16 +120,10 @@ function makeEmptyForm() {
   };
 }
 
-function statusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
-  if (status === "active") return "default";
-  if (status === "expired") return "destructive";
-  if (status === "cancelled") return "outline";
-  return "secondary";
-}
-
 function RentalsList() {
+  const { status: searchStatus } = Route.useSearch();
   const qc = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>(searchStatus ?? "all");
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(makeEmptyForm);
@@ -117,6 +131,10 @@ function RentalsList() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [lastCreatedId, setLastCreatedId] = useState<string | null>(null);
   const [pdfBusy, setPdfBusy] = useState(false);
+
+  useEffect(() => {
+    setStatusFilter(searchStatus ?? "all");
+  }, [searchStatus]);
 
   const {
     data: rentals,
@@ -132,6 +150,8 @@ function RentalsList() {
         )
         .order("start_date", { ascending: false });
       if (statusFilter === "all") {
+        qb = qb.neq("status", "closed");
+      } else if (statusFilter === "expired") {
         qb = qb.neq("status", "closed");
       } else {
         qb = qb.eq("status", statusFilter);
@@ -194,10 +214,19 @@ function RentalsList() {
       ).data ?? [],
   });
 
+  const statusFiltered = useMemo(() => {
+    const list = rentals ?? [];
+    if (statusFilter !== "expired") return list;
+    return list.filter((r) => {
+      const expiry = effectiveRentalExpiry(r.start_date, r.expiry_date);
+      return rentalDisplayStatus(r.status, expiry) === "expired";
+    });
+  }, [rentals, statusFilter]);
+
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    if (!needle) return rentals ?? [];
-    return (rentals ?? []).filter((r) => {
+    if (!needle) return statusFiltered;
+    return statusFiltered.filter((r) => {
       const p = r.partners;
       const hay = [p?.name, p?.company_name, rentalNumber(r.id)]
         .filter(Boolean)
@@ -205,7 +234,7 @@ function RentalsList() {
         .toLowerCase();
       return hay.includes(needle);
     });
-  }, [rentals, q]);
+  }, [statusFiltered, q]);
 
   function onStartChange(start: string) {
     setForm((f) => ({
