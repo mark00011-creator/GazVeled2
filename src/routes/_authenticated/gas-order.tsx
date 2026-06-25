@@ -15,15 +15,18 @@ import { toast } from "sonner";
 import {
   buildSupplier1GasOrderText,
   fetchOrderableCylinders,
-  summarizeGasOrder,
   type OrderableCylinder,
 } from "@/lib/gas-order";
-import { estimateGasOrderCost, formatHuf } from "@/lib/gas-order-prices";
+import {
+  estimateGasOrderPrices,
+  formatGasOrderEstimateLine,
+  formatHuf,
+  type GasOrderEstimateLine,
+} from "@/lib/gas-order-prices";
 import { buildPurchasePriceMap, fetchProductPrices } from "@/lib/product-prices";
 import { downloadPdf, generateSupplier1GasOrderPdf } from "@/lib/gas-order-pdf";
 import {
   fetchOrderableChineseLines,
-  summarizeQuantityLines,
 } from "@/lib/gas-order-quantity";
 import {
   GasQuantityLineSelector,
@@ -48,21 +51,21 @@ export const Route = createFileRoute("/_authenticated/gas-order")({
   component: GasOrderPage,
 });
 
-function SummaryBlock({
+function PricedSummaryBlock({
   title,
   lines,
 }: {
   title: string;
-  lines: { label: string; count: number }[];
+  lines: GasOrderEstimateLine[];
 }) {
   if (lines.length === 0) return null;
   return (
     <div className="mb-3">
       <div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">{title}</div>
-      <ul className="space-y-0.5 text-sm">
-        {lines.map((l) => (
-          <li key={l.label}>
-            {l.label}: <span className="font-medium">{l.count} db</span>
+      <ul className="space-y-1 text-sm">
+        {lines.map((line) => (
+          <li key={line.label} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+            <span className="font-medium">{formatGasOrderEstimateLine(line)}</span>
           </li>
         ))}
       </ul>
@@ -85,45 +88,6 @@ function CylinderList({ title, cylinders }: { title: string; cylinders: Orderabl
           ))}
         </ul>
       )}
-    </Card>
-  );
-}
-
-function OrderEstimateCard({
-  group,
-  priceMap,
-}: {
-  group: { siad: OrderableCylinder[]; own: OrderableCylinder[] };
-  priceMap: Map<string, number>;
-}) {
-  const estimate = estimateGasOrderCost(group, priceMap);
-  const total = estimate.cylinderCount;
-
-  if (total === 0) return null;
-
-  return (
-    <Card className="p-4">
-      <h2 className="mb-3 text-sm font-semibold">Becsült rendelési összeg (sorszámos)</h2>
-      {estimate.lines.length > 0 && (
-        <ul className="mb-3 space-y-1 text-sm">
-          {estimate.lines.map((line) => (
-            <li key={line.label} className="flex justify-between gap-3">
-              <span>
-                {line.label} × {line.count} db
-              </span>
-              <span className="shrink-0 text-muted-foreground">
-                {line.lineTotal != null ? formatHuf(line.lineTotal) : "—"}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="border-t pt-3">
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-sm text-muted-foreground">Kb. összesen</span>
-          <span className="text-xl font-bold">{formatHuf(estimate.knownTotal)}</span>
-        </div>
-      </div>
     </Card>
   );
 }
@@ -166,9 +130,11 @@ function GasOrderPage() {
   const priceMap = buildPurchasePriceMap(priceRows);
 
   const group = data ?? { siad: [], own: [] };
-  const summary = summarizeGasOrder(group);
+  const estimate = useMemo(
+    () => estimateGasOrderPrices(group, selectedQuantityLines, priceMap),
+    [group, selectedQuantityLines, priceMap],
+  );
   const serialTotal = group.siad.length + group.own.length;
-  const quantitySummary = summarizeQuantityLines(selectedQuantityLines);
   const quantityTotal = selectedQuantityLines.reduce((s, l) => s + l.quantity, 0);
   const orderTotal = serialTotal + quantityTotal;
   const hasOrderable = serialTotal > 0 || chineseLines.length > 0;
@@ -214,7 +180,7 @@ function GasOrderPage() {
   async function handlePdf() {
     setPdfBusy(true);
     try {
-      const bytes = await generateSupplier1GasOrderPdf(group, selectedQuantityLines);
+      const bytes = await generateSupplier1GasOrderPdf(group, selectedQuantityLines, priceMap);
       const date = new Date().toISOString().slice(0, 10);
       downloadPdf(bytes, `gaz-rendeles-${date}.pdf`);
       toast.success("PDF letöltve");
@@ -227,7 +193,7 @@ function GasOrderPage() {
 
   async function handleCopy() {
     try {
-      const text = buildSupplier1GasOrderText(group, selectedQuantityLines);
+      const text = buildSupplier1GasOrderText(group, selectedQuantityLines, priceMap);
       await navigator.clipboard.writeText(text);
       toast.success("Szöveg a vágólapra másolva");
     } catch {
@@ -248,19 +214,28 @@ function GasOrderPage() {
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Rendelés összesítés
             </h2>
-            <SummaryBlock title="Sorszámos – SIAD" lines={summary.siad} />
-            <SummaryBlock title="Sorszámos – Saját" lines={summary.own} />
-            {quantitySummary.length > 0 && (
-              <SummaryBlock title="Darabszámos" lines={quantitySummary} />
-            )}
+            <PricedSummaryBlock title="Sorszámos – SIAD" lines={estimate.siad} />
+            <PricedSummaryBlock title="Sorszámos – Saját" lines={estimate.own} />
+            <PricedSummaryBlock title="Darabszámos" lines={estimate.quantity} />
             {!hasOrderable && (
               <div className="text-sm text-muted-foreground">
                 Nincs rendelhető üres palack a telephelyen
               </div>
             )}
             {orderTotal > 0 && (
-              <div className="mt-3 border-t pt-3 text-sm font-medium">
-                Összesen kijelölve: {orderTotal} db
+              <div className="mt-3 space-y-2 border-t pt-3 text-sm">
+                <div className="font-medium">Összesen kijelölve: {orderTotal} db</div>
+                {estimate.knownTotal > 0 && (
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-muted-foreground">Becsült összeg</span>
+                    <span className="text-lg font-bold">{formatHuf(estimate.knownTotal)}</span>
+                  </div>
+                )}
+                {estimate.unknownLabels.length > 0 && (
+                  <div className="text-xs text-muted-foreground">
+                    Ár nélkül: {estimate.unknownLabels.join(", ")}
+                  </div>
+                )}
               </div>
             )}
           </Card>
@@ -269,7 +244,6 @@ function GasOrderPage() {
           <div className="mb-6 space-y-3">
             <CylinderList title="SIAD palackok" cylinders={group.siad} />
             <CylinderList title="Saját palackok" cylinders={group.own} />
-            <OrderEstimateCard group={group} priceMap={priceMap} />
           </div>
 
           <GasQuantityLineSelector

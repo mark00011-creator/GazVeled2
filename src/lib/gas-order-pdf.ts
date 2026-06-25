@@ -1,9 +1,6 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import {
-  buildSupplier1GasOrderText,
-  type GasOrderGroup,
-  type Supplier1QuantityLine,
-} from "@/lib/gas-order";
+import { buildSupplier1GasOrderText, type GasOrderGroup } from "@/lib/gas-order";
+import type { GasOrderPricedLineInput } from "@/lib/gas-order-prices";
 
 function pdfSafe(text: string): string {
   return text
@@ -37,7 +34,8 @@ function wrapLines(text: string, maxLen: number): string[] {
 
 export async function generateSupplier1GasOrderPdf(
   group: GasOrderGroup,
-  quantityLines: Supplier1QuantityLine[] = [],
+  quantityLines: GasOrderPricedLineInput[] = [],
+  priceMap: Map<string, number> = new Map(),
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -65,7 +63,7 @@ export async function generateSupplier1GasOrderPdf(
     y -= lineH;
   };
 
-  const body = buildSupplier1GasOrderText(group, quantityLines);
+  const body = buildSupplier1GasOrderText(group, quantityLines, priceMap);
   for (const line of wrapLines(body, 85)) {
     const safe = pdfSafe(line);
     const bold = safe.startsWith("Kedves");

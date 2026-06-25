@@ -1,5 +1,10 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Circulation } from "@/lib/labels";
+import {
+  buildGasOrderEmailText,
+  estimateGasOrderPrices,
+  type GasOrderPricedLineInput,
+} from "@/lib/gas-order-prices";
 
 export type OrderableCylinder = {
   id: string;
@@ -13,32 +18,6 @@ export type GasOrderGroup = {
   siad: OrderableCylinder[];
   own: OrderableCylinder[];
 };
-
-export type GasOrderSummaryLine = {
-  label: string;
-  count: number;
-};
-
-function summarizeGroup(cylinders: OrderableCylinder[]): GasOrderSummaryLine[] {
-  const counts = new Map<string, number>();
-  for (const c of cylinders) {
-    const key = `${c.gas_type} ${c.size}`;
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => a.label.localeCompare(b.label, "hu"));
-}
-
-export function summarizeGasOrder(group: GasOrderGroup): {
-  siad: GasOrderSummaryLine[];
-  own: GasOrderSummaryLine[];
-} {
-  return {
-    siad: summarizeGroup(group.siad),
-    own: summarizeGroup(group.own),
-  };
-}
 
 export async function fetchOrderableCylinders(): Promise<GasOrderGroup> {
   const { data, error } = await supabase
@@ -73,67 +52,22 @@ export async function fetchOrderableCylinders(): Promise<GasOrderGroup> {
   return { siad, own };
 }
 
-export type Supplier1QuantityLine = {
+export type Supplier1QuantityLine = GasOrderPricedLineInput & {
   stock_kind: "chinese" | "prima_pb";
-  gas_type: string;
-  size: string;
-  quantity: number;
-  label: string;
 };
-
-export function quantityOrderLabel(line: Supplier1QuantityLine): string {
-  return line.label || `Kínai ${line.gas_type} ${line.size}`;
-}
-
-function mergedQuantitySummary(lines: Supplier1QuantityLine[]): GasOrderSummaryLine[] {
-  const counts = new Map<string, number>();
-  for (const line of lines) {
-    const label = quantityOrderLabel(line);
-    counts.set(label, (counts.get(label) ?? 0) + line.quantity);
-  }
-  return [...counts.entries()]
-    .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => a.label.localeCompare(b.label, "hu"));
-}
-
-function formatSummarySection(title: string, lines: GasOrderSummaryLine[]): string[] {
-  if (lines.length === 0) return [];
-  return [title, ...lines.map((line) => `- ${line.label}: ${line.count} db`)];
-}
 
 export function buildSupplier1GasOrderText(
   group: GasOrderGroup,
-  quantityLines: Supplier1QuantityLine[],
+  quantityLines: GasOrderPricedLineInput[],
+  priceMap: Map<string, number>,
 ): string {
-  const serialSummary = summarizeGasOrder(group);
-  const quantitySummary = mergedQuantitySummary(quantityLines);
-
-  const sections: string[] = [
-    ...formatSummarySection("Sorszámos – SIAD", serialSummary.siad),
-    ...formatSummarySection("Sorszámos – Saját", serialSummary.own),
-    ...formatSummarySection("Darabszámos", quantitySummary),
-  ];
-
-  const body = sections.length === 0 ? "(nincs)" : sections.join("\n");
-
-  return [
-    "Kedves Géza!",
-    "",
-    "Szeretném megrendelni a következő palackok cseréjét.",
-    "",
-    body,
-    "",
-    "Előre is köszönöm!",
-    "",
-    "Üdvözlettel:",
-    "Horváth Márk",
-    "Gáz Veled",
-  ].join("\n");
+  const estimate = estimateGasOrderPrices(group, quantityLines, priceMap);
+  return buildGasOrderEmailText(estimate);
 }
 
-/** @deprecated Use buildSupplier1GasOrderText for supplier-1 orders */
+/** @deprecated Use buildSupplier1GasOrderText with priceMap */
 export function buildGasOrderText(group: GasOrderGroup): string {
-  return buildSupplier1GasOrderText(group, []);
+  return buildSupplier1GasOrderText(group, [], new Map());
 }
 
 export function countOrderable(group: GasOrderGroup): { siad: number; own: number } {

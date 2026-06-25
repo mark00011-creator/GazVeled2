@@ -3,7 +3,7 @@ import type { Database } from "@/integrations/supabase/types";
 import type { GasOrderGroup, OrderableCylinder } from "@/lib/gas-order";
 import type { SelectedQuantityLine } from "@/lib/gas-order-quantity";
 import { buildPurchasePriceMap, fetchProductPrices } from "@/lib/product-prices";
-import { priceKey } from "@/lib/gas-order-prices";
+import { lookupUnitPrice } from "@/lib/gas-order-prices";
 import { formatSupabaseError } from "@/lib/supabase-error";
 import { isSchemaMissingError } from "@/lib/supabase-schema";
 
@@ -186,7 +186,7 @@ export async function createSupplier1GasOrder(
       gas_type: c.gas_type,
       size: c.size,
       circulation: c.circulation,
-      beszerzesi_ar: purchaseMap.get(priceKey(c.gas_type, c.size)) ?? null,
+      beszerzesi_ar: lookupUnitPrice(c.gas_type, c.size, purchaseMap),
     }));
     const { error: itemsErr } = await supabase.from("gas_order_items").insert(items);
     if (itemsErr) throw new Error(formatSupabaseError(itemsErr, "Rendelés tételek mentése"));
@@ -199,7 +199,7 @@ export async function createSupplier1GasOrder(
       gas_type: l.gas_type,
       size: l.size,
       quantity: l.quantity,
-      beszerzesi_ar: purchaseMap.get(priceKey(l.gas_type, l.size)) ?? null,
+      beszerzesi_ar: lookupUnitPrice(l.gas_type, l.size, purchaseMap),
     }));
     const { error: qtyErr } = await supabase.from("gas_order_quantity_items").insert(qtyItems);
     if (qtyErr) throw new Error(formatSupabaseError(qtyErr, "Rendelés tételek mentése"));
@@ -246,7 +246,7 @@ export async function createGasOrderFromQuantityLines(
     gas_type: l.gas_type,
     size: l.size,
     quantity: l.quantity,
-    beszerzesi_ar: purchaseMap.get(priceKey(l.gas_type, l.size)) ?? null,
+    beszerzesi_ar: lookupUnitPrice(l.gas_type, l.size, purchaseMap),
   }));
 
   const { error: itemsErr } = await supabase.from("gas_order_quantity_items").insert(items);
