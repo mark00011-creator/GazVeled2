@@ -73,23 +73,6 @@ export async function fetchOrderableCylinders(): Promise<GasOrderGroup> {
   return { siad, own };
 }
 
-function formatDottedLine(label: string, count: number): string {
-  const right = `${count} db`;
-  const dots = ".".repeat(Math.max(4, 36 - label.length - right.length));
-  return `${label} ${dots} ${right}`;
-}
-
-function mergedSerialSummary(group: GasOrderGroup): GasOrderSummaryLine[] {
-  const counts = new Map<string, number>();
-  for (const c of [...group.siad, ...group.own]) {
-    const label = `${c.gas_type} ${c.size}`;
-    counts.set(label, (counts.get(label) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => a.label.localeCompare(b.label, "hu"));
-}
-
 export type Supplier1QuantityLine = {
   stock_kind: "chinese" | "prima_pb";
   gas_type: string;
@@ -99,7 +82,7 @@ export type Supplier1QuantityLine = {
 };
 
 export function quantityOrderLabel(line: Supplier1QuantityLine): string {
-  return `${line.gas_type} ${line.size}`;
+  return line.label || `Kínai ${line.gas_type} ${line.size}`;
 }
 
 function mergedQuantitySummary(lines: Supplier1QuantityLine[]): GasOrderSummaryLine[] {
@@ -113,23 +96,25 @@ function mergedQuantitySummary(lines: Supplier1QuantityLine[]): GasOrderSummaryL
     .sort((a, b) => a.label.localeCompare(b.label, "hu"));
 }
 
+function formatSummarySection(title: string, lines: GasOrderSummaryLine[]): string[] {
+  if (lines.length === 0) return [];
+  return [title, ...lines.map((line) => `- ${line.label}: ${line.count} db`)];
+}
+
 export function buildSupplier1GasOrderText(
   group: GasOrderGroup,
   quantityLines: Supplier1QuantityLine[],
 ): string {
-  const bodyLines: string[] = [];
+  const serialSummary = summarizeGasOrder(group);
+  const quantitySummary = mergedQuantitySummary(quantityLines);
 
-  for (const line of mergedSerialSummary(group)) {
-    bodyLines.push(formatDottedLine(line.label, line.count));
-  }
+  const sections: string[] = [
+    ...formatSummarySection("Sorszámos – SIAD", serialSummary.siad),
+    ...formatSummarySection("Sorszámos – Saját", serialSummary.own),
+    ...formatSummarySection("Darabszámos", quantitySummary),
+  ];
 
-  const sortedQty = mergedQuantitySummary(quantityLines);
-  if (sortedQty.length > 0 && bodyLines.length > 0) bodyLines.push("");
-  for (const line of sortedQty) {
-    bodyLines.push(formatDottedLine(line.label, line.count));
-  }
-
-  const body = bodyLines.length === 0 ? "(nincs)" : bodyLines.join("\n");
+  const body = sections.length === 0 ? "(nincs)" : sections.join("\n");
 
   return [
     "Kedves Géza!",
