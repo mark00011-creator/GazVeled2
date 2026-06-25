@@ -83,6 +83,146 @@ export function summarizeQuantityLines(
     .sort((a, b) => a.label.localeCompare(b.label, "hu"));
 }
 
+/** Összesíti a körforgásos tételeket termék szerint (Kínai + PRÍMA PB együtt). */
+export function summarizeUnifiedQuantityLines(
+  lines: SelectedQuantityLine[],
+): { label: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const line of lines) {
+    const label = circulatingProductLabel(line.gas_type, line.size);
+    counts.set(label, (counts.get(label) ?? 0) + line.quantity);
+  }
+  return [...counts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => a.label.localeCompare(b.label, "hu"));
+}
+
+export function circulatingProductLabel(gas_type: string, size: string): string {
+  return `${gas_type} ${size}`;
+}
+
+export type CirculatingQuantitySource = {
+  stock_kind: CirculatingStockKind;
+  gas_type: string;
+  size: string;
+  empty_count: number;
+  source_key: string;
+};
+
+/** Körforgásos készletforrások típusai (Kínai + PRÍMA PB). */
+export type CirculatingStockKind = Extract<QuantityStockKind, "chinese" | "prima_pb">;
+
+/**
+ * Sorrend, ahogy a rendelés lefoglalja a körforgásos készletforrásokat.
+ * Módosításhoz elég ezt a tömböt átírni.
+ */
+export const CIRCULATING_STOCK_ALLOCATION_ORDER: readonly CirculatingStockKind[] = [
+  "chinese",
+  "prima_pb",
+];
+
+function circulatingSourceSortIndex(kind: CirculatingStockKind): number {
+  const idx = CIRCULATING_STOCK_ALLOCATION_ORDER.indexOf(kind);
+  return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
+}
+
+export function sortCirculatingQuantitySources(
+  sources: CirculatingQuantitySource[],
+): CirculatingQuantitySource[] {
+  return [...sources].sort(
+    (a, b) => circulatingSourceSortIndex(a.stock_kind) - circulatingSourceSortIndex(b.stock_kind),
+  );
+}
+
+export function allocateCirculatingQuantity(
+  sources: CirculatingQuantitySource[],
+  quantity: number,
+  productLabel: string,
+): SelectedQuantityLine[] {
+  const result: SelectedQuantityLine[] = [];
+  let remaining = quantity;
+
+  for (const source of sortCirculatingQuantitySources(sources)) {
+    if (remaining <= 0) break;
+    const take = Math.min(remaining, source.empty_count);
+    if (take <= 0) continue;
+    result.push({
+      stock_kind: source.stock_kind,
+      gas_type: source.gas_type,
+      size: source.size,
+      quantity: take,
+      label: productLabel,
+    });
+    remaining -= take;
+  }
+
+  return result;
+}
+
+export type MergedCirculatingQuantityLine = {
+  key: string;
+  gas_type: string;
+  size: string;
+  label: string;
+  empty_count: number;
+  sources: CirculatingQuantitySource[];
+};
+
+export function mergeCirculatingQuantityLines(
+  chinese: OrderableQuantityLine[],
+  prima: OrderableQuantityLine[],
+): MergedCirculatingQuantityLine[] {
+  const map = new Map<string, MergedCirculatingQuantityLine>();
+
+  for (const line of [...chinese, ...prima]) {
+    if (line.stock_kind !== "chinese" && line.stock_kind !== "prima_pb") continue;
+    const productKey = `${line.gas_type}|${line.size}`;
+    let merged = map.get(productKey);
+    if (!merged) {
+      merged = {
+        key: `circ|${productKey}`,
+        gas_type: line.gas_type,
+        size: line.size,
+        label: circulatingProductLabel(line.gas_type, line.size),
+        empty_count: 0,
+        sources: [],
+      };
+      map.set(productKey, merged);
+    }
+    merged.empty_count += line.empty_count;
+    merged.sources.push({
+      stock_kind: line.stock_kind,
+      gas_type: line.gas_type,
+      size: line.size,
+      empty_count: line.empty_count,
+      source_key: line.key,
+    });
+  }
+
+  for (const merged of map.values()) {
+    merged.sources = sortCirculatingQuantitySources(merged.sources);
+  }
+
+  return [...map.values()].sort((a, b) => a.label.localeCompare(b.label, "hu"));
+}
+
+export function splitMergedCirculatingSelection(
+  mergedLines: MergedCirculatingQuantityLine[],
+  selection: Record<string, { selected: boolean; quantity: number } | undefined>,
+): SelectedQuantityLine[] {
+  const result: SelectedQuantityLine[] = [];
+
+  for (const merged of mergedLines) {
+    const sel = selection[merged.key];
+    if (!sel?.selected || sel.quantity <= 0) continue;
+
+    const qty = Math.min(sel.quantity, merged.empty_count);
+    result.push(...allocateCirculatingQuantity(merged.sources, qty, merged.label));
+  }
+
+  return result;
+}
+
 export function buildQuantityGasOrderText(
   title: string,
   lines: SelectedQuantityLine[],

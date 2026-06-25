@@ -12,6 +12,8 @@ import {
 
 export type QuantitySelectionState = Record<string, { selected: boolean; quantity: number }>;
 
+export type SelectableQuantityLine = Pick<OrderableQuantityLine, "key" | "label" | "empty_count">;
+
 export function toSelectedQuantityLines(
   lines: OrderableQuantityLine[],
   selection: QuantitySelectionState,
@@ -31,7 +33,7 @@ export function toSelectedQuantityLines(
   return result;
 }
 
-export function initQuantitySelection(lines: OrderableQuantityLine[]): QuantitySelectionState {
+export function initQuantitySelection(lines: SelectableQuantityLine[]): QuantitySelectionState {
   const state: QuantitySelectionState = {};
   for (const line of lines) {
     state[line.key] = { selected: true, quantity: line.empty_count };
@@ -46,7 +48,7 @@ export function GasQuantityLineSelector({
   onSelectionChange,
 }: {
   title: string;
-  lines: OrderableQuantityLine[];
+  lines: SelectableQuantityLine[];
   selection: QuantitySelectionState;
   onSelectionChange: (next: QuantitySelectionState) => void;
 }) {
@@ -104,12 +106,6 @@ export function GasQuantityLineSelector({
                 <Label htmlFor={`qty-${line.key}`} className="min-w-0 flex-1 cursor-pointer">
                   {line.label}
                   <span className="ml-2 text-muted-foreground">(üres: {line.empty_count} db)</span>
-                  {line.stock_kind === "chinese" && (
-                    <span className="ml-1 text-xs text-muted-foreground">· Chinese</span>
-                  )}
-                  {line.stock_kind === "prima_pb" && (
-                    <span className="ml-1 text-xs text-muted-foreground">· PRÍMA PB</span>
-                  )}
                 </Label>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">Rendelés:</span>

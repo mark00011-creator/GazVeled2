@@ -328,7 +328,7 @@ function Dashboard() {
       <h2 className="mb-2 text-sm font-semibold">Készlet áttekintés</h2>
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Card className="p-4">
-          <div className="mb-3 text-sm font-semibold">Chinese</div>
+          <div className="mb-3 text-sm font-semibold">Kínai</div>
           <div className="grid grid-cols-3 gap-2 text-center text-sm">
             <div>
               <div className="text-lg font-bold">{stats?.chineseTotals?.full ?? "—"}</div>
@@ -494,18 +494,18 @@ function Dashboard() {
       <div className="mb-4 grid grid-cols-2 gap-3">
         <Card className="p-4">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <FileText className="h-3.5 w-3.5" /> Aktív bérletek
+            <Cylinder className="h-3.5 w-3.5" /> Bérletben lévő palackok
           </div>
 
-          <div className="mt-1 text-2xl font-bold">{stats?.activeRentals ?? "—"}</div>
+          <div className="mt-1 text-2xl font-bold">{stats?.rentedCylinders ?? "—"} db</div>
         </Card>
 
         <Card className="p-4">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Cylinder className="h-3.5 w-3.5" /> Kint lévő bérpalackok
+            <FileText className="h-3.5 w-3.5" /> Aktív bérleti szerződés
           </div>
 
-          <div className="mt-1 text-2xl font-bold">{stats?.rentedCylinders ?? "—"}</div>
+          <div className="mt-1 text-2xl font-bold">{stats?.activeRentals ?? "—"}</div>
         </Card>
 
         <Card className="p-4">

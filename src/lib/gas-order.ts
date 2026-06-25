@@ -99,8 +99,18 @@ export type Supplier1QuantityLine = {
 };
 
 export function quantityOrderLabel(line: Supplier1QuantityLine): string {
-  if (line.stock_kind === "prima_pb") return `${line.size} ${line.gas_type} (PRÍMA PB)`;
-  return `${line.gas_type} ${line.size} (Chinese)`;
+  return `${line.gas_type} ${line.size}`;
+}
+
+function mergedQuantitySummary(lines: Supplier1QuantityLine[]): GasOrderSummaryLine[] {
+  const counts = new Map<string, number>();
+  for (const line of lines) {
+    const label = quantityOrderLabel(line);
+    counts.set(label, (counts.get(label) ?? 0) + line.quantity);
+  }
+  return [...counts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => a.label.localeCompare(b.label, "hu"));
 }
 
 export function buildSupplier1GasOrderText(
@@ -113,12 +123,10 @@ export function buildSupplier1GasOrderText(
     bodyLines.push(formatDottedLine(line.label, line.count));
   }
 
-  const sortedQty = [...quantityLines].sort((a, b) =>
-    quantityOrderLabel(a).localeCompare(quantityOrderLabel(b), "hu"),
-  );
+  const sortedQty = mergedQuantitySummary(quantityLines);
   if (sortedQty.length > 0 && bodyLines.length > 0) bodyLines.push("");
   for (const line of sortedQty) {
-    bodyLines.push(formatDottedLine(quantityOrderLabel(line), line.quantity));
+    bodyLines.push(formatDottedLine(line.label, line.count));
   }
 
   const body = bodyLines.length === 0 ? "(nincs)" : bodyLines.join("\n");

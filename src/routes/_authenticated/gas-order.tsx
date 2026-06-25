@@ -24,12 +24,13 @@ import { downloadPdf, generateSupplier1GasOrderPdf } from "@/lib/gas-order-pdf";
 import {
   fetchOrderableChineseLines,
   fetchOrderablePrimaPbLines,
-  summarizeQuantityLines,
+  mergeCirculatingQuantityLines,
+  splitMergedCirculatingSelection,
+  summarizeUnifiedQuantityLines,
 } from "@/lib/gas-order-quantity";
 import {
   GasQuantityLineSelector,
   initQuantitySelection,
-  toSelectedQuantityLines,
   type QuantitySelectionState,
 } from "@/components/GasQuantityLineSelector";
 import {
@@ -150,15 +151,18 @@ function GasOrderPage() {
     queryFn: fetchOrderablePrimaPbLines,
   });
 
-  const quantityLines = useMemo(() => [...chineseLines, ...primaLines], [chineseLines, primaLines]);
+  const circulatingLines = useMemo(
+    () => mergeCirculatingQuantityLines(chineseLines, primaLines),
+    [chineseLines, primaLines],
+  );
 
   useEffect(() => {
-    setQtySelection(initQuantitySelection(quantityLines));
-  }, [quantityLines]);
+    setQtySelection(initQuantitySelection(circulatingLines));
+  }, [circulatingLines]);
 
   const selectedQuantityLines = useMemo(
-    () => toSelectedQuantityLines(quantityLines, qtySelection),
-    [quantityLines, qtySelection],
+    () => splitMergedCirculatingSelection(circulatingLines, qtySelection),
+    [circulatingLines, qtySelection],
   );
 
   const { data: orders = [], isLoading: ordersLoading } = useQuery({
@@ -176,10 +180,10 @@ function GasOrderPage() {
   const group = data ?? { siad: [], own: [] };
   const summary = summarizeGasOrder(group);
   const serialTotal = group.siad.length + group.own.length;
-  const quantitySummary = summarizeQuantityLines(selectedQuantityLines);
+  const quantitySummary = summarizeUnifiedQuantityLines(selectedQuantityLines);
   const quantityTotal = selectedQuantityLines.reduce((s, l) => s + l.quantity, 0);
   const orderTotal = serialTotal + quantityTotal;
-  const hasOrderable = serialTotal > 0 || quantityLines.length > 0;
+  const hasOrderable = serialTotal > 0 || circulatingLines.length > 0;
 
   async function handleCreateOrder() {
     if (orderTotal === 0) {
@@ -246,8 +250,7 @@ function GasOrderPage() {
   return (
     <AppShell title="Gáz rendelés">
       <p className="mb-4 text-sm text-muted-foreground">
-        Beszállító 1: sorszámos üres palackok (SIAD / saját), kínai és PRÍMA PB üres készlet – egy
-        rendelésben.
+        Sorszámos üres palackok (SIAD / saját) és körforgásos üres készlet – egy rendelésben.
       </p>
 
       {isLoading && <div className="py-8 text-center text-sm text-muted-foreground">Betöltés…</div>}
@@ -264,18 +267,7 @@ function GasOrderPage() {
             <SummaryBlock title="Sorszámos – SIAD" lines={summary.siad} />
             <SummaryBlock title="Sorszámos – Saját" lines={summary.own} />
             {quantitySummary.length > 0 && (
-              <div className="mb-3">
-                <div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
-                  Darabszámos (Chinese / PRÍMA PB)
-                </div>
-                <ul className="space-y-0.5 text-sm">
-                  {quantitySummary.map((l) => (
-                    <li key={l.label}>
-                      {l.label}: <span className="font-medium">{l.count} db</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <SummaryBlock title="Körforgásos" lines={quantitySummary} />
             )}
             {!hasOrderable && (
               <div className="text-sm text-muted-foreground">
@@ -296,10 +288,10 @@ function GasOrderPage() {
             <OrderEstimateCard group={group} priceMap={priceMap} />
           </div>
 
-          <h2 className="mb-3 text-sm font-semibold">Darabszámos készlet (Chinese / PRÍMA PB)</h2>
+          <h2 className="mb-3 text-sm font-semibold">Körforgásos készlet</h2>
           <GasQuantityLineSelector
             title="Rendelhető üres palackok"
-            lines={quantityLines}
+            lines={circulatingLines}
             selection={qtySelection}
             onSelectionChange={setQtySelection}
           />
