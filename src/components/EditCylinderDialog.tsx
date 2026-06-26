@@ -32,6 +32,8 @@ import {
 } from "@/lib/labels";
 import { updateCylinder, type CylinderRow } from "@/lib/cylinder-ops";
 import { PressureTestYearField, pressureTestYearSaveError } from "@/components/PressureTestYearField";
+import { CylinderHistorySection } from "@/components/CylinderHistorySection";
+import { useQueryClient } from "@tanstack/react-query";
 
 const LOCATION_TYPES = ["warehouse_full", "warehouse_empty", "customer", "siad", "own_supplier"] as const;
 const STATUSES = ["full", "empty", "service"] as const;
@@ -94,6 +96,7 @@ export function EditCylinderDialog({
 }) {
   const [form, setForm] = useState<EditFormState | null>(null);
   const [busy, setBusy] = useState(false);
+  const qc = useQueryClient();
 
   useEffect(() => {
     if (open && cylinder) setForm(toFormState(cylinder));
@@ -130,6 +133,7 @@ export function EditCylinderDialog({
         location_supplier_id: form.location_supplier_id,
       });
       toast.success("Palack frissítve");
+      qc.invalidateQueries({ queryKey: ["cylinder-history", cylinder.id] });
       onOpenChange(false);
       onSaved?.();
     } catch (e) {
@@ -324,6 +328,8 @@ export function EditCylinderDialog({
                 Mentés
               </Button>
             </div>
+
+            <CylinderHistorySection cylinderId={cylinder.id} enabled={open} />
           </div>
         )}
       </DialogContent>

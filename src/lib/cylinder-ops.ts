@@ -1,4 +1,12 @@
 import { detectManufacturerFromBarcode } from "@/lib/barcode-manufacturer";
+import {
+  fetchPartnerName,
+  logCylinderCreated,
+  logCylinderUpdateDiff,
+  logPartnerIssue,
+  logPartnerReturn,
+  logQuickExchange,
+} from "@/lib/cylinder-history";
 import { supabase } from "@/integrations/supabase/client";
 import { statusLabels, type Circulation, type Manufacturer } from "@/lib/labels";
 import {
@@ -170,7 +178,9 @@ export async function createNewCylinder(args: {
     .single();
 
   if (error) throw new Error(parseDbError(error.message));
-  return data as CylinderRow;
+  const row = data as CylinderRow;
+  await logCylinderCreated(row);
+  return row;
 }
 
 /**
@@ -232,6 +242,23 @@ export async function recordExchange(args: {
 
   const exchangeId = data as string;
   await storeExchangeProfit(exchangeId, args.outgoing_id);
+
+  const [{ data: inCyl }, { data: outCyl }, partnerName] = await Promise.all([
+    supabase.from("cylinders").select("barcode").eq("id", args.incoming_id).single(),
+    supabase.from("cylinders").select("barcode").eq("id", args.outgoing_id).single(),
+    fetchPartnerName(args.partner_id),
+  ]);
+  if (inCyl && outCyl) {
+    await logQuickExchange({
+      incoming_id: args.incoming_id,
+      outgoing_id: args.outgoing_id,
+      partner_id: args.partner_id,
+      incoming_barcode: inCyl.barcode,
+      outgoing_barcode: outCyl.barcode,
+      partner_name: partnerName,
+    });
+  }
+
   await syncRentalCylindersAfterExchange(args);
   return exchangeId;
 }
@@ -253,6 +280,15 @@ export async function recordSale(args: {
 
   const exchangeId = data as string;
   await storeExchangeProfit(exchangeId, args.outgoing_id);
+
+  const [{ data: cyl }, partnerName] = await Promise.all([
+    supabase.from("cylinders").select("barcode").eq("id", args.outgoing_id).single(),
+    fetchPartnerName(args.partner_id),
+  ]);
+  if (cyl) {
+    await logPartnerIssue(args.outgoing_id, args.partner_id, cyl.barcode, partnerName);
+  }
+
   return exchangeId;
 }
 
@@ -270,6 +306,15 @@ export async function recordEmptyReturn(args: {
 
   if (error) throw new Error(parseDbError(error.message));
   if (!data) throw new Error("Az üres visszavétel rögzítése sikertelen");
+
+  const [{ data: cyl }, partnerName] = await Promise.all([
+    supabase.from("cylinders").select("barcode").eq("id", args.incoming_id).single(),
+    fetchPartnerName(args.partner_id),
+  ]);
+  if (cyl) {
+    await logPartnerReturn(args.incoming_id, args.partner_id, cyl.barcode, partnerName);
+  }
+
   return data as string;
 }
 
@@ -515,7 +560,7 @@ async function syncRentalCylindersAfterExchange(args: {
     location_type: whLoc,
     location_partner_id: null,
     location_supplier_id: null,
-  });
+  }, { skipHistory: true, partnerId: args.partner_id });
 
   if (args.reassign_rental && args.rental_id) {
     let oldLink: {
@@ -591,7 +636,7 @@ async function syncRentalCylindersAfterExchange(args: {
       location_type: "customer",
       location_partner_id: args.partner_id,
       location_supplier_id: null,
-    });
+    }, { skipHistory: true, partnerId: args.partner_id });
 
     await supabase.from("audit_log").insert({
       user_id: uid,
@@ -807,7 +852,15 @@ export async function updateCylinder(
       | "pressure_test_year"
     >
   >,
+  options?: { skipHistory?: boolean; partnerId?: string | null },
 ): Promise<CylinderRow> {
+  const { data: before, error: beforeErr } = await supabase
+    .from("cylinders")
+    .select("*")
+    .eq("id", id)
+    .single();
+  if (beforeErr) throw new Error(parseDbError(beforeErr.message));
+
   const payload = { ...updates };
   if (payload.barcode) payload.barcode = normalizeBarcode(payload.barcode);
   if (payload.manufacturer === "chinese") {
@@ -822,7 +875,11 @@ export async function updateCylinder(
     .single();
 
   if (error) throw new Error(parseDbError(error.message));
-  return data as CylinderRow;
+  const after = data as CylinderRow;
+  if (!options?.skipHistory) {
+    await logCylinderUpdateDiff(before as CylinderRow, after, options);
+  }
+  return after;
 }
 
 /** Update barcode on an existing cylinder only (no insert). */

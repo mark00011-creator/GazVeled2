@@ -1,0 +1,376 @@
+import { supabase } from "@/integrations/supabase/client";
+import {
+  circulationLabels,
+  formatPressureTestYear,
+  locationLabels,
+  manufacturerLabels,
+  statusLabels,
+  type Circulation,
+  type Manufacturer,
+} from "@/lib/labels";
+import type { CylinderRow } from "@/lib/cylinder-ops";
+
+export type CylinderHistoryEventType =
+  | "cylinder_created"
+  | "cylinder_edited"
+  | "quick_exchange"
+  | "partner_issue"
+  | "partner_return"
+  | "rental_start"
+  | "rental_extend"
+  | "rental_close"
+  | "warehouse_arrival"
+  | "warehouse_departure"
+  | "location_change"
+  | "status_change"
+  | "manufacturer_change"
+  | "owner_change"
+  | "gas_type_change"
+  | "size_change"
+  | "pressure_test_year_change";
+
+export const cylinderHistoryEventLabels: Record<CylinderHistoryEventType, string> = {
+  cylinder_created: "Palack létrehozása",
+  cylinder_edited: "Palack szerkesztése",
+  quick_exchange: "Gyors csere",
+  partner_issue: "Partnerhez kiadás",
+  partner_return: "Partnertől visszavétel",
+  rental_start: "Bérbeadás",
+  rental_extend: "Bérlet hosszabbítás",
+  rental_close: "Bérlet lezárása",
+  warehouse_arrival: "Telephelyre érkezés",
+  warehouse_departure: "Telephelyről kiadás",
+  location_change: "Helyszín módosítása",
+  status_change: "Státusz módosítás",
+  manufacturer_change: "Gyártó módosítása",
+  owner_change: "Tulajdonos módosítása",
+  gas_type_change: "Gáz típusa módosítása",
+  size_change: "Méret módosítása",
+  pressure_test_year_change: "Nyomáspróba módosítás",
+};
+
+export type CylinderHistoryRow = {
+  id: string;
+  cylinder_id: string;
+  event_type: CylinderHistoryEventType;
+  description: string | null;
+  partner_id: string | null;
+  old_value: string | null;
+  new_value: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  created_by: string | null;
+  partners?: { name: string } | null;
+};
+
+type LogEntry = {
+  cylinder_id: string;
+  event_type: CylinderHistoryEventType;
+  description?: string | null;
+  partner_id?: string | null;
+  old_value?: string | null;
+  new_value?: string | null;
+  metadata?: Record<string, unknown>;
+  created_by?: string | null;
+};
+
+const WAREHOUSE_LOCS = new Set(["warehouse_full", "warehouse_empty"]);
+
+function formatLocation(loc: string | null | undefined, partnerId?: string | null): string {
+  if (!loc) return "—";
+  const label = locationLabels[loc] ?? loc;
+  return partnerId ? `${label} (partner)` : label;
+}
+
+function formatStatus(s: string | null | undefined): string {
+  if (!s) return "—";
+  return statusLabels[s] ?? s;
+}
+
+function formatOwner(o: string | null | undefined): string {
+  if (!o) return "—";
+  return circulationLabels[o as Circulation] ?? o;
+}
+
+function formatManufacturer(m: string | null | undefined): string {
+  if (!m) return "—";
+  return manufacturerLabels[m as Manufacturer] ?? m;
+}
+
+function formatYear(y: number | null | undefined): string {
+  return formatPressureTestYear(y);
+}
+
+async function currentUserId(): Promise<string | null> {
+  const { data } = await supabase.auth.getUser();
+  return data.user?.id ?? null;
+}
+
+export async function logCylinderHistory(entry: LogEntry): Promise<void> {
+  const created_by = entry.created_by ?? (await currentUserId());
+  const { error } = await supabase.from("cylinder_history").insert({
+    cylinder_id: entry.cylinder_id,
+    event_type: entry.event_type,
+    description: entry.description ?? null,
+    partner_id: entry.partner_id ?? null,
+    old_value: entry.old_value ?? null,
+    new_value: entry.new_value ?? null,
+    metadata: entry.metadata ?? {},
+    created_by,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function fetchCylinderHistory(cylinderId: string): Promise<CylinderHistoryRow[]> {
+  const { data, error } = await supabase
+    .from("cylinder_history")
+    .select("id, cylinder_id, event_type, description, partner_id, old_value, new_value, metadata, created_at, created_by, partners:partner_id(name)")
+    .eq("cylinder_id", cylinderId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as CylinderHistoryRow[];
+}
+
+export async function logCylinderCreated(cyl: CylinderRow, description?: string): Promise<void> {
+  await logCylinderHistory({
+    cylinder_id: cyl.id,
+    event_type: "cylinder_created",
+    description: description ?? `Palack felvéve: ${cyl.barcode}`,
+    new_value: `${cyl.gas_type} · ${cyl.size}`,
+    metadata: { barcode: cyl.barcode },
+  });
+}
+
+type UpdateOptions = { skipHistory?: boolean; partnerId?: string | null };
+
+export async function logCylinderUpdateDiff(
+  before: CylinderRow,
+  after: CylinderRow,
+  options?: UpdateOptions,
+): Promise<void> {
+  if (options?.skipHistory) return;
+
+  const partnerId = options?.partnerId ?? after.location_partner_id ?? before.location_partner_id;
+
+  if (before.status !== after.status) {
+    await logCylinderHistory({
+      cylinder_id: after.id,
+      event_type: "status_change",
+      partner_id: partnerId,
+      old_value: formatStatus(before.status),
+      new_value: formatStatus(after.status),
+    });
+  }
+
+  if (before.manufacturer !== after.manufacturer) {
+    await logCylinderHistory({
+      cylinder_id: after.id,
+      event_type: "manufacturer_change",
+      partner_id: partnerId,
+      old_value: formatManufacturer(before.manufacturer),
+      new_value: formatManufacturer(after.manufacturer),
+    });
+  }
+
+  if (before.owner !== after.owner) {
+    await logCylinderHistory({
+      cylinder_id: after.id,
+      event_type: "owner_change",
+      partner_id: partnerId,
+      old_value: formatOwner(before.owner),
+      new_value: formatOwner(after.owner),
+    });
+  }
+
+  if (before.gas_type !== after.gas_type) {
+    await logCylinderHistory({
+      cylinder_id: after.id,
+      event_type: "gas_type_change",
+      partner_id: partnerId,
+      old_value: before.gas_type,
+      new_value: after.gas_type,
+    });
+  }
+
+  if (before.size !== after.size) {
+    await logCylinderHistory({
+      cylinder_id: after.id,
+      event_type: "size_change",
+      partner_id: partnerId,
+      old_value: before.size,
+      new_value: after.size,
+    });
+  }
+
+  if (before.pressure_test_year !== after.pressure_test_year) {
+    await logCylinderHistory({
+      cylinder_id: after.id,
+      event_type: "pressure_test_year_change",
+      partner_id: partnerId,
+      old_value: formatYear(before.pressure_test_year),
+      new_value: formatYear(after.pressure_test_year),
+    });
+  }
+
+  const locChanged =
+    before.location_type !== after.location_type ||
+    before.location_partner_id !== after.location_partner_id ||
+    before.location_supplier_id !== after.location_supplier_id;
+
+  if (locChanged) {
+    const fromWh = WAREHOUSE_LOCS.has(before.location_type);
+    const toWh = WAREHOUSE_LOCS.has(after.location_type);
+    const fromCustomer = before.location_type === "customer";
+    const toCustomer = after.location_type === "customer";
+
+    let eventType: CylinderHistoryEventType = "location_change";
+    if (toCustomer && after.location_partner_id) eventType = "partner_issue";
+    else if (fromCustomer && toWh) eventType = "partner_return";
+    else if (fromWh && toCustomer) eventType = "warehouse_departure";
+    else if (!fromWh && toWh) eventType = "warehouse_arrival";
+
+    await logCylinderHistory({
+      cylinder_id: after.id,
+      event_type: eventType,
+      partner_id: partnerId,
+      old_value: formatLocation(before.location_type, before.location_partner_id),
+      new_value: formatLocation(after.location_type, after.location_partner_id),
+    });
+  }
+
+  if (before.barcode !== after.barcode || before.circulation !== after.circulation) {
+    const parts: string[] = [];
+    if (before.barcode !== after.barcode) parts.push(`Vonalkód: ${before.barcode} → ${after.barcode}`);
+    if (before.circulation !== after.circulation) {
+      parts.push(
+        `Körforgás: ${formatOwner(before.circulation)} → ${formatOwner(after.circulation)}`,
+      );
+    }
+    await logCylinderHistory({
+      cylinder_id: after.id,
+      event_type: "cylinder_edited",
+      partner_id: partnerId,
+      description: parts.join(" · "),
+    });
+  }
+}
+
+export async function logQuickExchange(args: {
+  incoming_id: string;
+  outgoing_id: string;
+  partner_id: string;
+  incoming_barcode: string;
+  outgoing_barcode: string;
+  partner_name?: string;
+}): Promise<void> {
+  const desc = [
+    args.partner_name ? `Partner: ${args.partner_name}` : null,
+    `Leadott: ${args.incoming_barcode}`,
+    `Kapott: ${args.outgoing_barcode}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const meta = {
+    incoming_barcode: args.incoming_barcode,
+    outgoing_barcode: args.outgoing_barcode,
+    partner_name: args.partner_name,
+  };
+
+  await logCylinderHistory({
+    cylinder_id: args.incoming_id,
+    event_type: "quick_exchange",
+    partner_id: args.partner_id,
+    description: desc,
+    metadata: meta,
+  });
+  await logCylinderHistory({
+    cylinder_id: args.outgoing_id,
+    event_type: "quick_exchange",
+    partner_id: args.partner_id,
+    description: desc,
+    metadata: meta,
+  });
+}
+
+export async function logPartnerIssue(
+  cylinderId: string,
+  partnerId: string,
+  barcode: string,
+  partnerName?: string,
+): Promise<void> {
+  await logCylinderHistory({
+    cylinder_id: cylinderId,
+    event_type: "partner_issue",
+    partner_id: partnerId,
+    description: partnerName ? `Partner: ${partnerName}` : undefined,
+    new_value: barcode,
+  });
+}
+
+export async function logPartnerReturn(
+  cylinderId: string,
+  partnerId: string,
+  barcode: string,
+  partnerName?: string,
+): Promise<void> {
+  await logCylinderHistory({
+    cylinder_id: cylinderId,
+    event_type: "partner_return",
+    partner_id: partnerId,
+    description: partnerName ? `Partner: ${partnerName}` : undefined,
+    old_value: barcode,
+  });
+}
+
+export async function logRentalStart(
+  cylinderId: string,
+  partnerId: string,
+  rentalId: string,
+  partnerName?: string,
+): Promise<void> {
+  await logCylinderHistory({
+    cylinder_id: cylinderId,
+    event_type: "rental_start",
+    partner_id: partnerId,
+    description: partnerName ? `Partner: ${partnerName}` : "Bérletbe kiadva",
+    metadata: { rental_id: rentalId },
+  });
+}
+
+export async function logRentalExtend(
+  cylinderId: string,
+  partnerId: string,
+  rentalId: string,
+  oldExpiry: string | null,
+  newExpiry: string | null,
+): Promise<void> {
+  await logCylinderHistory({
+    cylinder_id: cylinderId,
+    event_type: "rental_extend",
+    partner_id: partnerId,
+    old_value: oldExpiry ?? "—",
+    new_value: newExpiry ?? "—",
+    metadata: { rental_id: rentalId },
+  });
+}
+
+export async function logRentalClose(
+  cylinderId: string,
+  partnerId: string,
+  rentalId: string,
+  partnerName?: string,
+): Promise<void> {
+  await logCylinderHistory({
+    cylinder_id: cylinderId,
+    event_type: "rental_close",
+    partner_id: partnerId,
+    description: partnerName ? `Partner: ${partnerName}` : "Bérlet lezárva",
+    metadata: { rental_id: rentalId },
+  });
+}
+
+export async function fetchPartnerName(partnerId: string): Promise<string | undefined> {
+  const { data } = await supabase.from("partners").select("name").eq("id", partnerId).maybeSingle();
+  return data?.name ?? undefined;
+}

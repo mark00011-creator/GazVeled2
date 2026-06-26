@@ -473,6 +473,75 @@ export type Database = {
           },
         ]
       }
+      cylinder_history: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          cylinder_id: string
+          description: string | null
+          document_url: string | null
+          event_type: string
+          id: string
+          ip_address: unknown
+          metadata: Json
+          new_value: string | null
+          old_value: string | null
+          partner_id: string | null
+          photo_url: string | null
+          pressure_test_certificate_url: string | null
+          user_note: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          cylinder_id: string
+          description?: string | null
+          document_url?: string | null
+          event_type: string
+          id?: string
+          ip_address?: unknown
+          metadata?: Json
+          new_value?: string | null
+          old_value?: string | null
+          partner_id?: string | null
+          photo_url?: string | null
+          pressure_test_certificate_url?: string | null
+          user_note?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          cylinder_id?: string
+          description?: string | null
+          document_url?: string | null
+          event_type?: string
+          id?: string
+          ip_address?: unknown
+          metadata?: Json
+          new_value?: string | null
+          old_value?: string | null
+          partner_id?: string | null
+          photo_url?: string | null
+          pressure_test_certificate_url?: string | null
+          user_note?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cylinder_history_cylinder_id_fkey"
+            columns: ["cylinder_id"]
+            isOneToOne: false
+            referencedRelation: "cylinders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cylinder_history_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       exchanges: {
         Row: {
           beszerzesi_ar: number | null

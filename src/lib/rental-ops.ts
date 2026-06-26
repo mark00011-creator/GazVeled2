@@ -16,6 +16,14 @@ import {
 
 } from "@/lib/cylinder-ops";
 
+import {
+  fetchPartnerName,
+  logCylinderCreated,
+  logRentalClose,
+  logRentalExtend,
+  logRentalStart,
+} from "@/lib/cylinder-history";
+
 import { addYears, todayLocal } from "@/lib/date-utils";
 
 import { addMonths } from "@/lib/rental-billing";
@@ -254,7 +262,9 @@ async function createTempRentalCylinder(gas_type: string, size: string): Promise
     .single();
   if (error) throwSupabaseError("createTempRentalCylinder → cylinders INSERT", error);
   if (!data) throw new Error("Ideiglenes palack létrehozása sikertelen");
-  return data as CylinderRow;
+  const row = data as CylinderRow;
+  await logCylinderCreated(row, "Ideiglenes bérpalack létrehozva");
+  return row;
 }
 
 export async function validateCylinderForRental(barcode: string): Promise<CylinderRow> {
@@ -747,7 +757,7 @@ async function assignCylinderToRental(
 
       status: "full",
 
-    });
+    }, { skipHistory: true });
 
   } catch (e) {
 
@@ -756,6 +766,9 @@ async function assignCylinderToRental(
     throw new Error(parseDbError((e as Error).message));
 
   }
+
+  const partnerName = await fetchPartnerName(partnerId);
+  await logRentalStart(cyl.id, partnerId, rentalId, partnerName);
 
 
 
@@ -969,6 +982,13 @@ export async function extendRentalCylinder(rentalId: string, cylinderId: string)
   const base = link.expiry_date ?? link.added_at.slice(0, 10);
   const newExpiry = addYears(base, 1);
 
+  const { data: rental, error: rentErr } = await supabase
+    .from("rentals")
+    .select("partner_id")
+    .eq("id", rentalId)
+    .single();
+  if (rentErr) throw new Error(parseDbError(rentErr.message));
+
   const { error: updErr } = await supabase
     .from("rental_cylinders")
     .update({ expiry_date: newExpiry })
@@ -976,6 +996,7 @@ export async function extendRentalCylinder(rentalId: string, cylinderId: string)
     .eq("cylinder_id", cylinderId);
 
   if (updErr) throw new Error(parseDbError(updErr.message));
+  await logRentalExtend(cylinderId, rental.partner_id, rentalId, base, newExpiry);
   await logRentalAudit(rentalId, "Palack bérlet meghosszabbítva", { cylinder_id: cylinderId, expiry_date: newExpiry });
 }
 
@@ -1048,6 +1069,7 @@ export async function extendRental(rentalId: string): Promise<void> {
   };
 
   const expiryBase = rental.expiry_date ?? rental.start_date ?? todayLocal();
+  const oldExpiry = rental.expiry_date;
 
 
 
@@ -1107,6 +1129,13 @@ export async function extendRental(rentalId: string): Promise<void> {
       note: "Bérlet hosszabbítva",
       user_id: uid,
     });
+    await logRentalExtend(
+      c.cylinder_id,
+      rental.partner_id,
+      rentalId,
+      oldExpiry,
+      (updates.expiry_date as string) ?? null,
+    );
   }
 
   await logRentalAudit(rentalId, "Bérlet hosszabbítva", updates);
@@ -1195,6 +1224,7 @@ export async function returnRentalCylinders(args: {
 
     if (cylErr) throwSupabaseError("returnRentalCylinders → cylinders", cylErr);
 
+    const partnerName = await fetchPartnerName(rental.partner_id);
     const now = new Date().toISOString();
 
     for (const cyl of (cylRows ?? []) as CylinderRow[]) {
@@ -1211,12 +1241,14 @@ export async function returnRentalCylinders(args: {
       });
       if (movErr) throw new Error(parseDbError(movErr.message));
 
+      await logRentalClose(cyl.id, rental.partner_id, args.rental_id, partnerName);
+
       await updateCylinder(cyl.id, {
         location_type: whLoc,
         location_partner_id: null,
         location_supplier_id: null,
         rental_id: null,
-      } as Parameters<typeof updateCylinder>[1]);
+      }, { skipHistory: true });
 
       const endDate = now.slice(0, 10);
       const { error: rcUpdErr } = await supabase
