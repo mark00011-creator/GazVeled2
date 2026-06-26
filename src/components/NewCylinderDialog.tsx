@@ -30,6 +30,7 @@ import {
   isNewCylinderFormValid,
   type NewCylinderFormState,
 } from "@/lib/gas-cylinder-form";
+import { parsePressureTestYearInput } from "@/lib/labels";
 import { createNewCylinder, type CylinderRow } from "@/lib/cylinder-ops";
 
 type LocType = "warehouse_full" | "warehouse_empty" | "customer" | "siad" | "own_supplier";
@@ -78,6 +79,7 @@ export function NewCylinderDialog({
         location_type: locationType,
         location_supplier_id: locationSupplierId,
         note: form.note.trim() || undefined,
+        pressure_test_year: parsePressureTestYearInput(form.pressureTestYear),
       });
       toast.success("Új palack felvéve");
       await onCreated(cyl);
@@ -178,6 +180,20 @@ export function NewCylinderDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div>
+            <Label>Nyomáspróba éve (opcionális)</Label>
+            <Input
+              type="number"
+              min={1900}
+              max={2100}
+              step={1}
+              inputMode="numeric"
+              placeholder="pl. 2028"
+              value={form.pressureTestYear}
+              onChange={(e) => setForm({ ...form, pressureTestYear: e.target.value })}
+            />
           </div>
 
           <div>

@@ -48,6 +48,20 @@ export const MANUFACTURER_OPTIONS: { value: Manufacturer; label: string }[] = [
   { value: "other", label: "Egyéb" },
 ];
 
+export function formatPressureTestYear(year: number | null | undefined): string {
+  if (year == null) return "—";
+  return String(year);
+}
+
+/** Űrlap érték → DB (üres = null). */
+export function parsePressureTestYearInput(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const n = Number.parseInt(trimmed, 10);
+  if (!Number.isFinite(n) || n < 1900 || n > 2100) return null;
+  return n;
+}
+
 export const statusLabels: Record<string, string> = {
   full: "Teli",
   empty: "Üres",

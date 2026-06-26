@@ -1,5 +1,6 @@
 import {
   circulationLabels,
+  formatPressureTestYear,
   manufacturerLabels,
   type Circulation,
   type Manufacturer,
@@ -21,6 +22,7 @@ export type RentalContractLineSource = {
   circulation?: string | null;
   replacement_value?: number | null;
   is_temporary?: boolean;
+  pressure_test_year?: number | null;
 };
 
 /** Quantity-based stock line (Chinese / FLAGA PB / PRÍMA PB) – bérleti szerződéshez. */
@@ -39,6 +41,7 @@ export type RentalContractLine = {
   gyarto: string;
   tulajdonos: string;
   vonalkodAzonosito: string;
+  nyomasProba: string;
   potlasiErtek: number;
 };
 
@@ -140,6 +143,7 @@ function lineFromCylinder(c: RentalContractLineSource): RentalContractLine {
     gyarto: manufacturerDisplayLabel(c.manufacturer),
     tulajdonos: ownerDisplayLabel(c.owner, c.circulation),
     vonalkodAzonosito: deriveVonalkodAzonosito(c),
+    nyomasProba: formatPressureTestYear(c.pressure_test_year),
     potlasiErtek: resolveReplacementValue(c.replacement_value),
   };
 }
@@ -162,6 +166,7 @@ function lineFromStockItem(item: RentalContractStockItem): RentalContractLine {
     gyarto,
     tulajdonos: "Saját",
     vonalkodAzonosito: deriveVonalkodAzonosito({}, { stockKind: item.kind, quantityLine: true }),
+    nyomasProba: "—",
     potlasiErtek: resolveReplacementValue(item.replacement_value),
   };
 }

@@ -390,6 +390,7 @@ export type Database = {
           note: string | null
           owner: Database["public"]["Enums"]["circulation"]
           photo_url: string | null
+          pressure_test_year: number | null
           rental_id: string | null
           replacement_value: number
           size: string
@@ -415,6 +416,7 @@ export type Database = {
           note?: string | null
           owner?: Database["public"]["Enums"]["circulation"]
           photo_url?: string | null
+          pressure_test_year?: number | null
           rental_id?: string | null
           replacement_value?: number
           size: string
@@ -440,6 +442,7 @@ export type Database = {
           note?: string | null
           owner?: Database["public"]["Enums"]["circulation"]
           photo_url?: string | null
+          pressure_test_year?: number | null
           rental_id?: string | null
           replacement_value?: number
           size?: string

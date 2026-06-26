@@ -1,3 +1,4 @@
+import { detectManufacturerFromBarcode } from "@/lib/barcode-manufacturer";
 import type { Circulation, Manufacturer } from "@/lib/labels";
 
 export const GAS_TYPES = ["Acetilén", "Argon", "Stargon", "Széndioxid", "Nitrogén", "Oxigén"];
@@ -15,16 +16,18 @@ export type NewCylinderFormState = {
   gasType: string;
   size: string;
   note: string;
+  pressureTestYear: string;
 };
 
 export function defaultNewCylinderForm(barcode: string): NewCylinderFormState {
   return {
     barcode,
     owner: "own",
-    manufacturer: "other",
+    manufacturer: detectManufacturerFromBarcode(barcode),
     gasType: "Argon",
     size: "20 L",
     note: "",
+    pressureTestYear: "",
   };
 }
 

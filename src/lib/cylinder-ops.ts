@@ -1,3 +1,4 @@
+import { detectManufacturerFromBarcode } from "@/lib/barcode-manufacturer";
 import { supabase } from "@/integrations/supabase/client";
 import { statusLabels, type Circulation, type Manufacturer } from "@/lib/labels";
 import {
@@ -41,6 +42,7 @@ export type CylinderRow = {
   location_partner_id: string | null;
   location_supplier_id: string | null;
   rental_id?: string | null;
+  pressure_test_year: number | null;
   last_movement_at: string | null;
   is_temporary: boolean;
   first_tracked_at: string | null;
@@ -135,6 +137,7 @@ export async function createNewCylinder(args: {
   location_partner_id?: string | null;
   location_supplier_id?: string | null;
   note?: string;
+  pressure_test_year?: number | null;
 }): Promise<CylinderRow> {
   const bc = normalizeBarcode(args.barcode);
   if (!bc) throw new Error("Üres vonalkód");
@@ -145,7 +148,7 @@ export async function createNewCylinder(args: {
   }
 
   const manufacturer: Manufacturer =
-    args.manufacturer ?? (args.circulation === "siad" ? "siad" : "other");
+    args.manufacturer ?? detectManufacturerFromBarcode(bc);
 
   const { data, error } = await supabase
     .from("cylinders")
@@ -161,6 +164,7 @@ export async function createNewCylinder(args: {
       location_partner_id: args.location_partner_id ?? null,
       location_supplier_id: args.location_supplier_id ?? null,
       note: args.note ?? null,
+      pressure_test_year: args.pressure_test_year ?? null,
     })
     .select()
     .single();
@@ -800,6 +804,7 @@ export async function updateCylinder(
       | "location_supplier_id"
       | "rental_id"
       | "is_temporary"
+      | "pressure_test_year"
     >
   >,
 ): Promise<CylinderRow> {

@@ -10,6 +10,7 @@ import {
   circulationLabels,
   effectiveRentalExpiry,
   fmtDate,
+  formatPressureTestYear,
   isRentalExpired,
   rentalDisplayStatus,
   rentalStatusLabels,
@@ -199,6 +200,7 @@ function RentalDetail() {
             owner: c.owner,
             circulation: c.circulation,
             replacement_value: c.replacement_value,
+            pressure_test_year: c.pressure_test_year,
           })),
           toContractStockItems(qtyItems ?? []),
         ),
@@ -431,6 +433,10 @@ function RentalDetail() {
                     <div>
                       <div className="text-muted-foreground">Tulajdonos</div>
                       <div>{circulationLabels[owner] ?? owner}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Nyomáspróba</div>
+                      <div>{formatPressureTestYear(c.pressure_test_year)}</div>
                     </div>
                     <div>
                       <div className="text-muted-foreground">Kezdet</div>

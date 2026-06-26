@@ -315,6 +315,8 @@ export type RentalCylinderDetail = {
 
   status: string;
 
+  pressure_test_year: number | null;
+
 };
 
 const RENTAL_CYLINDER_LINK_SELECT_FULL =
@@ -488,7 +490,7 @@ export async function fetchRentalCylinderDetails(rentalId: string): Promise<Rent
 
   const { data: cyls, error: cylErr } = await supabase
     .from("cylinders")
-    .select("id, barcode, gas_type, size, manufacturer, factory_serial, replacement_value, owner, circulation, status")
+    .select("id, barcode, gas_type, size, manufacturer, factory_serial, replacement_value, owner, circulation, status, pressure_test_year")
     .in("id", allIds)
     .eq("active", true);
   if (cylErr) throwSupabaseError("fetchRentalCylinderDetails → cylinders", cylErr);
@@ -513,6 +515,7 @@ export async function fetchRentalCylinderDetails(rentalId: string): Promise<Rent
         owner: c.owner,
         circulation: c.circulation,
         status: c.status,
+        pressure_test_year: c.pressure_test_year ?? null,
       };
     })
     .sort((a, b) => a.barcode.localeCompare(b.barcode));

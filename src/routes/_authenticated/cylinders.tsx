@@ -28,13 +28,16 @@ import { toast } from "sonner";
 import {
   circulationLabels,
   formatCylinderLocation,
+  formatPressureTestYear,
   locationLabels,
   manufacturerLabels,
+  parsePressureTestYearInput,
   SERIALIZED_MANUFACTURER_OPTIONS,
   statusLabels,
   type Circulation,
   type Manufacturer,
 } from "@/lib/labels";
+import { detectManufacturerFromBarcode } from "@/lib/barcode-manufacturer";
 import { createNewCylinder, updateCylinder, type CylinderRow } from "@/lib/cylinder-ops";
 
 export const Route = createFileRoute("/_authenticated/cylinders")({
@@ -69,6 +72,7 @@ function Cylinders() {
     size: "20 L",
     circulation: "own" as Circulation,
     manufacturer: "other" as Manufacturer,
+    pressureTestYear: "",
   });
 
   const { data } = useQuery({
@@ -77,7 +81,7 @@ function Cylinders() {
       let qb = supabase
         .from("cylinders")
         .select(
-          "id, barcode, gas_type, size, circulation, owner, manufacturer, status, location_type, location_partner_id, location_supplier_id, suppliers:location_supplier_id(name), partners:location_partner_id(name)",
+          "id, barcode, gas_type, size, circulation, owner, manufacturer, pressure_test_year, status, location_type, location_partner_id, location_supplier_id, suppliers:location_supplier_id(name), partners:location_partner_id(name)",
         )
         .eq("active", true)
         .neq("manufacturer", "chinese")
@@ -105,6 +109,7 @@ function Cylinders() {
         circulation: newForm.circulation,
         owner: newForm.circulation,
         manufacturer: newForm.manufacturer,
+        pressure_test_year: parsePressureTestYearInput(newForm.pressureTestYear),
         status: "empty",
         location_type: "warehouse_empty",
       });
@@ -115,6 +120,7 @@ function Cylinders() {
         size: "20 L",
         circulation: "own",
         manufacturer: "other",
+        pressureTestYear: "",
       });
       setOpenNew(false);
       qc.invalidateQueries({ queryKey: ["cylinders"] });
@@ -147,6 +153,11 @@ function Cylinders() {
         circulation: editingForm.circulation as Circulation,
         owner: (editingForm.owner ?? editingForm.circulation) as Circulation,
         manufacturer: (editingForm.manufacturer ?? "other") as Manufacturer,
+        pressure_test_year: parsePressureTestYearInput(
+          editingForm.pressure_test_year != null
+            ? String(editingForm.pressure_test_year)
+            : "",
+        ),
         status: editingForm.status as "full" | "empty" | "service",
         location_type: editingForm.location_type as CylinderRow["location_type"],
         location_partner_id: editingForm.location_partner_id,
@@ -214,7 +225,14 @@ function Cylinders() {
                 <Label>Vonalkód</Label>
                 <Input
                   value={newForm.barcode}
-                  onChange={(e) => setNewForm({ ...newForm, barcode: e.target.value })}
+                  onChange={(e) => {
+                    const barcode = e.target.value;
+                    setNewForm({
+                      ...newForm,
+                      barcode,
+                      manufacturer: detectManufacturerFromBarcode(barcode),
+                    });
+                  }}
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -266,6 +284,19 @@ function Cylinders() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div>
+                <Label>Nyomáspróba éve (opcionális)</Label>
+                <Input
+                  type="number"
+                  min={1900}
+                  max={2100}
+                  step={1}
+                  inputMode="numeric"
+                  placeholder="pl. 2028"
+                  value={newForm.pressureTestYear}
+                  onChange={(e) => setNewForm({ ...newForm, pressureTestYear: e.target.value })}
+                />
               </div>
               <Button onClick={createNew} className="w-full">
                 Mentés
@@ -328,7 +359,14 @@ function Cylinders() {
                     <Label>Vonalkód</Label>
                     <Input
                       value={editingForm.barcode || ""}
-                      onChange={(e) => setEditingForm({ ...editingForm, barcode: e.target.value })}
+                      onChange={(e) => {
+                        const barcode = e.target.value;
+                        setEditingForm({
+                          ...editingForm,
+                          barcode,
+                          manufacturer: detectManufacturerFromBarcode(barcode),
+                        });
+                      }}
                       className="font-mono"
                     />
                   </div>
@@ -437,6 +475,29 @@ function Cylinders() {
                     </Select>
                   </div>
 
+                  <div>
+                    <Label>Nyomáspróba éve (opcionális)</Label>
+                    <Input
+                      type="number"
+                      min={1900}
+                      max={2100}
+                      step={1}
+                      inputMode="numeric"
+                      placeholder="pl. 2028"
+                      value={
+                        editingForm.pressure_test_year != null
+                          ? String(editingForm.pressure_test_year)
+                          : ""
+                      }
+                      onChange={(e) =>
+                        setEditingForm({
+                          ...editingForm,
+                          pressure_test_year: parsePressureTestYearInput(e.target.value),
+                        })
+                      }
+                    />
+                  </div>
+
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <Label>Helyszín</Label>
@@ -527,6 +588,9 @@ function Cylinders() {
                       </div>
                       <div className="text-[10px] text-muted-foreground">
                         Gyártó: {manufacturerLabels[(c.manufacturer as Manufacturer) ?? "other"]}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">
+                        Nyomáspróba: {formatPressureTestYear(c.pressure_test_year)}
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1">

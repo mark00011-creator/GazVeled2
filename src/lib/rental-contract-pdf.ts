@@ -208,13 +208,14 @@ function drawCylinderTable(ctx: PdfCtx, lines: RentalContractLine[]) {
   drawHeading(ctx, "BERELT PALACKOK", 10);
 
   const cols = [
-    { label: "Palacktipus", w: 72 },
-    { label: "Gaz", w: 52 },
-    { label: "Meret", w: 44 },
-    { label: "Gyarto", w: 44 },
-    { label: "Tul.", w: 36 },
-    { label: "Vonalk./azon.", w: 68 },
-    { label: "Potlas", w: 58 },
+    { label: "Palacktipus", w: 64 },
+    { label: "Gaz", w: 46 },
+    { label: "Meret", w: 40 },
+    { label: "Gyarto", w: 40 },
+    { label: "Tul.", w: 32 },
+    { label: "Vonalk./azon.", w: 62 },
+    { label: "Nyom.pr.", w: 36 },
+    { label: "Potlas", w: 52 },
   ] as const;
 
   const tableX = ctx.margin;
@@ -257,6 +258,7 @@ function drawCylinderTable(ctx: PdfCtx, lines: RentalContractLine[]) {
       line.gyarto,
       line.tulajdonos,
       line.vonalkodAzonosito,
+      line.nyomasProba,
       formatHuf(line.potlasiErtek),
     ]);
   }

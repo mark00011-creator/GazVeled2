@@ -372,6 +372,7 @@ function RentalsList() {
             owner: c.owner,
             circulation: c.circulation,
             replacement_value: c.replacement_value,
+            pressure_test_year: c.pressure_test_year,
           })),
           toContractStockItems(qtyItems),
         ),

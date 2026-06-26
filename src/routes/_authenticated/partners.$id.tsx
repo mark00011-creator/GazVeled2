@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 
 import { ArrowLeft, Building2, Cylinder, Mail, MapPin, Phone, StickyNote } from "lucide-react";
 
-import { circulationLabels, fmtDate, isRentalExpired, rentalDisplayStatus, rentalStatusLabels, rentalTypeLabels, statusLabels, type Circulation, type RentalType } from "@/lib/labels";
+import { circulationLabels, fmtDate, formatPressureTestYear, isRentalExpired, rentalDisplayStatus, rentalStatusLabels, rentalTypeLabels, statusLabels, type Circulation, type RentalType } from "@/lib/labels";
 
 import { fetchRentedCylinderIdsForPartner, rentalNumber } from "@/lib/rental-ops";
 
@@ -69,6 +69,8 @@ type CylinderAtPartner = {
   owner: Circulation;
 
   status: "full" | "empty" | "service";
+
+  pressure_test_year: number | null;
 
 };
 
@@ -132,7 +134,7 @@ function PartnerDetail() {
 
         .from("cylinders")
 
-        .select("id, barcode, gas_type, size, circulation, owner, status")
+        .select("id, barcode, gas_type, size, circulation, owner, status, pressure_test_year")
 
         .eq("location_partner_id", id)
 
@@ -432,6 +434,9 @@ function PartnerDetail() {
                   <div className="font-mono font-semibold">{c.barcode}</div>
 
                   <div className="text-xs text-muted-foreground">{c.gas_type} · {c.size}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    Nyomáspróba: {formatPressureTestYear(c.pressure_test_year)}
+                  </div>
 
                 </Card>
 
@@ -497,6 +502,9 @@ function PartnerDetail() {
 
                       {c.gas_type} · {c.size}
 
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">
+                      Nyomáspróba: {formatPressureTestYear(c.pressure_test_year)}
                     </div>
 
                   </div>
