@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { PwaRegister } from "../components/PwaRegister";
 
 function NotFoundComponent() {
   return (
@@ -77,11 +78,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Gaz veled" },
-      { name: "description", content: "Web-based gas cylinder management and rental system for tracking industrial cylinders and rental agreements." },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Gaz veled" },
-      { property: "og:description", content: "Web-based gas cylinder management and rental system for tracking industrial cylinders and rental agreements." },
+      { title: "Gáz Veled" },
+      { name: "description", content: "Ipari gázpalack és bérletkezelő rendszer." },
+      { name: "author", content: "Gáz Veled" },
+      { name: "theme-color", content: "#4a7fff" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+      { name: "apple-mobile-web-app-title", content: "Gáz Veled" },
+      { property: "og:title", content: "Gáz Veled" },
+      { property: "og:description", content: "Ipari gázpalack és bérletkezelő rendszer." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
@@ -95,6 +101,21 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: appCss,
       },
+      {
+        rel: "manifest",
+        href: "/manifest.json",
+      },
+      {
+        rel: "icon",
+        href: "/icons/icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
+      },
+      {
+        rel: "apple-touch-icon",
+        href: "/icons/icon-192.png",
+        sizes: "192x192",
+      },
     ],
   }),
   shellComponent: RootShell,
@@ -105,7 +126,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="hu">
       <head>
         <HeadContent />
       </head>
@@ -122,6 +143,7 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <PwaRegister />
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
     </QueryClientProvider>

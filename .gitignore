@@ -34,3 +34,5 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+public/sw.js
+public/workbox-*.js
