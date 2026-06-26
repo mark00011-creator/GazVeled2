@@ -7,34 +7,42 @@ import {
 } from "@/lib/cylinder-history";
 import { fmtDateTime } from "@/lib/labels";
 
+function resolvePartnerName(row: CylinderHistoryRow): string | null {
+  if (row.partners?.name) return row.partners.name;
+  const meta = row.metadata ?? {};
+  if (typeof meta.partner_name === "string" && meta.partner_name.trim()) {
+    return meta.partner_name;
+  }
+  return null;
+}
+
 function HistoryCard({ row }: { row: CylinderHistoryRow }) {
   const label =
     cylinderHistoryEventLabels[row.event_type as keyof typeof cylinderHistoryEventLabels] ??
     row.event_type;
-  const partnerName =
-    row.partners?.name ??
-    (typeof row.metadata?.partner_name === "string" ? row.metadata.partner_name : null);
-  const incoming =
-    typeof row.metadata?.incoming_barcode === "string" ? row.metadata.incoming_barcode : null;
-  const outgoing =
-    typeof row.metadata?.outgoing_barcode === "string" ? row.metadata.outgoing_barcode : null;
+  const partnerName = resolvePartnerName(row);
+  const meta = row.metadata ?? {};
+  const incoming = typeof meta.incoming_barcode === "string" ? meta.incoming_barcode : null;
+  const outgoing = typeof meta.outgoing_barcode === "string" ? meta.outgoing_barcode : null;
+  const hasOld = row.old_value != null && row.old_value !== "";
+  const hasNew = row.new_value != null && row.new_value !== "";
+  const dateTime = row.created_at ? fmtDateTime(row.created_at) : "—";
+  const [datePart, ...timeParts] = dateTime.split(" ");
 
   return (
     <Card className="p-3">
       <div className="flex items-start justify-between gap-2">
         <div className="font-medium text-sm">{label}</div>
         <div className="shrink-0 text-right text-xs text-muted-foreground">
-          <div>{fmtDateTime(row.created_at).split(" ")[0]}</div>
-          <div>{fmtDateTime(row.created_at).split(" ").slice(1).join(" ")}</div>
+          <div>{datePart}</div>
+          {timeParts.length > 0 && <div>{timeParts.join(" ")}</div>}
         </div>
       </div>
 
-      {partnerName && (
-        <div className="mt-2 text-xs">
-          <span className="text-muted-foreground">Partner: </span>
-          {partnerName}
-        </div>
-      )}
+      <div className="mt-2 text-xs">
+        <span className="text-muted-foreground">Partner: </span>
+        {partnerName ?? "Nincs partner"}
+      </div>
 
       {row.description && (
         <div className="mt-1 whitespace-pre-line text-xs text-muted-foreground">{row.description}</div>
@@ -53,7 +61,7 @@ function HistoryCard({ row }: { row: CylinderHistoryRow }) {
         </div>
       )}
 
-      {row.old_value != null && row.new_value != null && (
+      {hasOld && hasNew && (
         <div className="mt-2 text-xs font-medium">
           {row.old_value} → {row.new_value}
         </div>
@@ -77,6 +85,8 @@ export function CylinderHistorySection({
 
   if (!cylinderId) return null;
 
+  const rows = (data ?? []).filter((row): row is CylinderHistoryRow => row != null && !!row.id);
+
   return (
     <div className="border-t pt-4">
       <h3 className="mb-3 text-sm font-semibold">Palack előélete</h3>
@@ -84,11 +94,13 @@ export function CylinderHistorySection({
       {isError && <div className="text-sm text-destructive">Előélet betöltése sikertelen</div>}
       {!isLoading && !isError && (
         <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
-          {(data ?? []).map((row) => (
+          {rows.map((row) => (
             <HistoryCard key={row.id} row={row} />
           ))}
-          {(data ?? []).length === 0 && (
-            <div className="py-4 text-center text-sm text-muted-foreground">Még nincs esemény</div>
+          {rows.length === 0 && (
+            <div className="py-4 text-center text-sm text-muted-foreground">
+              Ehhez a palackhoz még nem tartozik naplózott esemény.
+            </div>
           )}
         </div>
       )}

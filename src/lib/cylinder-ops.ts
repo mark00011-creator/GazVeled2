@@ -861,8 +861,11 @@ export async function updateCylinder(
     .single();
   if (beforeErr) throw new Error(parseDbError(beforeErr.message));
 
-  const payload = { ...updates };
-  if (payload.barcode) payload.barcode = normalizeBarcode(payload.barcode);
+  const payload: Record<string, unknown> = { ...updates };
+  if (payload.barcode) payload.barcode = normalizeBarcode(payload.barcode as string);
+  if ("pressure_test_year" in updates) {
+    payload.pressure_test_year = updates.pressure_test_year ?? null;
+  }
   if (payload.manufacturer === "chinese") {
     throw new Error("Kínai palackokat a Kínai készlet modulban kezeld, nem egyedi sorszámmal");
   }

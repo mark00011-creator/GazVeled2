@@ -128,7 +128,19 @@ export async function fetchCylinderHistory(cylinderId: string): Promise<Cylinder
     .eq("cylinder_id", cylinderId)
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
-  return (data ?? []) as CylinderHistoryRow[];
+  return (data ?? [])
+    .filter((row): row is NonNullable<typeof row> => row != null && typeof row.id === "string")
+    .map((row) => ({
+      ...row,
+      description: row.description ?? null,
+      partner_id: row.partner_id ?? null,
+      old_value: row.old_value ?? null,
+      new_value: row.new_value ?? null,
+      metadata: (row.metadata ?? {}) as Record<string, unknown>,
+      created_at: row.created_at ?? new Date(0).toISOString(),
+      created_by: row.created_by ?? null,
+      partners: row.partners ?? null,
+    })) as CylinderHistoryRow[];
 }
 
 export async function logCylinderCreated(cyl: CylinderRow, description?: string): Promise<void> {

@@ -99,8 +99,11 @@ export function EditCylinderDialog({
   const qc = useQueryClient();
 
   useEffect(() => {
-    if (open && cylinder) setForm(toFormState(cylinder));
-    if (!open) setForm(null);
+    if (!open || !cylinder) {
+      setForm(null);
+      return;
+    }
+    setForm(toFormState(cylinder));
   }, [open, cylinder]);
 
   const availableSizes = form ? getAvailableSizes(form.gas_type || "Argon") : [];
@@ -117,23 +120,27 @@ export function EditCylinderDialog({
       return;
     }
 
+    const cylinderId = cylinder.id;
+    const pressure_test_year = parsePressureTestYearInput(form.pressureTestYear);
+
     setBusy(true);
     try {
-      await updateCylinder(cylinder.id, {
+      await updateCylinder(cylinderId, {
         barcode: form.barcode,
         gas_type: form.gas_type,
         size: form.size,
         circulation: form.circulation,
         owner: form.owner,
         manufacturer: form.manufacturer,
-        pressure_test_year: parsePressureTestYearInput(form.pressureTestYear),
+        pressure_test_year,
         status: form.status,
         location_type: form.location_type,
         location_partner_id: form.location_partner_id,
         location_supplier_id: form.location_supplier_id,
       });
       toast.success("Palack frissítve");
-      qc.invalidateQueries({ queryKey: ["cylinder-history", cylinder.id] });
+      await qc.invalidateQueries({ queryKey: ["cylinder-history", cylinderId] });
+      setForm(null);
       onOpenChange(false);
       onSaved?.();
     } catch (e) {
@@ -329,7 +336,9 @@ export function EditCylinderDialog({
               </Button>
             </div>
 
-            <CylinderHistorySection cylinderId={cylinder.id} enabled={open} />
+            {cylinder && (
+              <CylinderHistorySection cylinderId={cylinder.id} enabled={open && !!cylinder} />
+            )}
           </div>
         )}
       </DialogContent>
