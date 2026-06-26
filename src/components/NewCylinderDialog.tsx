@@ -17,8 +17,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { detectManufacturerFromBarcode } from "@/lib/barcode-manufacturer";
 import {
   CIRCULATION_OPTIONS,
+  parsePressureTestYearInput,
   SERIALIZED_MANUFACTURER_OPTIONS,
   type Circulation,
   type Manufacturer,
@@ -30,7 +32,7 @@ import {
   isNewCylinderFormValid,
   type NewCylinderFormState,
 } from "@/lib/gas-cylinder-form";
-import { parsePressureTestYearInput } from "@/lib/labels";
+import { PressureTestYearField, pressureTestYearSaveError } from "@/components/PressureTestYearField";
 import { createNewCylinder, type CylinderRow } from "@/lib/cylinder-ops";
 
 type LocType = "warehouse_full" | "warehouse_empty" | "customer" | "siad" | "own_supplier";
@@ -39,6 +41,7 @@ export function NewCylinderDialog({
   open,
   onOpenChange,
   barcode,
+  barcodeEditable = false,
   status = "empty",
   locationType = "warehouse_empty",
   locationSupplierId = null,
@@ -47,6 +50,8 @@ export function NewCylinderDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   barcode: string;
+  /** Manuális felvételnél (Palackok oldal) szerkeszthető vonalkód. */
+  barcodeEditable?: boolean;
   status?: "full" | "empty";
   locationType?: LocType;
   locationSupplierId?: string | null;
@@ -64,6 +69,11 @@ export function NewCylinderDialog({
   async function save() {
     if (!isNewCylinderFormValid(form)) {
       toast.error("Töltsd ki a kötelező mezőket");
+      return;
+    }
+    const yearErr = pressureTestYearSaveError(form.pressureTestYear);
+    if (yearErr) {
+      toast.error(yearErr);
       return;
     }
     setBusy(true);
@@ -93,18 +103,42 @@ export function NewCylinderDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Új palack felvétele</DialogTitle>
+          <DialogTitle>Új palack</DialogTitle>
           <DialogDescription>
-            Ismeretlen vonalkód esetén új palack adatainak megadása.
+            {barcodeEditable
+              ? "Új palack manuális felvétele a nyilvántartásba."
+              : "Ismeretlen vonalkód esetén új palack adatainak megadása."}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div>
             <Label>Vonalkód</Label>
-            <Input value={form.barcode} disabled className="font-mono" />
+            <Input
+              value={form.barcode}
+              disabled={!barcodeEditable}
+              className="font-mono"
+              onChange={
+                barcodeEditable
+                  ? (e) => {
+                      const bc = e.target.value;
+                      setForm({
+                        ...form,
+                        barcode: bc,
+                        manufacturer: detectManufacturerFromBarcode(bc),
+                      });
+                    }
+                  : undefined
+              }
+            />
           </div>
+
+          <PressureTestYearField
+            id="new-pressure-test-year"
+            value={form.pressureTestYear}
+            onChange={(pressureTestYear) => setForm({ ...form, pressureTestYear })}
+          />
 
           <div>
             <Label className="mb-2 block">Tulajdonos típusa *</Label>
@@ -180,20 +214,6 @@ export function NewCylinderDialog({
                 ))}
               </SelectContent>
             </Select>
-          </div>
-
-          <div>
-            <Label>Nyomáspróba éve (opcionális)</Label>
-            <Input
-              type="number"
-              min={1900}
-              max={2100}
-              step={1}
-              inputMode="numeric"
-              placeholder="pl. 2028"
-              value={form.pressureTestYear}
-              onChange={(e) => setForm({ ...form, pressureTestYear: e.target.value })}
-            />
           </div>
 
           <div>

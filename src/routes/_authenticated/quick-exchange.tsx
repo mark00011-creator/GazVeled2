@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
+import { NewCylinderDialog } from "@/components/NewCylinderDialog";
 import {
   Select,
   SelectContent,
@@ -16,13 +17,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Camera,
@@ -38,14 +32,12 @@ import {
 import { toast } from "sonner";
 import {
   circulationLabels,
-  CIRCULATION_OPTIONS,
   fmtDateTime,
   locationLabels,
   type Circulation,
 } from "@/lib/labels";
 import {
   findCylinderByBarcode,
-  createNewCylinder,
   normalizeBarcode,
   recordExchange,
   recordSale,
@@ -98,14 +90,7 @@ function QuickExchange() {
 
   const [newCylDialog, setNewCylDialog] = useState(false);
   const [newCylPhase, setNewCylPhase] = useState<"incoming" | "outgoing">("incoming");
-  const [newCylForm, setNewCylForm] = useState({
-    barcode: "",
-    owner: "own" as Circulation,
-    gasType: "Argon",
-    size: "20 L",
-    note: "",
-  });
-  const [newCylBusy, setNewCylBusy] = useState(false);
+  const [newCylBarcode, setNewCylBarcode] = useState("");
 
   const [chineseGas, setChineseGas] = useState("Széndioxid");
   const [chineseSize, setChineseSize] = useState("10 kg");
@@ -230,13 +215,7 @@ function QuickExchange() {
       setIncoming(cyl);
       setIncomingCreated(false);
     } catch {
-      setNewCylForm({
-        barcode: incomingBc,
-        owner: "own",
-        gasType: "Argon",
-        size: "20 L",
-        note: "",
-      });
+      setNewCylBarcode(incomingBc);
       setNewCylPhase("incoming");
       setNewCylDialog(true);
     }
@@ -249,48 +228,9 @@ function QuickExchange() {
       setOutgoing(cyl);
       setOutgoingCreated(false);
     } catch {
-      setNewCylForm({
-        barcode: outgoingBc,
-        owner: "own",
-        gasType: "Argon",
-        size: "20 L",
-        note: "",
-      });
+      setNewCylBarcode(outgoingBc);
       setNewCylPhase("outgoing");
       setNewCylDialog(true);
-    }
-  }
-
-  async function saveNewCylinder() {
-    if (!newCylForm.barcode.trim()) {
-      toast.error("Vonalkód kötelező");
-      return;
-    }
-    setNewCylBusy(true);
-    try {
-      const cyl = await createNewCylinder({
-        barcode: newCylForm.barcode,
-        gas_type: newCylForm.gasType,
-        size: newCylForm.size,
-        circulation: newCylForm.owner,
-        owner: newCylForm.owner,
-        status: newCylPhase === "outgoing" ? "full" : "empty",
-        location_type: newCylPhase === "outgoing" ? "warehouse_full" : "warehouse_empty",
-        note: newCylForm.note.trim() || undefined,
-      });
-      toast.success("Új palack felvéve");
-      if (newCylPhase === "incoming") {
-        setIncoming(cyl);
-        setIncomingCreated(true);
-      } else {
-        setOutgoing(cyl);
-        setOutgoingCreated(true);
-      }
-      setNewCylDialog(false);
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setNewCylBusy(false);
     }
   }
 
@@ -451,7 +391,6 @@ function QuickExchange() {
   }
 
   const chineseSizes = getAvailableSizes(chineseGas);
-  const newCylSizes = getAvailableSizes(newCylForm.gasType);
 
   return (
     <AppShell title="Gyors csere">
@@ -467,13 +406,7 @@ function QuickExchange() {
                 setIncoming(await findCylinderByBarcode(bc));
                 setIncomingCreated(false);
               } catch {
-                setNewCylForm({
-                  barcode: bc,
-                  owner: "own",
-                  gasType: "Argon",
-                  size: "20 L",
-                  note: "",
-                });
+                setNewCylBarcode(bc);
                 setNewCylPhase("incoming");
                 setNewCylDialog(true);
               }
@@ -483,13 +416,7 @@ function QuickExchange() {
                 setOutgoing(await findCylinderByBarcode(bc));
                 setOutgoingCreated(false);
               } catch {
-                setNewCylForm({
-                  barcode: bc,
-                  owner: "own",
-                  gasType: "Argon",
-                  size: "20 L",
-                  note: "",
-                });
+                setNewCylBarcode(bc);
                 setNewCylPhase("outgoing");
                 setNewCylDialog(true);
               }
@@ -499,88 +426,22 @@ function QuickExchange() {
         />
       )}
 
-      <Dialog open={newCylDialog} onOpenChange={setNewCylDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Új palack felvétele</DialogTitle>
-            <DialogDescription>Ismeretlen vonalkód – add meg a palack adatait.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Vonalkód</Label>
-              <Input value={newCylForm.barcode} disabled className="font-mono" />
-            </div>
-            <div>
-              <Label>Tulajdonos típusa</Label>
-              <Select
-                value={newCylForm.owner}
-                onValueChange={(v) => setNewCylForm({ ...newCylForm, owner: v as Circulation })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {CIRCULATION_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Gáz típusa</Label>
-              <Select
-                value={newCylForm.gasType}
-                onValueChange={(v) =>
-                  setNewCylForm({
-                    ...newCylForm,
-                    gasType: v,
-                    size: getAvailableSizes(v)[0] ?? "20 L",
-                  })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {GAS_TYPES.map((g) => (
-                    <SelectItem key={g} value={g}>
-                      {g}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Méret</Label>
-              <Select
-                value={newCylForm.size}
-                onValueChange={(v) => setNewCylForm({ ...newCylForm, size: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {newCylSizes.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex gap-2 pt-2">
-              <Button variant="outline" onClick={() => setNewCylDialog(false)} className="flex-1">
-                Mégsem
-              </Button>
-              <Button onClick={saveNewCylinder} disabled={newCylBusy} className="flex-1">
-                Mentés
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <NewCylinderDialog
+        open={newCylDialog}
+        onOpenChange={setNewCylDialog}
+        barcode={newCylBarcode}
+        status={newCylPhase === "outgoing" ? "full" : "empty"}
+        locationType={newCylPhase === "outgoing" ? "warehouse_full" : "warehouse_empty"}
+        onCreated={async (cyl) => {
+          if (newCylPhase === "incoming") {
+            setIncoming(cyl);
+            setIncomingCreated(true);
+          } else {
+            setOutgoing(cyl);
+            setOutgoingCreated(true);
+          }
+        }}
+      />
 
       <Tabs
         value={operation}
