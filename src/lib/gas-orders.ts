@@ -1,6 +1,11 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
-import type { GasOrderGroup, OrderableCylinder } from "@/lib/gas-order";
+import {
+  allSerialCylinders,
+  countSerialCylinders,
+  type GasOrderGroup,
+  type OrderableCylinder,
+} from "@/lib/gas-order";
 import type { SelectedQuantityLine } from "@/lib/gas-order-quantity";
 import { buildPurchasePriceMap, fetchProductPrices } from "@/lib/product-prices";
 import { lookupUnitPrice } from "@/lib/gas-order-prices";
@@ -155,7 +160,7 @@ export async function createSupplier1GasOrder(
   quantityLines: SelectedQuantityLine[],
   note?: string,
 ): Promise<string> {
-  const serialCount = group.siad.length + group.own.length;
+  const serialCount = countSerialCylinders(group);
   if (serialCount === 0 && quantityLines.length === 0) {
     throw new Error("Válassz legalább egy tételt");
   }
@@ -177,7 +182,7 @@ export async function createSupplier1GasOrder(
 
   if (orderErr || !order) throw new Error(formatSupabaseError(orderErr, "Rendelés létrehozása"));
 
-  const all: OrderableCylinder[] = [...group.siad, ...group.own];
+  const all: OrderableCylinder[] = allSerialCylinders(group);
   if (all.length > 0) {
     const items = all.map((c) => ({
       gas_order_id: order.id,

@@ -1,4 +1,10 @@
-import type { GasOrderGroup, OrderableCylinder } from "@/lib/gas-order";
+import {
+  SERIAL_GROUP_KEYS,
+  serialGroupTitles,
+  type GasOrderGroup,
+  type OrderableCylinder,
+  type SerialGroupKey,
+} from "@/lib/gas-order";
 
 const GAS_ALIASES: Record<string, string> = {
   széndioxid: "széndioxid",
@@ -54,8 +60,7 @@ export type GasOrderEstimateLine = {
 };
 
 export type GasOrderPriceEstimate = {
-  siad: GasOrderEstimateLine[];
-  own: GasOrderEstimateLine[];
+  serial: Record<SerialGroupKey, GasOrderEstimateLine[]>;
   quantity: GasOrderEstimateLine[];
   knownTotal: number;
   itemCount: number;
@@ -72,6 +77,13 @@ export type GasOrderPricedLineInput = {
 
 export function productOrderLabel(gasType: string, size: string): string {
   return `${gasType} ${size}`;
+}
+
+function serialLineLabel(cylinder: OrderableCylinder): string {
+  if (cylinder.manufacturer === "linde") return `LINDE ${productOrderLabel(cylinder.gas_type, cylinder.size)}`;
+  if (cylinder.manufacturer === "messer")
+    return `MESSER ${productOrderLabel(cylinder.gas_type, cylinder.size)}`;
+  return productOrderLabel(cylinder.gas_type, cylinder.size);
 }
 
 /**
@@ -100,14 +112,15 @@ function aggregateSerialLines(
   >();
 
   for (const cylinder of cylinders) {
-    const key = priceKey(cylinder.gas_type, cylinder.size);
+    const label = serialLineLabel(cylinder);
+    const key = `${priceKey(cylinder.gas_type, cylinder.size)}|${label}`;
     const existing = counts.get(key);
     if (existing) {
       existing.count += 1;
       continue;
     }
     counts.set(key, {
-      label: productOrderLabel(cylinder.gas_type, cylinder.size),
+      label,
       gasType: cylinder.gas_type,
       size: cylinder.size,
       count: 1,
@@ -159,20 +172,21 @@ export function estimateGasOrderPrices(
   quantityLines: GasOrderPricedLineInput[],
   priceMap: Map<string, number>,
 ): GasOrderPriceEstimate {
-  const siad = aggregateSerialLines(group.siad, priceMap);
-  const own = aggregateSerialLines(group.own, priceMap);
+  const serial = Object.fromEntries(
+    SERIAL_GROUP_KEYS.map((key) => [key, aggregateSerialLines(group[key], priceMap)]),
+  ) as Record<SerialGroupKey, GasOrderEstimateLine[]>;
   const quantity = pricedQuantityLines(quantityLines, priceMap);
 
-  const allLines = [...siad, ...own, ...quantity];
+  const allLines = [...SERIAL_GROUP_KEYS.flatMap((key) => serial[key]), ...quantity];
   const totals = collectEstimateTotals(allLines);
   const quantityCount = quantityLines.reduce((sum, line) => sum + line.quantity, 0);
+  const serialCount = SERIAL_GROUP_KEYS.reduce((sum, key) => sum + group[key].length, 0);
 
   return {
-    siad,
-    own,
+    serial,
     quantity,
     knownTotal: totals.knownTotal,
-    itemCount: group.siad.length + group.own.length + quantityCount,
+    itemCount: serialCount + quantityCount,
     pricedCount: totals.pricedCount,
     unknownLabels: totals.unknownLabels,
   };
@@ -197,8 +211,9 @@ function formatEstimateSection(title: string, lines: GasOrderEstimateLine[]): st
 
 export function formatGasOrderEstimateBody(estimate: GasOrderPriceEstimate): string {
   const sections = [
-    ...formatEstimateSection("Sorszámos – SIAD", estimate.siad),
-    ...formatEstimateSection("Sorszámos – Saját", estimate.own),
+    ...SERIAL_GROUP_KEYS.flatMap((key) =>
+      formatEstimateSection(serialGroupTitles[key], estimate.serial[key]),
+    ),
     ...formatEstimateSection("Darabszámos", estimate.quantity),
   ];
 
@@ -239,7 +254,7 @@ export function estimateGasOrderCost(
   unknownLabels: string[];
 } {
   const estimate = estimateGasOrderPrices(group, [], priceMap);
-  const lines = [...estimate.siad, ...estimate.own];
+  const lines = SERIAL_GROUP_KEYS.flatMap((key) => estimate.serial[key]);
   return {
     lines,
     knownTotal: estimate.knownTotal,

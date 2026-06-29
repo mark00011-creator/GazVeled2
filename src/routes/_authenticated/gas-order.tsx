@@ -14,7 +14,11 @@ import { Copy, FileDown, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
 import {
   buildSupplier1GasOrderText,
+  countSerialCylinders,
+  emptyGasOrderGroup,
   fetchOrderableCylinders,
+  SERIAL_GROUP_KEYS,
+  serialGroupTitles,
   type OrderableCylinder,
 } from "@/lib/gas-order";
 import {
@@ -74,6 +78,12 @@ function PricedSummaryBlock({
 }
 
 function CylinderList({ title, cylinders }: { title: string; cylinders: OrderableCylinder[] }) {
+  const labelOf = (c: OrderableCylinder) => {
+    if (c.manufacturer === "linde") return `LINDE ${c.gas_type} ${c.size}`;
+    if (c.manufacturer === "messer") return `MESSER ${c.gas_type} ${c.size}`;
+    return `${c.gas_type} ${c.size}`;
+  };
+
   return (
     <Card className="p-4">
       <h2 className="mb-3 text-sm font-semibold">{title}</h2>
@@ -83,7 +93,7 @@ function CylinderList({ title, cylinders }: { title: string; cylinders: Orderabl
         <ul className="space-y-1.5 font-mono text-sm">
           {cylinders.map((c) => (
             <li key={c.id}>
-              {c.barcode} - {c.gas_type} {c.size}
+              {c.barcode} - {labelOf(c)}
             </li>
           ))}
         </ul>
@@ -129,12 +139,12 @@ function GasOrderPage() {
 
   const priceMap = buildPurchasePriceMap(priceRows);
 
-  const group = data ?? { siad: [], own: [] };
+  const group = data ?? emptyGasOrderGroup();
   const estimate = useMemo(
     () => estimateGasOrderPrices(group, selectedQuantityLines, priceMap),
     [group, selectedQuantityLines, priceMap],
   );
-  const serialTotal = group.siad.length + group.own.length;
+  const serialTotal = countSerialCylinders(group);
   const quantityTotal = selectedQuantityLines.reduce((s, l) => s + l.quantity, 0);
   const orderTotal = serialTotal + quantityTotal;
   const hasOrderable = serialTotal > 0 || chineseLines.length > 0;
@@ -214,8 +224,9 @@ function GasOrderPage() {
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Rendelés összesítés
             </h2>
-            <PricedSummaryBlock title="Sorszámos – SIAD" lines={estimate.siad} />
-            <PricedSummaryBlock title="Sorszámos – Saját" lines={estimate.own} />
+            {SERIAL_GROUP_KEYS.map((key) => (
+              <PricedSummaryBlock key={key} title={serialGroupTitles[key]} lines={estimate.serial[key]} />
+            ))}
             <PricedSummaryBlock title="Darabszámos" lines={estimate.quantity} />
             {!hasOrderable && (
               <div className="text-sm text-muted-foreground">
@@ -242,8 +253,9 @@ function GasOrderPage() {
 
           <h2 className="mb-3 text-sm font-semibold">Sorszámos palackok</h2>
           <div className="mb-6 space-y-3">
-            <CylinderList title="SIAD palackok" cylinders={group.siad} />
-            <CylinderList title="Saját palackok" cylinders={group.own} />
+            {SERIAL_GROUP_KEYS.map((key) => (
+              <CylinderList key={key} title={serialGroupTitles[key]} cylinders={group[key]} />
+            ))}
           </div>
 
           <GasQuantityLineSelector

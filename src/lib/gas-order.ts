@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Circulation } from "@/lib/labels";
+import type { Circulation, Manufacturer } from "@/lib/labels";
 import {
   buildGasOrderEmailText,
   estimateGasOrderPrices,
@@ -12,17 +12,65 @@ export type OrderableCylinder = {
   gas_type: string;
   size: string;
   circulation: Circulation;
+  manufacturer: Manufacturer | null;
+};
+
+export const SERIAL_GROUP_KEYS = [
+  "siad_rental",
+  "own_siad",
+  "linde",
+  "messer",
+  "other",
+] as const;
+
+export type SerialGroupKey = (typeof SERIAL_GROUP_KEYS)[number];
+
+export const serialGroupTitles: Record<SerialGroupKey, string> = {
+  siad_rental: "Sorszámos – SIAD bérpalack",
+  own_siad: "Sorszámos – Saját SIAD",
+  linde: "Sorszámos – LINDE",
+  messer: "Sorszámos – MESSER",
+  other: "Sorszámos – Egyéb",
 };
 
 export type GasOrderGroup = {
-  siad: OrderableCylinder[];
-  own: OrderableCylinder[];
+  siad_rental: OrderableCylinder[];
+  own_siad: OrderableCylinder[];
+  linde: OrderableCylinder[];
+  messer: OrderableCylinder[];
+  other: OrderableCylinder[];
 };
+
+export function classifySerialCylinder(cylinder: Pick<OrderableCylinder, "circulation" | "manufacturer">): SerialGroupKey {
+  if (cylinder.circulation === "siad") return "siad_rental";
+  if (cylinder.manufacturer === "siad") return "own_siad";
+  if (cylinder.manufacturer === "linde") return "linde";
+  if (cylinder.manufacturer === "messer") return "messer";
+  return "other";
+}
+
+export function emptyGasOrderGroup(): GasOrderGroup {
+  return {
+    siad_rental: [],
+    own_siad: [],
+    linde: [],
+    messer: [],
+    other: [],
+  };
+}
+
+export function allSerialCylinders(group: GasOrderGroup): OrderableCylinder[] {
+  return SERIAL_GROUP_KEYS.flatMap((key) => group[key]);
+}
+
+export function countSerialCylinders(group: GasOrderGroup): number {
+  return allSerialCylinders(group).length;
+}
 
 export async function fetchOrderableCylinders(): Promise<GasOrderGroup> {
   const { data, error } = await supabase
     .from("cylinders")
-    .select("id, barcode, gas_type, size, circulation")
+    .select("id, barcode, gas_type, size, circulation, manufacturer")
     .eq("active", true)
     .eq("status", "empty")
     .eq("location_type", "warehouse_empty")
@@ -34,8 +82,7 @@ export async function fetchOrderableCylinders(): Promise<GasOrderGroup> {
 
   if (error) throw error;
 
-  const siad: OrderableCylinder[] = [];
-  const own: OrderableCylinder[] = [];
+  const group = emptyGasOrderGroup();
 
   for (const row of data ?? []) {
     const cyl: OrderableCylinder = {
@@ -44,12 +91,12 @@ export async function fetchOrderableCylinders(): Promise<GasOrderGroup> {
       gas_type: row.gas_type,
       size: row.size,
       circulation: row.circulation as Circulation,
+      manufacturer: (row.manufacturer as Manufacturer | null) ?? null,
     };
-    if (cyl.circulation === "siad") siad.push(cyl);
-    else if (cyl.circulation === "own") own.push(cyl);
+    group[classifySerialCylinder(cyl)].push(cyl);
   }
 
-  return { siad, own };
+  return group;
 }
 
 export type Supplier1QuantityLine = GasOrderPricedLineInput & {
@@ -70,6 +117,9 @@ export function buildGasOrderText(group: GasOrderGroup): string {
   return buildSupplier1GasOrderText(group, [], new Map());
 }
 
-export function countOrderable(group: GasOrderGroup): { siad: number; own: number } {
-  return { siad: group.siad.length, own: group.own.length };
+export function countOrderable(group: GasOrderGroup): Record<SerialGroupKey, number> {
+  return Object.fromEntries(SERIAL_GROUP_KEYS.map((key) => [key, group[key].length])) as Record<
+    SerialGroupKey,
+    number
+  >;
 }
