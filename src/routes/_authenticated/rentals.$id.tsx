@@ -20,9 +20,12 @@ import {
 import {
   advanceRentalBilling,
   extendRental,
+  extendRentalCylinder,
   fetchRentalCylinderDetails,
   fetchRentalWithPartner,
   rentalNumber,
+  updateRentalCylinderExpiry,
+  updateRentalExpiry,
 } from "@/lib/rental-ops";
 import { logSupabaseError } from "@/lib/supabase-error";
 import { updateCylinderBarcode } from "@/lib/cylinder-ops";
@@ -38,7 +41,7 @@ import {
   toContractStockItems,
 } from "@/lib/rental-quantity-stock";
 import { toast } from "sonner";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export const Route = createFileRoute("/_authenticated/rentals/$id")({
   head: () => ({ meta: [{ title: "Bérlet – Gáz Veled" }] }),
@@ -52,6 +55,8 @@ function RentalDetail() {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [editingBarcodeId, setEditingBarcodeId] = useState<string | null>(null);
   const [barcodeEdits, setBarcodeEdits] = useState<Record<string, string>>({});
+  const [rentalExpiryEdit, setRentalExpiryEdit] = useState("");
+  const [cylinderExpiryEdits, setCylinderExpiryEdits] = useState<Record<string, string>>({});
 
   const {
     data: rental,
@@ -104,6 +109,21 @@ function RentalDetail() {
     queryFn: () => fetchRentalQuantityItems(id),
   });
 
+  useEffect(() => {
+    if (!rental) return;
+    setRentalExpiryEdit(effectiveRentalExpiry(rental.start_date, rental.expiry_date));
+  }, [rental?.id, rental?.start_date, rental?.expiry_date]);
+
+  useEffect(() => {
+    if (!cylLinks || !rental) return;
+    const fallbackExpiry = effectiveRentalExpiry(rental.start_date, rental.expiry_date);
+    const next: Record<string, string> = {};
+    for (const c of cylLinks) {
+      next[c.cylinder_id] = c.rental_end_date ?? c.expiry_date ?? fallbackExpiry;
+    }
+    setCylinderExpiryEdits(next);
+  }, [cylLinks, rental]);
+
   async function markInvoiced() {
     setBusyId("invoice");
     try {
@@ -117,19 +137,71 @@ function RentalDetail() {
     }
   }
 
+  async function invalidateRentalQueries() {
+    await Promise.all([
+      refetchRental(),
+      refetchCyls(),
+      qc.invalidateQueries({ queryKey: ["rentals"] }),
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] }),
+      qc.invalidateQueries({ queryKey: ["partner-rental-overview"] }),
+      qc.invalidateQueries({ queryKey: ["partner-rental-summaries"] }),
+    ]);
+  }
+
   async function doExtend() {
     setBusyId("extend");
     try {
       await extendRental(id);
       toast.success("Bérlet meghosszabbítva");
-      await Promise.all([
-        refetchRental(),
-        refetchCyls(),
-        qc.invalidateQueries({ queryKey: ["rentals"] }),
-        qc.invalidateQueries({ queryKey: ["dashboard-stats"] }),
-        qc.invalidateQueries({ queryKey: ["partner-rental-overview"] }),
-        qc.invalidateQueries({ queryKey: ["partner-rental-summaries"] }),
-      ]);
+      await invalidateRentalQueries();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function doExtendCylinder(cylinderId: string) {
+    setBusyId(`extend-${cylinderId}`);
+    try {
+      await extendRentalCylinder(id, cylinderId);
+      toast.success("Palack bérlete meghosszabbítva");
+      await invalidateRentalQueries();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function saveRentalExpiry() {
+    if (!rentalExpiryEdit) {
+      toast.error("Add meg a lejárati dátumot");
+      return;
+    }
+    setBusyId("expiry");
+    try {
+      await updateRentalExpiry(id, rentalExpiryEdit);
+      toast.success("Lejárati dátum mentve");
+      await invalidateRentalQueries();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function saveCylinderExpiry(cylinderId: string) {
+    const expiry = cylinderExpiryEdits[cylinderId];
+    if (!expiry) {
+      toast.error("Add meg a lejárati dátumot");
+      return;
+    }
+    setBusyId(`expiry-${cylinderId}`);
+    try {
+      await updateRentalCylinderExpiry(id, cylinderId, expiry);
+      toast.success("Palack lejárata mentve");
+      await invalidateRentalQueries();
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -283,12 +355,34 @@ function RentalDetail() {
           <Info label="Partner" value={partner?.name ?? "—"} bold />
           <Info label="Bérlet típusa" value={rentalTypeLabels[rentalType]} />
           <Info label="Kezdő dátum" value={fmtDate(rental.start_date)} />
-          <Info
-            label="Lejárati dátum"
-            value={fmtDate(rentalExpiry)}
-            highlight={expired}
-            highlightTone="red"
-          />
+          {canExtend ? (
+            <div>
+              <div className="text-xs text-muted-foreground">Lejárati dátum</div>
+              <div className="mt-1 flex gap-1">
+                <Input
+                  type="date"
+                  className="h-8 text-xs"
+                  value={rentalExpiryEdit}
+                  onChange={(e) => setRentalExpiryEdit(e.target.value)}
+                />
+                <Button
+                  size="sm"
+                  className="h-8 shrink-0 px-2 text-xs"
+                  disabled={busyId === "expiry"}
+                  onClick={saveRentalExpiry}
+                >
+                  Mentés
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Info
+              label="Lejárati dátum"
+              value={fmtDate(rentalExpiry)}
+              highlight={expired}
+              highlightTone="red"
+            />
+          )}
           {rental.next_invoice_date && (
             <Info
               label="Következő számlázás"
@@ -305,6 +399,17 @@ function RentalDetail() {
           {rental.end_date && <Info label="Lezárva" value={fmtDate(rental.end_date)} />}
         </div>
 
+        {canExtend && (
+          <Button
+            className="mt-4 w-full"
+            variant="outline"
+            size="sm"
+            disabled={busyId === "extend"}
+            onClick={doExtend}
+          >
+            <CalendarPlus className="mr-2 h-4 w-4" /> Tovább bérli (teljes bérlet)
+          </Button>
+        )}
         {rental.status === "active" && rentalType === "monthly" && rental.next_invoice_date && (
           <Button
             className="mt-4 w-full"
@@ -444,7 +549,33 @@ function RentalDetail() {
                     </div>
                     <div>
                       <div className="text-muted-foreground">Lejárat</div>
-                      <div className={cylExpired ? "font-medium text-destructive" : ""}>{fmtDate(cylEnd)}</div>
+                      {canExtend ? (
+                        <div className="mt-1 flex gap-1">
+                          <Input
+                            type="date"
+                            className="h-8 text-xs"
+                            value={cylinderExpiryEdits[c.cylinder_id] ?? cylEnd}
+                            onChange={(e) =>
+                              setCylinderExpiryEdits((prev) => ({
+                                ...prev,
+                                [c.cylinder_id]: e.target.value,
+                              }))
+                            }
+                          />
+                          <Button
+                            size="sm"
+                            className="h-8 shrink-0 px-2 text-xs"
+                            disabled={busyId === `expiry-${c.cylinder_id}`}
+                            onClick={() => saveCylinderExpiry(c.cylinder_id)}
+                          >
+                            Mentés
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className={cylExpired ? "font-medium text-destructive" : ""}>
+                          {fmtDate(cylEnd)}
+                        </div>
+                      )}
                     </div>
                   </div>
                   {cylExpired && (
@@ -467,8 +598,8 @@ function RentalDetail() {
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={busyId === "extend"}
-                        onClick={doExtend}
+                        disabled={busyId === `extend-${c.cylinder_id}`}
+                        onClick={() => doExtendCylinder(c.cylinder_id)}
                       >
                         <CalendarPlus className="mr-1 h-3.5 w-3.5" /> Tovább bérli
                       </Button>

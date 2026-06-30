@@ -27,9 +27,7 @@ import {
 import { addYears, todayLocal } from "@/lib/date-utils";
 
 import { addMonths } from "@/lib/rental-billing";
-import type { Circulation } from "@/lib/labels";
-
-import { summarizeRentalCylinders, type RentalType } from "@/lib/labels";
+import { isRentalExpired, summarizeRentalCylinders, type Circulation, type RentalType } from "@/lib/labels";
 
 import {
   isMissingRentalCylinderColumnError,
@@ -991,13 +989,94 @@ export async function extendRentalCylinder(rentalId: string, cylinderId: string)
 
   const { error: updErr } = await supabase
     .from("rental_cylinders")
-    .update({ expiry_date: newExpiry })
+    .update({ expiry_date: newExpiry, rental_end_date: newExpiry })
     .eq("rental_id", rentalId)
     .eq("cylinder_id", cylinderId);
 
   if (updErr) throw new Error(parseDbError(updErr.message));
   await logRentalExtend(cylinderId, rental.partner_id, rentalId, base, newExpiry);
   await logRentalAudit(rentalId, "Palack bérlet meghosszabbítva", { cylinder_id: cylinderId, expiry_date: newExpiry });
+}
+
+export async function updateRentalExpiry(rentalId: string, expiryDate: string): Promise<void> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(expiryDate)) throw new Error("Érvénytelen dátum");
+
+  const { data: rental, error } = await supabase
+    .from("rentals")
+    .select("id, status, expiry_date")
+    .eq("id", rentalId)
+    .single();
+
+  if (error || !rental) throw new Error("Bérlet nem található");
+  if (rental.status === "closed") throw new Error("Lezárt bérlet nem módosítható");
+
+  const oldExpiry = rental.expiry_date;
+  const updates: Record<string, unknown> = {
+    expiry_date: expiryDate,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (isRentalExpired(expiryDate)) {
+    if (rental.status === "active") updates.status = "expired";
+  } else if (rental.status === "expired") {
+    updates.status = "active";
+  }
+
+  const { error: updErr } = await supabase.from("rentals").update(updates).eq("id", rentalId);
+  if (updErr) throw new Error(parseDbError(updErr.message));
+
+  const { error: rcErr } = await supabase
+    .from("rental_cylinders")
+    .update({ expiry_date: expiryDate, rental_end_date: expiryDate })
+    .eq("rental_id", rentalId)
+    .is("removed_at", null);
+  if (rcErr) throw new Error(parseDbError(rcErr.message));
+
+  await logRentalAudit(rentalId, "Lejárati dátum módosítva", {
+    old_expiry_date: oldExpiry,
+    expiry_date: expiryDate,
+  });
+}
+
+export async function updateRentalCylinderExpiry(
+  rentalId: string,
+  cylinderId: string,
+  expiryDate: string,
+): Promise<void> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(expiryDate)) throw new Error("Érvénytelen dátum");
+
+  const { data: rental, error: rentErr } = await supabase
+    .from("rentals")
+    .select("id, status")
+    .eq("id", rentalId)
+    .single();
+  if (rentErr || !rental) throw new Error("Bérlet nem található");
+  if (rental.status === "closed") throw new Error("Lezárt bérlet nem módosítható");
+
+  const { data: link, error } = await supabase
+    .from("rental_cylinders")
+    .select("expiry_date, rental_end_date")
+    .eq("rental_id", rentalId)
+    .eq("cylinder_id", cylinderId)
+    .is("removed_at", null)
+    .single();
+
+  if (error || !link) throw new Error("Palack bérlete nem található");
+
+  const oldEnd = link.rental_end_date ?? link.expiry_date;
+
+  const { error: updErr } = await supabase
+    .from("rental_cylinders")
+    .update({ expiry_date: expiryDate, rental_end_date: expiryDate })
+    .eq("rental_id", rentalId)
+    .eq("cylinder_id", cylinderId);
+  if (updErr) throw new Error(parseDbError(updErr.message));
+
+  await logRentalAudit(rentalId, "Palack lejárati dátum módosítva", {
+    cylinder_id: cylinderId,
+    old_expiry_date: oldEnd,
+    expiry_date: expiryDate,
+  });
 }
 
 export type PartnerRentalOverview = {
@@ -1108,7 +1187,10 @@ export async function extendRental(rentalId: string): Promise<void> {
   if (updates.expiry_date) {
     const { error: rcErr } = await supabase
       .from("rental_cylinders")
-      .update({ expiry_date: updates.expiry_date as string })
+      .update({
+        expiry_date: updates.expiry_date as string,
+        rental_end_date: updates.expiry_date as string,
+      })
       .eq("rental_id", rentalId)
       .is("removed_at", null);
     if (rcErr) throw new Error(parseDbError(rcErr.message));
