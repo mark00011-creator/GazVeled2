@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFPage } from "pdf-lib";
 import QRCode from "qrcode";
 import { fmtDate } from "@/lib/labels";
+import { formatPhoneDisplay } from "@/lib/phone";
 import type { RentalType } from "@/lib/labels";
 import { rentalTypeLabels } from "@/lib/labels";
 import {
@@ -183,7 +184,7 @@ function drawLesseeBlock(ctx: PdfCtx, partner: RentalContractPartner) {
   const displayName = partner.company_name?.trim() || partner.name;
   drawField(ctx, "Nev / cegnev", displayName);
   drawFieldIf(ctx, "Cim / szekhely", partner.address);
-  drawFieldIf(ctx, "Telefonszam", partner.phone);
+  drawFieldIf(ctx, "Telefonszam", partner.phone ? formatPhoneDisplay(partner.phone) : null);
   drawFieldIf(ctx, "E-mail", partner.email);
   drawFieldIf(ctx, "Adoszam", partner.tax_number);
   drawFieldIf(ctx, "Kepviselo", partner.contact_person);

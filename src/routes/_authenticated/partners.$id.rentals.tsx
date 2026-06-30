@@ -20,6 +20,7 @@ import {
   type RentalType,
 } from "@/lib/labels";
 import { extendRentalCylinder, fetchPartnerRentalOverview, rentalNumber } from "@/lib/rental-ops";
+import { PhoneLink } from "@/components/PhoneLink";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/partners/$id/rentals")({
@@ -101,6 +102,11 @@ function PartnerRentalsPage() {
         {partner.company_name && (
           <div className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
             <Building2 className="h-3.5 w-3.5" /> {partner.company_name}
+          </div>
+        )}
+        {partner.phone && (
+          <div className="mt-1 text-sm text-muted-foreground">
+            Telefon: <PhoneLink phone={partner.phone} />
           </div>
         )}
         {summary.length > 0 && (

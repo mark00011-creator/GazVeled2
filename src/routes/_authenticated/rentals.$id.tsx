@@ -42,6 +42,7 @@ import {
 } from "@/lib/rental-quantity-stock";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
+import { PhoneLink } from "@/components/PhoneLink";
 
 export const Route = createFileRoute("/_authenticated/rentals/$id")({
   head: () => ({ meta: [{ title: "Bérlet – Gáz Veled" }] }),
@@ -353,6 +354,14 @@ function RentalDetail() {
         <div className="grid grid-cols-2 gap-3 text-sm">
           <Info label="Státusz" value={rentalStatusLabels[displayStatus] ?? displayStatus} />
           <Info label="Partner" value={partner?.name ?? "—"} bold />
+          {partner?.phone && (
+            <div>
+              <div className="text-xs text-muted-foreground">Telefon</div>
+              <div className="mt-0.5">
+                <PhoneLink phone={partner.phone} />
+              </div>
+            </div>
+          )}
           <Info label="Bérlet típusa" value={rentalTypeLabels[rentalType]} />
           <Info label="Kezdő dátum" value={fmtDate(rental.start_date)} />
           {canExtend ? (

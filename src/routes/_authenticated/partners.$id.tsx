@@ -1,8 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/integrations/supabase/client";
 
@@ -14,11 +14,23 @@ import { Badge } from "@/components/ui/badge";
 
 import { Button } from "@/components/ui/button";
 
-import { ArrowLeft, Building2, Cylinder, Mail, MapPin, Phone, StickyNote } from "lucide-react";
+import { Input } from "@/components/ui/input";
+
+import { Label } from "@/components/ui/label";
+
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+
+import { ArrowLeft, Building2, Cylinder, Mail, MapPin, Pencil, Phone, StickyNote } from "lucide-react";
 
 import { circulationLabels, fmtDate, formatPressureTestYear, isRentalExpired, rentalDisplayStatus, rentalStatusLabels, rentalTypeLabels, statusLabels, type Circulation, type RentalType } from "@/lib/labels";
 
 import { fetchRentedCylinderIdsForPartner, rentalNumber } from "@/lib/rental-ops";
+
+import { PhoneLink } from "@/components/PhoneLink";
+
+import { preparePhoneForSave } from "@/lib/phone";
+
+import { toast } from "sonner";
 
 
 
@@ -91,6 +103,30 @@ function circulationColor(circ: Circulation): string {
 function PartnerDetail() {
 
   const { id } = Route.useParams();
+
+  const qc = useQueryClient();
+
+  const [editOpen, setEditOpen] = useState(false);
+
+  const [editForm, setEditForm] = useState({
+
+    name: "",
+
+    company_name: "",
+
+    tax_number: "",
+
+    phone: "",
+
+    email: "",
+
+    address: "",
+
+    note: "",
+
+  });
+
+  const [saving, setSaving] = useState(false);
 
 
 
@@ -247,6 +283,96 @@ function PartnerDetail() {
 
 
 
+  function openEdit() {
+
+    if (!partner) return;
+
+    setEditForm({
+
+      name: partner.name,
+
+      company_name: partner.company_name ?? "",
+
+      tax_number: partner.tax_number ?? "",
+
+      phone: partner.phone ?? "",
+
+      email: partner.email ?? "",
+
+      address: partner.address ?? "",
+
+      note: partner.note ?? "",
+
+    });
+
+    setEditOpen(true);
+
+  }
+
+
+
+  async function saveEdit() {
+
+    if (!editForm.name.trim()) {
+
+      toast.error("A név kötelező");
+
+      return;
+
+    }
+
+    setSaving(true);
+
+    const phoneResult = preparePhoneForSave(editForm.phone);
+
+    const payload = {
+
+      name: editForm.name.trim(),
+
+      company_name: editForm.company_name.trim() || null,
+
+      tax_number: editForm.tax_number.trim() || null,
+
+      phone: phoneResult.value,
+
+      email: editForm.email.trim() || null,
+
+      address: editForm.address.trim() || null,
+
+      note: editForm.note.trim() || null,
+
+      updated_at: new Date().toISOString(),
+
+    };
+
+    const { error } = await supabase.from("partners").update(payload).eq("id", id);
+
+    setSaving(false);
+
+    if (error) {
+
+      toast.error(error.message);
+
+      return;
+
+    }
+
+    if (phoneResult.warning) toast.warning(phoneResult.warning);
+
+    toast.success("Partner mentve");
+
+    setEditOpen(false);
+
+    qc.invalidateQueries({ queryKey: ["partner", id] });
+
+    qc.invalidateQueries({ queryKey: ["partners"] });
+
+    qc.invalidateQueries({ queryKey: ["partners-min"] });
+
+  }
+
+
+
   if (partnerLoading) {
 
     return (
@@ -321,7 +447,17 @@ function PartnerDetail() {
 
       <Card className="mb-4 p-4">
 
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Partner adatok</h2>
+        <div className="mb-3 flex items-center justify-between gap-2">
+
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Partner adatok</h2>
+
+          <Button variant="outline" size="sm" onClick={openEdit}>
+
+            <Pencil className="mr-1 h-3.5 w-3.5" /> Szerkesztés
+
+          </Button>
+
+        </div>
 
         <div className="space-y-2 text-sm">
 
@@ -331,7 +467,7 @@ function PartnerDetail() {
 
           <DetailRow label="Adószám" value={partner.tax_number} />
 
-          <DetailRow label="Telefon" value={partner.phone} icon={<Phone className="h-3.5 w-3.5" />} />
+          <DetailRow label="Telefon" value={partner.phone} icon={<Phone className="h-3.5 w-3.5" />} phone />
 
           <DetailRow label="Email" value={partner.email} icon={<Mail className="h-3.5 w-3.5" />} />
 
@@ -352,6 +488,90 @@ function PartnerDetail() {
         </div>
 
       </Card>
+
+
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+
+          <DialogHeader>
+
+            <DialogTitle>Partner szerkesztése</DialogTitle>
+
+            <DialogDescription>Kapcsolattartási adatok módosítása.</DialogDescription>
+
+          </DialogHeader>
+
+          <div className="space-y-3">
+
+            <div>
+
+              <Label>Név</Label>
+
+              <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+
+            </div>
+
+            <div>
+
+              <Label>Cégnév</Label>
+
+              <Input value={editForm.company_name} onChange={(e) => setEditForm({ ...editForm, company_name: e.target.value })} />
+
+            </div>
+
+            <div>
+
+              <Label>Adószám</Label>
+
+              <Input value={editForm.tax_number} onChange={(e) => setEditForm({ ...editForm, tax_number: e.target.value })} />
+
+            </div>
+
+            <div>
+
+              <Label>Telefon</Label>
+
+              <Input value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
+
+            </div>
+
+            <div>
+
+              <Label>Email</Label>
+
+              <Input value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
+
+            </div>
+
+            <div>
+
+              <Label>Cím</Label>
+
+              <Input value={editForm.address} onChange={(e) => setEditForm({ ...editForm, address: e.target.value })} />
+
+            </div>
+
+            <div>
+
+              <Label>Megjegyzés</Label>
+
+              <Input value={editForm.note} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} />
+
+            </div>
+
+            <Button onClick={saveEdit} className="w-full" disabled={saving}>
+
+              Mentés
+
+            </Button>
+
+          </div>
+
+        </DialogContent>
+
+      </Dialog>
 
 
 
@@ -611,6 +831,8 @@ function DetailRow({
 
   icon,
 
+  phone,
+
 }: {
 
   label: string;
@@ -618,6 +840,8 @@ function DetailRow({
   value: string | null | undefined;
 
   icon?: React.ReactNode;
+
+  phone?: boolean;
 
 }) {
 
@@ -633,7 +857,7 @@ function DetailRow({
 
         <span className="text-xs text-muted-foreground">{label}: </span>
 
-        <span>{value}</span>
+        {phone ? <PhoneLink phone={value} /> : <span>{value}</span>}
 
       </div>
 

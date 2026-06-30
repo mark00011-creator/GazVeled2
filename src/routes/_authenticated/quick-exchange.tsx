@@ -49,6 +49,7 @@ import {
   type PartnerOperationType,
 } from "@/lib/cylinder-ops";
 import { findActiveRentalIdForCylinder } from "@/lib/rental-ops";
+import { PhoneLink } from "@/components/PhoneLink";
 import { GAS_TYPES, getAvailableSizes } from "@/lib/gas-cylinder-form";
 import {
   FLAGA_PB_CATALOG,
@@ -121,8 +122,13 @@ function QuickExchange() {
   const { data: partners } = useQuery({
     queryKey: ["partners-min"],
     queryFn: async () =>
-      (await supabase.from("partners").select("id,name,company_name").order("name")).data ?? [],
+      (await supabase.from("partners").select("id,name,company_name,phone").order("name")).data ?? [],
   });
+
+  const selectedPartner = useMemo(
+    () => (partners ?? []).find((p) => p.id === partnerId),
+    [partners, partnerId],
+  );
 
   const { data: activeRentals } = useQuery({
     queryKey: ["active-rentals", partnerId],
@@ -491,6 +497,11 @@ function QuickExchange() {
             ))}
           </SelectContent>
         </Select>
+        {selectedPartner?.phone && (
+          <div className="mt-2 text-sm text-muted-foreground">
+            Telefon: <PhoneLink phone={selectedPartner.phone} />
+          </div>
+        )}
       </Card>
 
       {partnerId && operation === "exchange" && (activeRentals?.length ?? 0) > 0 && (

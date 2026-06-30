@@ -26,6 +26,8 @@ import { toast } from "sonner";
 
 import { fetchPartnerRentalSummaries } from "@/lib/rental-ops";
 
+import { preparePhoneForSave } from "@/lib/phone";
+
 
 
 export const Route = createFileRoute("/_authenticated/partners/")({
@@ -116,7 +118,13 @@ function PartnersList() {
 
     if (!form.name) return;
 
-    const payload = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v === "" ? null : v]));
+    const phoneResult = preparePhoneForSave(form.phone);
+
+    const payload = Object.fromEntries(
+
+      Object.entries({ ...form, phone: phoneResult.value ?? "" }).map(([k, v]) => [k, v === "" ? null : v]),
+
+    );
 
     const { error } = await supabase.from("partners").insert(payload as never);
 
@@ -127,6 +135,8 @@ function PartnersList() {
       return;
 
     }
+
+    if (phoneResult.warning) toast.warning(phoneResult.warning);
 
     toast.success("Partner mentve");
 
