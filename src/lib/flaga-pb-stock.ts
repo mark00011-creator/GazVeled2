@@ -10,6 +10,15 @@ export const FLAGA_PB_CATALOG = [
   { gas_type: "Kompozit", size: "7,5 kg" },
 ] as const;
 
+/** Gáz rendelés FLAGA oldal megjelenítési sorrendje. */
+export const FLAGA_PB_DISPLAY_ORDER = [
+  { gas_type: "Propán", size: "10,5 kg" },
+  { gas_type: "Motorüzemű Flaga", size: "11 kg" },
+  { gas_type: "Propán-Bután", size: "11,5 kg" },
+  { gas_type: "Propán-Bután", size: "23 kg" },
+  { gas_type: "Kompozit", size: "7,5 kg" },
+] as const;
+
 export type FlagaPbCatalogItem = (typeof FLAGA_PB_CATALOG)[number];
 
 export function flagaPbProductKey(gas_type: string, size: string): string {
@@ -87,4 +96,27 @@ export function sumFlagaPbCounts(rows: FlagaPbStockRow[]): { full: number; empty
     (acc, r) => ({ full: acc.full + r.full_count, empty: acc.empty + r.empty_count }),
     { full: 0, empty: 0 },
   );
+}
+
+export type FlagaPbCatalogStockLine = {
+  gas_type: string;
+  size: string;
+  label: string;
+  full_count: number;
+  empty_count: number;
+};
+
+/** Minden katalógus tétel teli/üres darabszámmal (hiányzó sor → 0). */
+export function buildFlagaPbCatalogStockLines(rows: FlagaPbStockRow[]): FlagaPbCatalogStockLine[] {
+  const byKey = new Map(rows.map((r) => [flagaPbProductKey(r.gas_type, r.size), r]));
+  return FLAGA_PB_DISPLAY_ORDER.map((item) => {
+    const row = byKey.get(flagaPbProductKey(item.gas_type, item.size));
+    return {
+      gas_type: item.gas_type,
+      size: item.size,
+      label: flagaPbStockLabel(item.gas_type, item.size),
+      full_count: row?.full_count ?? 0,
+      empty_count: row?.empty_count ?? 0,
+    };
+  });
 }
