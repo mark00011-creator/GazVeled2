@@ -1,5 +1,12 @@
 import { supabase } from "@/integrations/supabase/client";
 import { canonicalGasType, canonicalSize } from "@/lib/product-prices";
+import {
+  CHINESE_STOCK_UI_MOVEMENTS,
+  parseStockQuantityInput,
+  QUANTITY_STOCK_MOVEMENT_LABELS,
+  type LegacyQuantityStockMovementType,
+  type QuantityStockMovementType,
+} from "@/lib/quantity-stock-movements";
 import { formatSupabaseError } from "@/lib/supabase-error";
 
 export type ChineseStockRow = {
@@ -11,14 +18,11 @@ export type ChineseStockRow = {
   updated_at: string;
 };
 
-export type ChineseMovementType = "purchase" | "sale" | "exchange" | "empty_return";
+export type ChineseMovementType = QuantityStockMovementType;
 
-export const CHINESE_MOVEMENT_LABELS: Record<ChineseMovementType, string> = {
-  purchase: "Beszerzés (teli +)",
-  sale: "Eladás (teli −, nincs vissza)",
-  exchange: "Csere (teli −, üres +)",
-  empty_return: "Üres visszahozás (üres +)",
-};
+export const CHINESE_MOVEMENT_LABELS = QUANTITY_STOCK_MOVEMENT_LABELS;
+
+export const CHINESE_UI_MOVEMENTS = CHINESE_STOCK_UI_MOVEMENTS;
 
 export async function fetchChineseStock(): Promise<ChineseStockRow[]> {
   const { data, error } = await supabase
@@ -34,7 +38,7 @@ export async function fetchChineseStock(): Promise<ChineseStockRow[]> {
 export async function adjustChineseStock(args: {
   gas_type: string;
   size: string;
-  movement_type: ChineseMovementType;
+  movement_type: LegacyQuantityStockMovementType;
   quantity: number;
   note?: string;
 }): Promise<string> {
@@ -55,6 +59,8 @@ export async function adjustChineseStock(args: {
   if (!data) throw new Error("A mozgás rögzítése sikertelen");
   return data as string;
 }
+
+export { parseStockQuantityInput };
 
 export function chineseStockLabel(gas_type: string, size: string): string {
   return `${gas_type} ${size}`;

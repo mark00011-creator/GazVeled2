@@ -19,8 +19,10 @@ import { GAS_TYPES, getAvailableSizes } from "@/lib/gas-cylinder-form";
 import {
   adjustChineseStock,
   CHINESE_MOVEMENT_LABELS,
+  CHINESE_UI_MOVEMENTS,
   chineseStockLabel,
   fetchChineseStock,
+  parseStockQuantityInput,
   type ChineseMovementType,
 } from "@/lib/chinese-stock";
 
@@ -51,9 +53,11 @@ function ChineseStockPage() {
 
   async function handleMovement(e: React.FormEvent) {
     e.preventDefault();
-    const qty = Number(quantity);
-    if (!Number.isFinite(qty) || qty <= 0) {
-      toast.error("Érvényes darabszámot adj meg");
+    let qty: number;
+    try {
+      qty = parseStockQuantityInput(quantity);
+    } catch (err) {
+      toast.error((err as Error).message);
       return;
     }
     setBusy(true);
@@ -137,7 +141,7 @@ function ChineseStockPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {(Object.keys(CHINESE_MOVEMENT_LABELS) as ChineseMovementType[]).map((k) => (
+                  {CHINESE_UI_MOVEMENTS.map((k) => (
                     <SelectItem key={k} value={k}>
                       {CHINESE_MOVEMENT_LABELS[k]}
                     </SelectItem>
