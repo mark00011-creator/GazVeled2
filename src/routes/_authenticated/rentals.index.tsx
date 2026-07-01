@@ -27,7 +27,7 @@ import {
 import { Plus, ChevronRight, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import {
-  effectiveRentalExpiry,
+  cylinderExpiryDate,
   fmtDate,
   isRentalExpired,
   rentalDisplayStatus,
@@ -173,11 +173,11 @@ function RentalsList() {
     queryFn: async () => {
       const { data: links, error: linkErr } = await supabase
         .from("rental_cylinders")
-        .select("rental_id, cylinder_id")
+        .select("rental_id, cylinder_id, expiry_date, rental_end_date")
         .in("rental_id", rentalIds)
         .is("removed_at", null);
       if (linkErr) throw linkErr;
-      if (!links?.length) return {} as Record<string, string[]>;
+      if (!links?.length) return { summaries: {} as Record<string, string[]>, expired: new Set<string>() };
 
       const cylIds = [...new Set(links.map((l) => l.cylinder_id))];
       const { data: cyls, error: cylErr } = await supabase
@@ -188,20 +188,26 @@ function RentalsList() {
 
       const cylMap = new Map((cyls ?? []).map((c) => [c.id, c]));
       const byRental = new Map<string, { gas_type: string; size: string }[]>();
+      const expiredRentals = new Set<string>();
       for (const link of links) {
         const cyl = cylMap.get(link.cylinder_id);
         if (!cyl) continue;
         const list = byRental.get(link.rental_id) ?? [];
         list.push({ gas_type: cyl.gas_type, size: cyl.size });
         byRental.set(link.rental_id, list);
+        if (isRentalExpired(cylinderExpiryDate(link))) {
+          expiredRentals.add(link.rental_id);
+        }
       }
-      const result: Record<string, string[]> = {};
+      const summaries: Record<string, string[]> = {};
       for (const [rid, list] of byRental) {
-        result[rid] = summarizeRentalCylinders(list);
+        summaries[rid] = summarizeRentalCylinders(list);
       }
-      return result;
+      return { summaries, expired: expiredRentals };
     },
   });
+
+  const rentalCylExpired = rentalCylSummaries?.expired ?? new Set<string>();
 
   const { data: partners } = useQuery({
     queryKey: ["partners-min"],
@@ -218,10 +224,10 @@ function RentalsList() {
     const list = rentals ?? [];
     if (statusFilter !== "expired") return list;
     return list.filter((r) => {
-      const expiry = effectiveRentalExpiry(r.start_date, r.expiry_date);
-      return rentalDisplayStatus(r.status, expiry) === "expired";
+      if (r.status === "closed" || r.status === "cancelled") return false;
+      return rentalCylExpired.has(r.id) || r.status === "expired";
     });
-  }, [rentals, statusFilter]);
+  }, [rentals, statusFilter, rentalCylExpired]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -358,7 +364,6 @@ function RentalsList() {
           address_card_number: partner?.address_card_number,
         },
         startDate: rental.start_date,
-        expiryDate: rental.expiry_date,
         monthlyFee: Number(rental.monthly_fee),
         deposit: Number(rental.deposit),
         depositType: rental.deposit_type,
@@ -373,6 +378,8 @@ function RentalsList() {
             circulation: c.circulation,
             replacement_value: c.replacement_value,
             pressure_test_year: c.pressure_test_year,
+            expiry_date: c.expiry_date,
+            rental_end_date: c.rental_end_date,
           })),
           toContractStockItems(qtyItems),
         ),
@@ -625,10 +632,9 @@ function RentalsList() {
       <div className="space-y-2">
         {filtered.map((r) => {
           const p = r.partners;
-          const expiry = effectiveRentalExpiry(r.start_date, r.expiry_date);
-          const expired = isRentalExpired(expiry);
-          const displayStatus = rentalDisplayStatus(r.status, expiry);
-          const cylSummary = rentalCylSummaries?.[r.id];
+          const hasExpiredCylinder = rentalCylExpired.has(r.id);
+          const displayStatus = rentalDisplayStatus(r.status);
+          const cylSummary = rentalCylSummaries?.summaries?.[r.id];
           const days = r.rental_type === "monthly" ? daysUntil(r.next_invoice_date) : null;
           const urgency = invoiceUrgency(days);
           const urgencyCls =
@@ -641,7 +647,7 @@ function RentalsList() {
           return (
             <Link key={r.id} to="/rentals/$id" params={{ id: r.id }}>
               <Card
-                className={`p-3 transition-colors hover:bg-accent/50 ${expired && r.status !== "closed" ? "border-destructive/30" : ""}`}
+                className={`p-3 transition-colors hover:bg-accent/50 ${hasExpiredCylinder && r.status !== "closed" ? "border-destructive/30" : ""}`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
@@ -657,8 +663,8 @@ function RentalsList() {
                       <Badge variant={statusVariant(displayStatus)}>
                         {rentalStatusLabels[displayStatus] ?? displayStatus}
                       </Badge>
-                      {expired && r.status !== "closed" && (
-                        <Badge variant="destructive">LEJÁRT</Badge>
+                      {hasExpiredCylinder && r.status !== "closed" && (
+                        <Badge variant="destructive">LEJÁRT PALACK</Badge>
                       )}
                       <Badge variant="outline">{rentalTypeLabels[r.rental_type ?? "yearly"]}</Badge>
                       <span className="font-mono text-[10px] text-muted-foreground">
@@ -668,9 +674,9 @@ function RentalsList() {
                     {p?.company_name && (
                       <div className="text-xs text-muted-foreground">{p.company_name}</div>
                     )}
-                    {expired && r.status !== "closed" && (
+                    {hasExpiredCylinder && r.status !== "closed" && (
                       <div className="mt-1 text-xs font-medium text-destructive">
-                        Lejárt: {fmtDate(expiry)}
+                        Van lejárt palack
                       </div>
                     )}
                     {cylSummary && cylSummary.length > 0 && (
@@ -684,9 +690,6 @@ function RentalsList() {
                     )}
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       <span>Kezdés: {fmtDate(r.start_date)}</span>
-                      <span className={expired ? "font-medium text-destructive" : ""}>
-                        Lejárat: {fmtDate(expiry)}
-                      </span>
                       {r.rental_type === "monthly" && (
                         <span>{Number(r.monthly_fee).toLocaleString("hu-HU")} Ft/hó</span>
                       )}

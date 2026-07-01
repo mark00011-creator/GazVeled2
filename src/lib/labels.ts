@@ -148,10 +148,23 @@ export function formatRentalDuration(addedAt: string): string {
   return rem > 0 ? `${years} év ${rem} hónapja` : `${years} éve`;
 }
 
-export function rentalDisplayStatus(status: string, expiryDate: string | null | undefined): string {
+/** Per-cylinder expiry: rental_cylinders.expiry_date is the source of truth. */
+export function cylinderExpiryDate(c: {
+  expiry_date?: string | null;
+  rental_end_date?: string | null;
+}): string | null {
+  return c.expiry_date ?? c.rental_end_date ?? null;
+}
+
+export function rentalHasExpiredCylinder(
+  cylinders: { expiry_date?: string | null; rental_end_date?: string | null }[],
+): boolean {
+  return cylinders.some((c) => isRentalExpired(cylinderExpiryDate(c)));
+}
+
+export function rentalDisplayStatus(status: string): string {
   if (status === "closed") return "closed";
   if (status === "cancelled") return "cancelled";
-  if (isRentalExpired(expiryDate)) return "expired";
   return status;
 }
 

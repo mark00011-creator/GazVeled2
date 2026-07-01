@@ -22,7 +22,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 
 import { ArrowLeft, Building2, Cylinder, Mail, MapPin, Pencil, Phone, StickyNote } from "lucide-react";
 
-import { circulationLabels, fmtDate, formatPressureTestYear, isRentalExpired, rentalDisplayStatus, rentalStatusLabels, rentalTypeLabels, statusLabels, type Circulation, type RentalType } from "@/lib/labels";
+import { circulationLabels, cylinderExpiryDate, fmtDate, formatPressureTestYear, isRentalExpired, rentalDisplayStatus, rentalStatusLabels, rentalTypeLabels, statusLabels, type Circulation, type RentalType } from "@/lib/labels";
 
 import { fetchRentedCylinderIdsForPartner, rentalNumber } from "@/lib/rental-ops";
 
@@ -226,10 +226,30 @@ function PartnerDetail() {
 
   });
 
-  const activeRentals = (allRentals ?? []).filter((r) => rentalDisplayStatus(r.status, r.expiry_date) === "active");
+  const rentalIds = useMemo(() => (allRentals ?? []).map((r) => r.id), [allRentals]);
+
+  const { data: rentalsWithExpiredCylinder } = useQuery({
+    queryKey: ["partner-rental-cylinder-expired", id, rentalIds],
+    enabled: rentalIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("rental_cylinders")
+        .select("rental_id, expiry_date, rental_end_date")
+        .in("rental_id", rentalIds)
+        .is("removed_at", null);
+      if (error) throw error;
+      const expired = new Set<string>();
+      for (const link of data ?? []) {
+        if (isRentalExpired(cylinderExpiryDate(link))) expired.add(link.rental_id);
+      }
+      return expired;
+    },
+  });
+
+  const activeRentals = (allRentals ?? []).filter((r) => r.status === "active");
   const expiredRentals = (allRentals ?? []).filter((r) => {
     if (r.status === "closed" || r.status === "cancelled") return false;
-    return rentalDisplayStatus(r.status, r.expiry_date) === "expired";
+    return rentalsWithExpiredCylinder?.has(r.id) ?? r.status === "expired";
   });
   const closedRentals = (allRentals ?? []).filter((r) => r.status === "closed");
 
@@ -793,26 +813,22 @@ function RentalBlock({
   expired?: boolean;
 }) {
   const type = (rental.rental_type ?? "yearly") as RentalType;
-  const displayStatus = rentalDisplayStatus(rental.status, rental.expiry_date);
+  const displayStatus = rentalDisplayStatus(rental.status);
   return (
     <Link to="/rentals/$id" params={{ id: rental.id }}>
       <Card className="p-3 transition-colors hover:bg-accent/50">
         <div className="flex items-center justify-between gap-2">
           <span className="font-mono text-sm font-semibold">{rentalNumber(rental.id)}</span>
           <div className="flex gap-1">
-            <Badge variant={expired || displayStatus === "expired" ? "destructive" : "default"}>
+            <Badge variant={expired ? "destructive" : "default"}>
               {rentalStatusLabels[displayStatus] ?? displayStatus}
             </Badge>
+            {expired && <Badge variant="destructive">LEJÁRT PALACK</Badge>}
             <Badge variant="outline">{rentalTypeLabels[type]}</Badge>
           </div>
         </div>
         <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
           <span>Kezdés: {fmtDate(rental.start_date)}</span>
-          {rental.expiry_date && (
-            <span className={isRentalExpired(rental.expiry_date) ? "text-destructive" : ""}>
-              Lejárat: {fmtDate(rental.expiry_date)}
-            </span>
-          )}
           {type === "monthly" && (
             <span>{Number(rental.monthly_fee).toLocaleString("hu-HU")} Ft/hó</span>
           )}

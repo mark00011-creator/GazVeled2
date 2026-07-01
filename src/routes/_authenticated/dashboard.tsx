@@ -26,7 +26,7 @@ import {
   Warehouse,
 } from "lucide-react";
 
-import { fmtDate, isRentalExpired, rentalTypeLabels, effectiveRentalExpiry, rentalDisplayStatus, type RentalType } from "@/lib/labels";
+import { fmtDate, isRentalExpired, rentalTypeLabels, cylinderExpiryDate, type RentalType } from "@/lib/labels";
 
 import {
   daysUntil,
@@ -60,13 +60,16 @@ type RentalWidget = {
 
   next_invoice_date: string | null;
 
-  expiry_date: string | null;
-
   rental_type: RentalType | null;
 
   monthly_fee: number;
 
   partners: { name: string } | null;
+};
+
+type CylinderExpiryWidget = RentalWidget & {
+  expiry_date: string;
+  days: number;
 };
 
 function Dashboard() {
@@ -97,7 +100,7 @@ function Dashboard() {
         .from("rentals")
 
         .select(
-          "id, monthly_fee, status, start_date, next_invoice_date, expiry_date, rental_type, partners(name)",
+          "id, monthly_fee, status, start_date, next_invoice_date, rental_type, partners(name)",
         )
 
         .eq("status", "active");
@@ -106,15 +109,29 @@ function Dashboard() {
 
       const { data: openRentals, error: openRentErr } = await supabase
         .from("rentals")
-        .select("id, status, start_date, expiry_date")
+        .select("id, status")
         .neq("status", "closed");
 
       if (openRentErr) throw openRentErr;
 
-      const expiredRentalCount = (openRentals ?? []).filter((r) => {
-        const expiry = effectiveRentalExpiry(r.start_date, r.expiry_date);
-        return rentalDisplayStatus(r.status, expiry) === "expired";
-      }).length;
+      const openRentalIds = (openRentals ?? []).map((r) => r.id);
+      let expiredRentalCount = 0;
+      if (openRentalIds.length > 0) {
+        const { data: cylLinks, error: cylLinkErr } = await supabase
+          .from("rental_cylinders")
+          .select("rental_id, expiry_date, rental_end_date")
+          .in("rental_id", openRentalIds)
+          .is("removed_at", null);
+        if (cylLinkErr) throw cylLinkErr;
+
+        const expiredRentalIds = new Set<string>();
+        for (const link of cylLinks ?? []) {
+          if (isRentalExpired(cylinderExpiryDate(link))) {
+            expiredRentalIds.add(link.rental_id);
+          }
+        }
+        expiredRentalCount = expiredRentalIds.size;
+      }
 
       const activeRentalIds = (rentals ?? []).map((r) => r.id);
 
@@ -171,19 +188,46 @@ function Dashboard() {
 
         .sort((a, b) => (a.days ?? 0) - (b.days ?? 0));
 
-      const yearlyExpiring = activeRentals
+      const yearlyExpiring: CylinderExpiryWidget[] = [];
 
-        .filter(
-          (r) =>
-            (r.rental_type === "yearly" || !r.rental_type || r.rental_type === "free") &&
-            r.expiry_date,
-        )
+      if (activeRentalIds.length > 0) {
+        const { data: expiringLinks, error: expErr } = await supabase
+          .from("rental_cylinders")
+          .select("rental_id, expiry_date, rental_end_date")
+          .in("rental_id", activeRentalIds)
+          .is("removed_at", null);
+        if (expErr) throw expErr;
 
-        .map((r) => ({ ...r, days: daysUntil(r.expiry_date) }))
+        const rentalById = new Map(activeRentals.map((r) => [r.id, r]));
+        const nearestByRental = new Map<string, { expiry: string; days: number }>();
 
-        .filter((r) => r.days !== null && r.days <= 30)
+        for (const link of expiringLinks ?? []) {
+          const rental = rentalById.get(link.rental_id);
+          if (!rental) continue;
+          const type = rental.rental_type ?? "yearly";
+          if (type !== "yearly" && type !== "free") continue;
+          const expiry = cylinderExpiryDate(link);
+          if (!expiry) continue;
+          const d = daysUntil(expiry);
+          if (d === null || d > 30) continue;
+          const prev = nearestByRental.get(link.rental_id);
+          if (!prev || d < prev.days) {
+            nearestByRental.set(link.rental_id, { expiry, days: d });
+          }
+        }
 
-        .sort((a, b) => (a.days ?? 0) - (b.days ?? 0));
+        for (const [rentalId, info] of nearestByRental) {
+          const rental = rentalById.get(rentalId);
+          if (!rental) continue;
+          yearlyExpiring.push({
+            ...rental,
+            expiry_date: info.expiry,
+            days: info.days,
+          });
+        }
+
+        yearlyExpiring.sort((a, b) => a.days - b.days);
+      }
 
       const freeLoans = activeRentals.filter((r) => r.rental_type === "free");
 
@@ -638,12 +682,6 @@ function Dashboard() {
 
                     <Badge variant="outline">{rentalTypeLabels.free}</Badge>
                   </div>
-
-                  {r.expiry_date && (
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      Lejárat: {fmtDate(r.expiry_date)}
-                    </div>
-                  )}
                 </div>
               </Link>
             ))}

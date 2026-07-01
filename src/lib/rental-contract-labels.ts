@@ -1,5 +1,7 @@
 import {
   circulationLabels,
+  cylinderExpiryDate,
+  fmtDate,
   formatPressureTestYear,
   manufacturerLabels,
   type Circulation,
@@ -23,6 +25,8 @@ export type RentalContractLineSource = {
   replacement_value?: number | null;
   is_temporary?: boolean;
   pressure_test_year?: number | null;
+  expiry_date?: string | null;
+  rental_end_date?: string | null;
 };
 
 /** Quantity-based stock line (Chinese / FLAGA PB / PRÍMA PB) – bérleti szerződéshez. */
@@ -43,6 +47,7 @@ export type RentalContractLine = {
   vonalkodAzonosito: string;
   nyomasProba: string;
   potlasiErtek: number;
+  lejarat: string;
 };
 
 function isLegacyFlagaGasType(gasType: string): boolean {
@@ -136,6 +141,7 @@ function resolveReplacementValue(value: number | null | undefined): number {
 }
 
 function lineFromCylinder(c: RentalContractLineSource): RentalContractLine {
+  const expiry = cylinderExpiryDate(c);
   return {
     palackTipus: derivePalackTipus(c),
     gaz: c.gas_type,
@@ -145,6 +151,7 @@ function lineFromCylinder(c: RentalContractLineSource): RentalContractLine {
     vonalkodAzonosito: deriveVonalkodAzonosito(c),
     nyomasProba: formatPressureTestYear(c.pressure_test_year),
     potlasiErtek: resolveReplacementValue(c.replacement_value),
+    lejarat: expiry ? fmtDate(expiry) : "—",
   };
 }
 
@@ -168,6 +175,7 @@ function lineFromStockItem(item: RentalContractStockItem): RentalContractLine {
     vonalkodAzonosito: deriveVonalkodAzonosito({}, { stockKind: item.kind, quantityLine: true }),
     nyomasProba: "—",
     potlasiErtek: resolveReplacementValue(item.replacement_value),
+    lejarat: "—",
   };
 }
 

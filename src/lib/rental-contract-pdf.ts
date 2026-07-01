@@ -54,7 +54,7 @@ export type RentalContractData = {
   rentalType: RentalType;
   partner: RentalContractPartner;
   startDate: string;
-  expiryDate: string | null;
+  expiryDate?: string | null;
   monthlyFee: number;
   deposit: number;
   depositType?: string | null;
@@ -209,14 +209,15 @@ function drawCylinderTable(ctx: PdfCtx, lines: RentalContractLine[]) {
   drawHeading(ctx, "BERELT PALACKOK", 10);
 
   const cols = [
-    { label: "Palacktipus", w: 64 },
-    { label: "Gaz", w: 46 },
-    { label: "Meret", w: 40 },
-    { label: "Gyarto", w: 40 },
-    { label: "Tul.", w: 32 },
-    { label: "Vonalk./azon.", w: 62 },
-    { label: "Nyom.pr.", w: 36 },
-    { label: "Potlas", w: 52 },
+    { label: "Palacktipus", w: 58 },
+    { label: "Gaz", w: 40 },
+    { label: "Meret", w: 36 },
+    { label: "Gyarto", w: 36 },
+    { label: "Tul.", w: 28 },
+    { label: "Vonalk./azon.", w: 56 },
+    { label: "Nyom.pr.", w: 32 },
+    { label: "Lejarat", w: 44 },
+    { label: "Potlas", w: 46 },
   ] as const;
 
   const tableX = ctx.margin;
@@ -260,6 +261,7 @@ function drawCylinderTable(ctx: PdfCtx, lines: RentalContractLine[]) {
       line.tulajdonos,
       line.vonalkodAzonosito,
       line.nyomasProba,
+      line.lejarat,
       formatHuf(line.potlasiErtek),
     ]);
   }
@@ -269,7 +271,6 @@ function drawCylinderTable(ctx: PdfCtx, lines: RentalContractLine[]) {
 function drawRentalDetails(ctx: PdfCtx, data: RentalContractData) {
   drawHeading(ctx, "BERLETI ADATOK", 10);
   drawField(ctx, "Kezdo datum", fmtDate(data.startDate));
-  if (data.expiryDate) drawField(ctx, "Lejarati datum", fmtDate(data.expiryDate));
   drawField(ctx, "Berleti dij", feeLabel(data.rentalType, data.monthlyFee));
   drawField(ctx, "Berlet tipusa", rentalTypeLabels[data.rentalType]);
   if (data.depositType?.trim()) drawField(ctx, "Kaucio tipusa", data.depositType.trim());

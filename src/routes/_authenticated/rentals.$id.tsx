@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { ArrowLeft, CalendarPlus, FileDown, Pencil, RotateCcw } from "lucide-react";
 import {
   circulationLabels,
-  effectiveRentalExpiry,
+  cylinderExpiryDate,
   fmtDate,
   formatPressureTestYear,
   isRentalExpired,
@@ -19,13 +19,11 @@ import {
 } from "@/lib/labels";
 import {
   advanceRentalBilling,
-  extendRental,
   extendRentalCylinder,
   fetchRentalCylinderDetails,
   fetchRentalWithPartner,
   rentalNumber,
   updateRentalCylinderExpiry,
-  updateRentalExpiry,
 } from "@/lib/rental-ops";
 import { logSupabaseError } from "@/lib/supabase-error";
 import { updateCylinderBarcode } from "@/lib/cylinder-ops";
@@ -56,7 +54,6 @@ function RentalDetail() {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [editingBarcodeId, setEditingBarcodeId] = useState<string | null>(null);
   const [barcodeEdits, setBarcodeEdits] = useState<Record<string, string>>({});
-  const [rentalExpiryEdit, setRentalExpiryEdit] = useState("");
   const [cylinderExpiryEdits, setCylinderExpiryEdits] = useState<Record<string, string>>({});
 
   const {
@@ -111,19 +108,14 @@ function RentalDetail() {
   });
 
   useEffect(() => {
-    if (!rental) return;
-    setRentalExpiryEdit(effectiveRentalExpiry(rental.start_date, rental.expiry_date));
-  }, [rental?.id, rental?.start_date, rental?.expiry_date]);
-
-  useEffect(() => {
-    if (!cylLinks || !rental) return;
-    const fallbackExpiry = effectiveRentalExpiry(rental.start_date, rental.expiry_date);
+    if (!cylLinks) return;
     const next: Record<string, string> = {};
     for (const c of cylLinks) {
-      next[c.cylinder_id] = c.rental_end_date ?? c.expiry_date ?? fallbackExpiry;
+      const expiry = cylinderExpiryDate(c);
+      if (expiry) next[c.cylinder_id] = expiry;
     }
     setCylinderExpiryEdits(next);
-  }, [cylLinks, rental]);
+  }, [cylLinks]);
 
   async function markInvoiced() {
     setBusyId("invoice");
@@ -149,41 +141,11 @@ function RentalDetail() {
     ]);
   }
 
-  async function doExtend() {
-    setBusyId("extend");
-    try {
-      await extendRental(id);
-      toast.success("Bérlet meghosszabbítva");
-      await invalidateRentalQueries();
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setBusyId(null);
-    }
-  }
-
   async function doExtendCylinder(cylinderId: string) {
     setBusyId(`extend-${cylinderId}`);
     try {
       await extendRentalCylinder(id, cylinderId);
       toast.success("Palack bérlete meghosszabbítva");
-      await invalidateRentalQueries();
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function saveRentalExpiry() {
-    if (!rentalExpiryEdit) {
-      toast.error("Add meg a lejárati dátumot");
-      return;
-    }
-    setBusyId("expiry");
-    try {
-      await updateRentalExpiry(id, rentalExpiryEdit);
-      toast.success("Lejárati dátum mentve");
       await invalidateRentalQueries();
     } catch (e) {
       toast.error((e as Error).message);
@@ -259,7 +221,6 @@ function RentalDetail() {
           address_card_number: partner?.address_card_number,
         },
         startDate: rental.start_date,
-        expiryDate: rental.expiry_date,
         monthlyFee: Number(rental.monthly_fee),
         deposit: Number(rental.deposit),
         depositType: rental.deposit_type,
@@ -274,6 +235,8 @@ function RentalDetail() {
             circulation: c.circulation,
             replacement_value: c.replacement_value,
             pressure_test_year: c.pressure_test_year,
+            expiry_date: c.expiry_date,
+            rental_end_date: c.rental_end_date,
           })),
           toContractStockItems(qtyItems ?? []),
         ),
@@ -305,13 +268,12 @@ function RentalDetail() {
 
   const partner = rental.partners;
   const rentalType = (rental.rental_type ?? "yearly") as RentalType;
-  const rentalExpiry = effectiveRentalExpiry(rental.start_date, rental.expiry_date);
-  const expired = isRentalExpired(rentalExpiry);
-  const displayStatus = rentalDisplayStatus(rental.status, rentalExpiry);
+  const displayStatus = rentalDisplayStatus(rental.status);
   const days = rentalType === "monthly" ? daysUntil(rental.next_invoice_date) : null;
   const urgency = invoiceUrgency(days);
-  const canExtend = rental.status !== "closed";
-  const canReturn = ["active", "expired", "cancelled"].includes(rental.status);
+  const hasActiveCylinders = (cylLinks ?? []).length > 0;
+  const canExtend = rental.status !== "closed" && hasActiveCylinders;
+  const canReturn = rental.status !== "closed" && hasActiveCylinders;
 
   return (
     <AppShell title="Bérlet adatlap">
@@ -329,25 +291,12 @@ function RentalDetail() {
         </Link>
       )}
 
-      {rental.status !== "closed" && (
-        <Card
-          className={`mb-4 p-4 text-center text-sm font-semibold ${
-            expired
-              ? "border-destructive/50 bg-destructive/10 text-destructive"
-              : "border-primary/30 bg-primary/5"
-          }`}
-        >
-          {expired ? "LEJÁRT" : <>Hosszabbítás szükséges: {fmtDate(rentalExpiry)}</>}
-        </Card>
-      )}
-
       <Card className="mb-4 p-4">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="font-mono text-sm text-muted-foreground">{rentalNumber(rental.id)}</span>
-          <Badge variant={displayStatus === "expired" ? "destructive" : "default"}>
+          <Badge variant="default">
             {rentalStatusLabels[displayStatus] ?? displayStatus}
           </Badge>
-          {expired && rental.status !== "closed" && <Badge variant="destructive">LEJÁRT</Badge>}
           <Badge variant="outline">{rentalTypeLabels[rentalType]}</Badge>
         </div>
 
@@ -364,34 +313,6 @@ function RentalDetail() {
           )}
           <Info label="Bérlet típusa" value={rentalTypeLabels[rentalType]} />
           <Info label="Kezdő dátum" value={fmtDate(rental.start_date)} />
-          {canExtend ? (
-            <div>
-              <div className="text-xs text-muted-foreground">Lejárati dátum</div>
-              <div className="mt-1 flex gap-1">
-                <Input
-                  type="date"
-                  className="h-8 text-xs"
-                  value={rentalExpiryEdit}
-                  onChange={(e) => setRentalExpiryEdit(e.target.value)}
-                />
-                <Button
-                  size="sm"
-                  className="h-8 shrink-0 px-2 text-xs"
-                  disabled={busyId === "expiry"}
-                  onClick={saveRentalExpiry}
-                >
-                  Mentés
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <Info
-              label="Lejárati dátum"
-              value={fmtDate(rentalExpiry)}
-              highlight={expired}
-              highlightTone="red"
-            />
-          )}
           {rental.next_invoice_date && (
             <Info
               label="Következő számlázás"
@@ -408,17 +329,6 @@ function RentalDetail() {
           {rental.end_date && <Info label="Lezárva" value={fmtDate(rental.end_date)} />}
         </div>
 
-        {canExtend && (
-          <Button
-            className="mt-4 w-full"
-            variant="outline"
-            size="sm"
-            disabled={busyId === "extend"}
-            onClick={doExtend}
-          >
-            <CalendarPlus className="mr-2 h-4 w-4" /> Tovább bérli (teljes bérlet)
-          </Button>
-        )}
         {rental.status === "active" && rentalType === "monthly" && rental.next_invoice_date && (
           <Button
             className="mt-4 w-full"
@@ -496,9 +406,8 @@ function RentalDetail() {
         ) : (
           <div>
             {(cylLinks ?? []).map((c) => {
-              const cylStart = c.rental_start_date ?? rental.start_date;
-              const cylEnd = c.rental_end_date ?? c.expiry_date ?? rentalExpiry;
-              const cylExpiry = c.expiry_date ?? rentalExpiry;
+              const cylStart = c.rental_start_date ?? c.added_at.slice(0, 10);
+              const cylExpiry = cylinderExpiryDate(c);
               const cylExpired = isRentalExpired(cylExpiry);
               const owner = (c.owner ?? c.circulation ?? "own") as keyof typeof circulationLabels;
               const isEditing = editingBarcodeId === c.cylinder_id;
@@ -563,7 +472,7 @@ function RentalDetail() {
                           <Input
                             type="date"
                             className="h-8 text-xs"
-                            value={cylinderExpiryEdits[c.cylinder_id] ?? cylEnd}
+                            value={cylinderExpiryEdits[c.cylinder_id] ?? cylExpiry ?? ""}
                             onChange={(e) =>
                               setCylinderExpiryEdits((prev) => ({
                                 ...prev,
@@ -582,7 +491,7 @@ function RentalDetail() {
                         </div>
                       ) : (
                         <div className={cylExpired ? "font-medium text-destructive" : ""}>
-                          {fmtDate(cylEnd)}
+                          {fmtDate(cylExpiry)}
                         </div>
                       )}
                     </div>

@@ -9,11 +9,12 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Building2, CalendarPlus, RotateCcw } from "lucide-react";
 import {
   circulationLabels,
-  effectiveRentalExpiry,
+  cylinderExpiryDate,
   fmtDate,
   formatRentalDuration,
   isRentalExpired,
   rentalDisplayStatus,
+  rentalHasExpiredCylinder,
   rentalStatusLabels,
   rentalTypeLabels,
   summarizeRentalCylinders,
@@ -126,13 +127,12 @@ function PartnerRentalsPage() {
       <div className="space-y-4">
         {(overview ?? []).map(({ rental, cylinders }) => {
           const type = (rental.rental_type ?? "yearly") as RentalType;
-          const rentalExpiry = effectiveRentalExpiry(rental.start_date, rental.expiry_date);
-          const rentalExpired = isRentalExpired(rentalExpiry);
-          const displayStatus = rentalDisplayStatus(rental.status, rentalExpiry);
+          const hasExpiredCylinder = rentalHasExpiredCylinder(cylinders);
+          const displayStatus = rentalDisplayStatus(rental.status);
 
           return (
             <Card key={rental.id} className="overflow-hidden p-0">
-              <div className={`border-b p-4 ${rentalExpired ? "border-destructive/40 bg-destructive/5" : ""}`}>
+              <div className={`border-b p-4 ${hasExpiredCylinder ? "border-destructive/40 bg-destructive/5" : ""}`}>
                 <div className="flex flex-wrap items-center gap-2">
                   <Link to="/rentals/$id" params={{ id: rental.id }} className="font-mono text-sm font-semibold hover:underline">
                     {rentalNumber(rental.id)}
@@ -140,20 +140,18 @@ function PartnerRentalsPage() {
                   <Badge variant={displayStatus === "expired" ? "destructive" : "default"}>
                     {rentalStatusLabels[displayStatus] ?? displayStatus}
                   </Badge>
+                  {hasExpiredCylinder && <Badge variant="destructive">LEJÁRT PALACK</Badge>}
                   <Badge variant="outline">{rentalTypeLabels[type]}</Badge>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
                   <span>Kezdete: {fmtDate(rental.start_date)}</span>
-                  <span className={rentalExpired ? "font-medium text-destructive" : "text-muted-foreground"}>
-                    Lejárata: {fmtDate(rentalExpiry)}
-                  </span>
                   <span className="text-muted-foreground">{cylinders.length} palack</span>
                 </div>
               </div>
 
               <div className="space-y-0">
                 {cylinders.map((c) => {
-                  const cylExpiry = c.expiry_date ?? rentalExpiry;
+                  const cylExpiry = cylinderExpiryDate(c);
                   const cylExpired = isRentalExpired(cylExpiry);
                   const owner = (c.owner ?? c.circulation ?? "own") as keyof typeof circulationLabels;
                   return (

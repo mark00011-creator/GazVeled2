@@ -27,7 +27,7 @@ import {
 import { addYears, todayLocal } from "@/lib/date-utils";
 
 import { addMonths } from "@/lib/rental-billing";
-import { isRentalExpired, summarizeRentalCylinders, type Circulation, type RentalType } from "@/lib/labels";
+import { summarizeRentalCylinders, type Circulation, type RentalType } from "@/lib/labels";
 
 import {
   isMissingRentalCylinderColumnError,
@@ -476,7 +476,7 @@ export async function fetchRentalCylinderDetails(rentalId: string): Promise<Rent
     .single();
   if (rentErr) throwSupabaseError("fetchRentalCylinderDetails → rentals", rentErr);
 
-  const defaultExpiry = rental.expiry_date ?? defaultExpiryDate(rental.start_date);
+  const defaultExpiry = defaultExpiryDate(rental.start_date);
   const legacyIds = [rental.current_cylinder_id, rental.original_cylinder_id];
 
   const allIds = await collectRentalCylinderIds(rentalId, rental.partner_id, legacyIds);
@@ -989,7 +989,7 @@ export async function extendRentalCylinder(rentalId: string, cylinderId: string)
 
   const { error: updErr } = await supabase
     .from("rental_cylinders")
-    .update({ expiry_date: newExpiry, rental_end_date: newExpiry })
+    .update({ expiry_date: newExpiry })
     .eq("rental_id", rentalId)
     .eq("cylinder_id", cylinderId);
 
@@ -998,32 +998,18 @@ export async function extendRentalCylinder(rentalId: string, cylinderId: string)
   await logRentalAudit(rentalId, "Palack bérlet meghosszabbítva", { cylinder_id: cylinderId, expiry_date: newExpiry });
 }
 
+/** Uniform expiry for all active cylinders – does not touch rentals.expiry_date. */
 export async function updateRentalExpiry(rentalId: string, expiryDate: string): Promise<void> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(expiryDate)) throw new Error("Érvénytelen dátum");
 
   const { data: rental, error } = await supabase
     .from("rentals")
-    .select("id, status, expiry_date")
+    .select("id, status")
     .eq("id", rentalId)
     .single();
 
   if (error || !rental) throw new Error("Bérlet nem található");
   if (rental.status === "closed") throw new Error("Lezárt bérlet nem módosítható");
-
-  const oldExpiry = rental.expiry_date;
-  const updates: Record<string, unknown> = {
-    expiry_date: expiryDate,
-    updated_at: new Date().toISOString(),
-  };
-
-  if (isRentalExpired(expiryDate)) {
-    if (rental.status === "active") updates.status = "expired";
-  } else if (rental.status === "expired") {
-    updates.status = "active";
-  }
-
-  const { error: updErr } = await supabase.from("rentals").update(updates).eq("id", rentalId);
-  if (updErr) throw new Error(parseDbError(updErr.message));
 
   const { error: rcErr } = await supabase
     .from("rental_cylinders")
@@ -1032,8 +1018,7 @@ export async function updateRentalExpiry(rentalId: string, expiryDate: string): 
     .is("removed_at", null);
   if (rcErr) throw new Error(parseDbError(rcErr.message));
 
-  await logRentalAudit(rentalId, "Lejárati dátum módosítva", {
-    old_expiry_date: oldExpiry,
+  await logRentalAudit(rentalId, "Összes palack lejárati dátuma módosítva", {
     expiry_date: expiryDate,
   });
 }
@@ -1142,85 +1127,64 @@ export async function extendRental(rentalId: string): Promise<void> {
 
   const type = (rental.rental_type ?? "yearly") as RentalType;
 
-  const updates: Record<string, unknown> = {
+  const rentalUpdates: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
-    status: "active",
   };
 
-  const expiryBase = rental.expiry_date ?? rental.start_date ?? todayLocal();
-  const oldExpiry = rental.expiry_date;
-
-
-
-  if (type === "yearly") {
-
-    updates.expiry_date = addYears(expiryBase, 1);
-
+  if (type === "monthly") {
     const invBase = rental.next_invoice_date ?? rental.start_date ?? todayLocal();
-
-    updates.next_invoice_date = addYears(invBase, 1);
-
-  } else if (type === "monthly") {
-
-    updates.expiry_date = addMonths(expiryBase, 1);
-
-    const invBase = rental.next_invoice_date ?? rental.start_date ?? todayLocal();
-
-    updates.next_invoice_date = addMonths(invBase, 1);
-
-  } else if (type === "free") {
-
-    updates.expiry_date = addYears(expiryBase, 1);
-
-  } else {
-
-    throw new Error("Ismeretlen bérlet típus");
-
+    rentalUpdates.next_invoice_date = addMonths(invBase, 1);
+    const { error: updErr } = await supabase.from("rentals").update(rentalUpdates).eq("id", rentalId);
+    if (updErr) throw new Error(parseDbError(updErr.message));
   }
 
-
-
-  const { error: updErr } = await supabase.from("rentals").update(updates).eq("id", rentalId);
-
-  if (updErr) throw new Error(parseDbError(updErr.message));
-
-  if (updates.expiry_date) {
-    const { error: rcErr } = await supabase
-      .from("rental_cylinders")
-      .update({
-        expiry_date: updates.expiry_date as string,
-        rental_end_date: updates.expiry_date as string,
-      })
-      .eq("rental_id", rentalId)
-      .is("removed_at", null);
-    if (rcErr) throw new Error(parseDbError(rcErr.message));
-  }
+  const { data: links, error: linkErr } = await supabase
+    .from("rental_cylinders")
+    .select("cylinder_id, expiry_date, added_at")
+    .eq("rental_id", rentalId)
+    .is("removed_at", null);
+  if (linkErr) throw new Error(parseDbError(linkErr.message));
 
   const { data: auth } = await supabase.auth.getUser();
   const uid = auth.user?.id ?? null;
   const cyls = await fetchRentalCylinderDetails(rentalId);
+  const cylById = new Map(cyls.map((c) => [c.cylinder_id, c]));
 
-  for (const c of cyls) {
-    await recordMovement({
-      cylinder_id: c.cylinder_id,
-      from_location: "customer",
-      from_partner_id: rental.partner_id,
-      to_location: "customer",
-      to_partner_id: rental.partner_id,
-      status_after: c.status as "full" | "empty" | "service",
-      note: "Bérlet hosszabbítva",
-      user_id: uid,
-    });
-    await logRentalExtend(
-      c.cylinder_id,
-      rental.partner_id,
-      rentalId,
-      oldExpiry,
-      (updates.expiry_date as string) ?? null,
-    );
+  for (const link of links ?? []) {
+    const base = link.expiry_date ?? link.added_at.slice(0, 10);
+    const newExpiry =
+      type === "monthly" ? addMonths(base, 1) : addYears(base, 1);
+
+    const { error: rcErr } = await supabase
+      .from("rental_cylinders")
+      .update({ expiry_date: newExpiry })
+      .eq("rental_id", rentalId)
+      .eq("cylinder_id", link.cylinder_id);
+    if (rcErr) throw new Error(parseDbError(rcErr.message));
+
+    const c = cylById.get(link.cylinder_id);
+    if (c) {
+      await recordMovement({
+        cylinder_id: c.cylinder_id,
+        from_location: "customer",
+        from_partner_id: rental.partner_id,
+        to_location: "customer",
+        to_partner_id: rental.partner_id,
+        status_after: c.status as "full" | "empty" | "service",
+        note: "Bérlet hosszabbítva",
+        user_id: uid,
+      });
+      await logRentalExtend(
+        c.cylinder_id,
+        rental.partner_id,
+        rentalId,
+        base,
+        newExpiry,
+      );
+    }
   }
 
-  await logRentalAudit(rentalId, "Bérlet hosszabbítva", updates);
+  await logRentalAudit(rentalId, "Bérlet palackjai meghosszabbítva", rentalUpdates);
 
 }
 
