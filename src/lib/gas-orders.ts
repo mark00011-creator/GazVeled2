@@ -261,6 +261,19 @@ export async function createGasOrderFromQuantityLines(
 }
 
 export async function updateGasOrderStatus(orderId: string, status: GasOrderStatus): Promise<void> {
+  if (status === "received") {
+    // Megérkezett: a DB oldali RPC állítja a státuszt és könyveli a FLAGA PB
+    // készletmozgást (teli +, üres −), dupla könyvelés elleni védelemmel.
+    const { error } = await supabase.rpc("receive_gas_order", { p_order_id: orderId });
+    if (error) {
+      if (!isSchemaMissingError(error)) {
+        throw new Error(formatSupabaseError(error, "Megérkeztetés"));
+      }
+      // Régi DB séma: RPC még nincs, csak státuszt állítunk.
+    } else {
+      return;
+    }
+  }
   const { error } = await supabase.from("gas_orders").update({ status }).eq("id", orderId);
   if (error) throw new Error(formatSupabaseError(error, "Státusz mentése"));
 }

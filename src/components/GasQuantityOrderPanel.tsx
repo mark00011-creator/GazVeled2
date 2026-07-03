@@ -91,6 +91,11 @@ export function GasQuantityOrderPanel({
     try {
       await updateGasOrderStatus(orderId, status);
       await qc.invalidateQueries({ queryKey: ordersQueryKey });
+      if (status === "received") {
+        // Megérkezéskor a készletegyenleg is változik (teli +, üres −).
+        await qc.invalidateQueries({ queryKey: ["flaga-pb-stock"] });
+        await qc.invalidateQueries({ queryKey: ["gas-order-flaga-lines"] });
+      }
       toast.success("Státusz frissítve");
     } catch (e) {
       toast.error((e as Error).message);

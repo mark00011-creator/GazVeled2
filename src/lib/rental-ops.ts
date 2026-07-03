@@ -1274,14 +1274,16 @@ export async function returnRentalCylinders(args: {
     const now = new Date().toISOString();
 
     for (const cyl of (cylRows ?? []) as CylinderRow[]) {
-      const whLoc = cyl.status === "full" ? "warehouse_full" : "warehouse_empty";
+      // Visszavett palack mindig üresként kerül a telephelyi üres készletbe,
+      // függetlenül a korábbi státuszától.
+      const whLoc = "warehouse_empty";
 
       const { error: movErr } = await recordMovement({
         cylinder_id: cyl.id,
         from_location: "customer",
         from_partner_id: rental.partner_id,
         to_location: whLoc,
-        status_after: cyl.status,
+        status_after: "empty",
         note: "Visszavéve bérletből",
         user_id: uid,
       });
@@ -1290,6 +1292,7 @@ export async function returnRentalCylinders(args: {
       await logRentalClose(cyl.id, rental.partner_id, args.rental_id, partnerName);
 
       await updateCylinder(cyl.id, {
+        status: "empty",
         location_type: whLoc,
         location_partner_id: null,
         location_supplier_id: null,

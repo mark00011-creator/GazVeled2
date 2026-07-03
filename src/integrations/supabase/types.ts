@@ -730,6 +730,7 @@ export type Database = {
           note: string | null
           order_kind: string
           status: Database["public"]["Enums"]["gas_order_status"]
+          stock_applied_at: string | null
           updated_at: string
         }
         Insert: {
@@ -739,6 +740,7 @@ export type Database = {
           note?: string | null
           order_kind?: string
           status?: Database["public"]["Enums"]["gas_order_status"]
+          stock_applied_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -748,6 +750,7 @@ export type Database = {
           note?: string | null
           order_kind?: string
           status?: Database["public"]["Enums"]["gas_order_status"]
+          stock_applied_at?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -1434,6 +1437,10 @@ export type Database = {
       next_rental_contract_number: {
         Args: { p_start_date: string }
         Returns: string
+      }
+      receive_gas_order: {
+        Args: { p_order_id: string }
+        Returns: undefined
       }
       find_or_create_cylinder: {
         Args: {
