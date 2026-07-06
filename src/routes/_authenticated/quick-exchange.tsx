@@ -35,6 +35,7 @@ import {
   circulationLabels,
   fmtDateTime,
   locationLabels,
+  statusLabels,
   type Circulation,
 } from "@/lib/labels";
 import {
@@ -49,7 +50,7 @@ import {
   type CylinderRow,
   type PartnerOperationType,
 } from "@/lib/cylinder-ops";
-import { recordCylinderLoan } from "@/lib/loan-ops";
+import { getLoanOutgoingValidationError, recordCylinderLoan } from "@/lib/loan-ops";
 import { findActiveRentalIdForCylinder } from "@/lib/rental-ops";
 import { PhoneLink } from "@/components/PhoneLink";
 import { GAS_TYPES, getAvailableSizes } from "@/lib/gas-cylinder-form";
@@ -261,10 +262,12 @@ function QuickExchange() {
     operation === "loan" ||
     (operation === "sale" && saleMode === "barcode");
 
+  const loanOutgoingError = outgoing && operation === "loan" ? getLoanOutgoingValidationError(outgoing) : null;
+
   const canComplete =
     partnerId &&
     ((operation === "exchange" && incoming && outgoing) ||
-      (operation === "loan" && outgoing) ||
+      (operation === "loan" && outgoing && !loanOutgoingError) ||
       (operation === "sale" && saleMode === "barcode" && outgoing) ||
       (operation === "sale" && saleMode === "chinese" && Number(chineseQty) > 0) ||
       (operation === "sale" && saleMode === "flaga_pb" && Number(flagaPbQty) > 0) ||
@@ -377,6 +380,11 @@ function QuickExchange() {
       } else if (operation === "loan") {
         if (!outgoing) {
           toast.error("Válassz kiadandó palackot");
+          return;
+        }
+        const loanErr = getLoanOutgoingValidationError(outgoing);
+        if (loanErr) {
+          toast.error(`A kölcsön rögzítése nem sikerült. ${loanErr}`);
           return;
         }
         await recordCylinderLoan({
@@ -677,19 +685,33 @@ function QuickExchange() {
             </Button>
           </div>
           {outgoing && (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Badge
-                style={{
-                  backgroundColor: outgoing.circulation === "siad" ? "var(--siad)" : "var(--own)",
-                }}
-                className="text-background"
-              >
-                {circulationLabels[outgoing.circulation]}
-              </Badge>
-              <Badge variant="outline">
-                {outgoing.gas_type} · {outgoing.size}
-              </Badge>
-              {outgoingCreated && <Badge className="bg-orange-500 text-white">Új palack</Badge>}
+            <div className="mt-3 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge
+                  style={{
+                    backgroundColor: outgoing.circulation === "siad" ? "var(--siad)" : "var(--own)",
+                  }}
+                  className="text-background"
+                >
+                  {circulationLabels[outgoing.circulation]}
+                </Badge>
+                <Badge variant="outline">
+                  {outgoing.gas_type} · {outgoing.size}
+                </Badge>
+                <Badge variant={outgoing.status === "full" ? "secondary" : "destructive"}>
+                  {statusLabels[outgoing.status] ?? outgoing.status}
+                </Badge>
+                <Badge variant="outline">
+                  {locationLabels[outgoing.location_type] ?? outgoing.location_type}
+                </Badge>
+                {outgoingCreated && <Badge className="bg-orange-500 text-white">Új palack</Badge>}
+              </div>
+              {operation === "loan" && loanOutgoingError && (
+                <div className="flex items-start gap-2 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{loanOutgoingError}</span>
+                </div>
+              )}
             </div>
           )}
           {isForced && (

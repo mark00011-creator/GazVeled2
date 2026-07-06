@@ -9,8 +9,11 @@ import {
   normalizeBarcode,
   type CylinderRow,
 } from "@/lib/cylinder-ops";
+import { locationLabels } from "@/lib/labels";
 import { fetchProductPrices, lookupProductPrice } from "@/lib/product-prices";
 import { formatSupabaseError } from "@/lib/supabase-error";
+
+const LOAN_RECORD_FAILURE = "A kölcsön rögzítése nem sikerült.";
 
 export type CylinderLoanStatus = "active" | "returned";
 
@@ -56,7 +59,24 @@ function parseDbError(message: string): string {
   if (message.includes("már kölcsönadott")) return "A palack már kölcsönadott";
   if (message.includes("aktív bérletben")) return "A palack aktív bérletben van";
   if (message.includes("telephelyi teli")) return "A kölcsön palacknak a telephelyi teli készletből kell jönnie";
+  if (message.includes("teli állapotúnak")) return "A kiadott palacknak teli állapotúnak kell lennie";
   return message;
+}
+
+function loanFailureError(detail: string): Error {
+  return new Error(`${LOAN_RECORD_FAILURE} ${detail}`);
+}
+
+/** Kölcsön kiadáshoz csak telephelyi teli készletből választható palack. */
+export function getLoanOutgoingValidationError(cyl: CylinderRow): string | null {
+  if (cyl.status !== "full") {
+    return "A kiadott palacknak teli állapotúnak kell lennie (telephelyi teli készlet).";
+  }
+  if (cyl.location_type !== "warehouse_full") {
+    const loc = locationLabels[cyl.location_type] ?? cyl.location_type;
+    return `A kölcsön palacknak a telephelyi teli készletből kell jönnie (jelenleg: ${loc}).`;
+  }
+  return null;
 }
 
 /** Kölcsön kiadás: 0 üres → 1 teli (gyors csere). */
@@ -65,14 +85,30 @@ export async function recordCylinderLoan(args: {
   outgoing_id: string;
   note?: string | null;
 }): Promise<string> {
+  const { data: fresh, error: fetchErr } = await supabase
+    .from("cylinders")
+    .select("*")
+    .eq("id", args.outgoing_id)
+    .single();
+
+  if (fetchErr || !fresh) {
+    throw loanFailureError(parseDbError(fetchErr?.message ?? "Palack nem található az adatbázisban"));
+  }
+
+  const validationErr = getLoanOutgoingValidationError(fresh as CylinderRow);
+  if (validationErr) throw loanFailureError(validationErr);
+
+  const trimmedNote = args.note?.trim();
   const { data, error } = await supabase.rpc("record_cylinder_loan", {
     p_partner_id: args.partner_id,
     p_outgoing_id: args.outgoing_id,
-    p_note: args.note ?? undefined,
+    ...(trimmedNote ? { p_note: trimmedNote } : {}),
   });
 
-  if (error) throw new Error(parseDbError(error.message));
-  if (!data) throw new Error("A kölcsön rögzítése sikertelen");
+  if (error) {
+    throw loanFailureError(parseDbError(formatSupabaseError(error)));
+  }
+  if (!data) throw loanFailureError("Ismeretlen hiba.");
 
   const loanId = data as string;
 
@@ -83,7 +119,11 @@ export async function recordCylinderLoan(args: {
     .single();
 
   if (loanRow?.exchange_id) {
-    await storeExchangeProfitFromLoan(loanRow.exchange_id, args.outgoing_id);
+    try {
+      await storeExchangeProfitFromLoan(loanRow.exchange_id, args.outgoing_id);
+    } catch (profitErr) {
+      console.warn("[loan-ops] Ár/profit frissítés sikertelen, a kölcsön rögzítve:", profitErr);
+    }
   }
 
   const [{ data: cyl }, partnerName] = await Promise.all([
