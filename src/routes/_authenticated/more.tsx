@@ -12,6 +12,7 @@ import {
   Tags,
   FileSpreadsheet,
   Boxes,
+  HandCoins,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/more")({
@@ -78,6 +79,12 @@ const items = [
     icon: RotateCcw,
     label: "Bérlet visszavétel",
     desc: "Aktív bérlet zárása",
+  },
+  {
+    to: "/loaned-cylinders",
+    icon: HandCoins,
+    label: "Kölcsönadott",
+    desc: "Aktív kölcsön palackok és visszavétel",
   },
   { to: "/rentals", icon: FileText, label: "Bérletek", desc: "Aktív és lezárt bérletek" },
   { to: "/audit", icon: ScrollText, label: "Audit napló", desc: "Műveleti előzmények" },

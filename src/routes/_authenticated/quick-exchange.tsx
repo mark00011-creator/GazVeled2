@@ -28,6 +28,7 @@ import {
   ShoppingCart,
   PackageMinus,
   RefreshCw,
+  HandCoins,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -48,6 +49,7 @@ import {
   type CylinderRow,
   type PartnerOperationType,
 } from "@/lib/cylinder-ops";
+import { recordCylinderLoan } from "@/lib/loan-ops";
 import { findActiveRentalIdForCylinder } from "@/lib/rental-ops";
 import { PhoneLink } from "@/components/PhoneLink";
 import { GAS_TYPES, getAvailableSizes } from "@/lib/gas-cylinder-form";
@@ -70,6 +72,7 @@ const OP_LABELS: Record<PartnerOperationType, string> = {
   exchange: "Csere",
   sale: "Eladás",
   empty_return: "Üres visszavétel",
+  loan: "Kölcsön",
   chinese_sale: "Kínai eladás",
   flaga_sale: "FLAGA eladás",
   flaga_pb_sale: "FLAGA PB eladás",
@@ -253,11 +256,15 @@ function QuickExchange() {
     reassign === null;
 
   const showIncoming = operation === "exchange" || operation === "empty_return";
-  const showOutgoing = operation === "exchange" || (operation === "sale" && saleMode === "barcode");
+  const showOutgoing =
+    operation === "exchange" ||
+    operation === "loan" ||
+    (operation === "sale" && saleMode === "barcode");
 
   const canComplete =
     partnerId &&
     ((operation === "exchange" && incoming && outgoing) ||
+      (operation === "loan" && outgoing) ||
       (operation === "sale" && saleMode === "barcode" && outgoing) ||
       (operation === "sale" && saleMode === "chinese" && Number(chineseQty) > 0) ||
       (operation === "sale" && saleMode === "flaga_pb" && Number(flagaPbQty) > 0) ||
@@ -367,6 +374,17 @@ function QuickExchange() {
           note: note || null,
         });
         toast.success("Üres visszavétel rögzítve");
+      } else if (operation === "loan") {
+        if (!outgoing) {
+          toast.error("Válassz kiadandó palackot");
+          return;
+        }
+        await recordCylinderLoan({
+          partner_id: partnerId,
+          outgoing_id: outgoing.id,
+          note: note || null,
+        });
+        toast.success("Kölcsön rögzítve");
       }
 
       resetCylinders();
@@ -394,6 +412,7 @@ function QuickExchange() {
     qc.invalidateQueries({ queryKey: ["chinese-empty-summary"] });
     qc.invalidateQueries({ queryKey: ["flaga-pb-stock"] });
     qc.invalidateQueries({ queryKey: ["prima-pb-stock"] });
+    qc.invalidateQueries({ queryKey: ["loaned-cylinders"] });
   }
 
   const chineseSizes = getAvailableSizes(chineseGas);
@@ -454,10 +473,14 @@ function QuickExchange() {
         onValueChange={(v) => switchOperation(v as PartnerOperationType)}
         className="mb-4"
       >
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="exchange" className="gap-1 text-xs sm:text-sm">
             <RefreshCw className="h-3.5 w-3.5" />
             {OP_LABELS.exchange}
+          </TabsTrigger>
+          <TabsTrigger value="loan" className="gap-1 text-xs sm:text-sm">
+            <HandCoins className="h-3.5 w-3.5" />
+            {OP_LABELS.loan}
           </TabsTrigger>
           <TabsTrigger value="sale" className="gap-1 text-xs sm:text-sm">
             <ShoppingCart className="h-3.5 w-3.5" />
@@ -472,6 +495,8 @@ function QuickExchange() {
 
       <p className="mb-3 text-xs text-muted-foreground">
         {operation === "exchange" && "Üres be + teli ki. Mindkét palack kötelező."}
+        {operation === "loan" &&
+          "0 üres → 1 teli: partner kölcsön kap teli palackot üres visszahozatal nélkül. A bérleti készlet külön folyamat."}
         {operation === "sale" && "Teli palack kiadása bejövő nélkül. Kínai vagy FLAGA palack darabszámmal is."}
         {operation === "empty_return" && "Üres palack visszavétele a partnertől, kiadás nélkül."}
       </p>
@@ -629,7 +654,9 @@ function QuickExchange() {
       {partnerId && showOutgoing && (
         <Card className="mb-3 p-4">
           <div className="mb-2 flex items-center justify-between">
-            <Label>Kiadandó TELI palack</Label>
+            <Label>
+              {operation === "loan" ? "Kölcsönbe adott TELI palack" : "Kiadandó TELI palack"}
+            </Label>
             <Button size="sm" variant="secondary" onClick={() => setScanning("out")}>
               <Camera className="mr-1 h-4 w-4" /> Scan
             </Button>

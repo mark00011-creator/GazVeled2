@@ -542,6 +542,83 @@ export type Database = {
           },
         ]
       }
+      cylinder_loans: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          cylinder_id: string
+          exchange_id: string | null
+          id: string
+          loaned_at: string
+          note: string | null
+          partner_id: string
+          return_note: string | null
+          returned_at: string | null
+          returned_cylinder_id: string | null
+          status: Database["public"]["Enums"]["cylinder_loan_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          cylinder_id: string
+          exchange_id?: string | null
+          id?: string
+          loaned_at?: string
+          note?: string | null
+          partner_id: string
+          return_note?: string | null
+          returned_at?: string | null
+          returned_cylinder_id?: string | null
+          status?: Database["public"]["Enums"]["cylinder_loan_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          cylinder_id?: string
+          exchange_id?: string | null
+          id?: string
+          loaned_at?: string
+          note?: string | null
+          partner_id?: string
+          return_note?: string | null
+          returned_at?: string | null
+          returned_cylinder_id?: string | null
+          status?: Database["public"]["Enums"]["cylinder_loan_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cylinder_loans_cylinder_id_fkey"
+            columns: ["cylinder_id"]
+            isOneToOne: false
+            referencedRelation: "cylinders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cylinder_loans_exchange_id_fkey"
+            columns: ["exchange_id"]
+            isOneToOne: false
+            referencedRelation: "exchanges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cylinder_loans_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cylinder_loans_returned_cylinder_id_fkey"
+            columns: ["returned_cylinder_id"]
+            isOneToOne: false
+            referencedRelation: "cylinders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       exchanges: {
         Row: {
           beszerzesi_ar: number | null
@@ -1493,6 +1570,22 @@ export type Database = {
         }
         Returns: string
       }
+      record_cylinder_loan: {
+        Args: {
+          p_note?: string
+          p_outgoing_id: string
+          p_partner_id: string
+        }
+        Returns: string
+      }
+      return_cylinder_loan: {
+        Args: {
+          p_loan_id: string
+          p_note?: string
+          p_returned_cylinder_id: string
+        }
+        Returns: undefined
+      }
       record_partner_sale: {
         Args: {
           p_note?: string
@@ -1514,11 +1607,13 @@ export type Database = {
     Enums: {
       app_role: "admin" | "user"
       circulation: "siad" | "own" | "berpalack"
+      cylinder_loan_status: "active" | "returned"
       cylinder_manufacturer: "siad" | "messer" | "linde" | "chinese" | "other"
       exchange_operation_type:
         | "exchange"
         | "sale"
         | "empty_return"
+        | "loan"
         | "chinese_sale"
         | "flaga_sale"
         | "flaga_pb_sale"

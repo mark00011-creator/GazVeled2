@@ -22,6 +22,7 @@ import { Route as AuthenticatedPrimaPbStockRouteImport } from './routes/_authent
 import { Route as AuthenticatedPriceListRouteImport } from './routes/_authenticated/price-list'
 import { Route as AuthenticatedPartnersRouteImport } from './routes/_authenticated/partners'
 import { Route as AuthenticatedMoreRouteImport } from './routes/_authenticated/more'
+import { Route as AuthenticatedLoanedCylindersRouteImport } from './routes/_authenticated/loaned-cylinders'
 import { Route as AuthenticatedInventoryRouteImport } from './routes/_authenticated/inventory'
 import { Route as AuthenticatedGasOrderFlagaRouteImport } from './routes/_authenticated/gas-order-flaga'
 import { Route as AuthenticatedGasOrderRouteImport } from './routes/_authenticated/gas-order'
@@ -105,6 +106,12 @@ const AuthenticatedMoreRoute = AuthenticatedMoreRouteImport.update({
   path: '/more',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedLoanedCylindersRoute =
+  AuthenticatedLoanedCylindersRouteImport.update({
+    id: '/loaned-cylinders',
+    path: '/loaned-cylinders',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedInventoryRoute = AuthenticatedInventoryRouteImport.update({
   id: '/inventory',
   path: '/inventory',
@@ -194,6 +201,7 @@ export interface FileRoutesByFullPath {
   '/gas-order': typeof AuthenticatedGasOrderRoute
   '/gas-order-flaga': typeof AuthenticatedGasOrderFlagaRoute
   '/inventory': typeof AuthenticatedInventoryRoute
+  '/loaned-cylinders': typeof AuthenticatedLoanedCylindersRoute
   '/more': typeof AuthenticatedMoreRoute
   '/partners': typeof AuthenticatedPartnersRouteWithChildren
   '/price-list': typeof AuthenticatedPriceListRoute
@@ -222,6 +230,7 @@ export interface FileRoutesByTo {
   '/gas-order': typeof AuthenticatedGasOrderRoute
   '/gas-order-flaga': typeof AuthenticatedGasOrderFlagaRoute
   '/inventory': typeof AuthenticatedInventoryRoute
+  '/loaned-cylinders': typeof AuthenticatedLoanedCylindersRoute
   '/more': typeof AuthenticatedMoreRoute
   '/price-list': typeof AuthenticatedPriceListRoute
   '/prima-pb-stock': typeof AuthenticatedPrimaPbStockRoute
@@ -250,6 +259,7 @@ export interface FileRoutesById {
   '/_authenticated/gas-order': typeof AuthenticatedGasOrderRoute
   '/_authenticated/gas-order-flaga': typeof AuthenticatedGasOrderFlagaRoute
   '/_authenticated/inventory': typeof AuthenticatedInventoryRoute
+  '/_authenticated/loaned-cylinders': typeof AuthenticatedLoanedCylindersRoute
   '/_authenticated/more': typeof AuthenticatedMoreRoute
   '/_authenticated/partners': typeof AuthenticatedPartnersRouteWithChildren
   '/_authenticated/price-list': typeof AuthenticatedPriceListRoute
@@ -280,6 +290,7 @@ export interface FileRouteTypes {
     | '/gas-order'
     | '/gas-order-flaga'
     | '/inventory'
+    | '/loaned-cylinders'
     | '/more'
     | '/partners'
     | '/price-list'
@@ -308,6 +319,7 @@ export interface FileRouteTypes {
     | '/gas-order'
     | '/gas-order-flaga'
     | '/inventory'
+    | '/loaned-cylinders'
     | '/more'
     | '/price-list'
     | '/prima-pb-stock'
@@ -335,6 +347,7 @@ export interface FileRouteTypes {
     | '/_authenticated/gas-order'
     | '/_authenticated/gas-order-flaga'
     | '/_authenticated/inventory'
+    | '/_authenticated/loaned-cylinders'
     | '/_authenticated/more'
     | '/_authenticated/partners'
     | '/_authenticated/price-list'
@@ -450,6 +463,13 @@ declare module '@tanstack/react-router' {
       path: '/more'
       fullPath: '/more'
       preLoaderRoute: typeof AuthenticatedMoreRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/loaned-cylinders': {
+      id: '/_authenticated/loaned-cylinders'
+      path: '/loaned-cylinders'
+      fullPath: '/loaned-cylinders'
+      preLoaderRoute: typeof AuthenticatedLoanedCylindersRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/inventory': {
@@ -618,6 +638,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedGasOrderRoute: typeof AuthenticatedGasOrderRoute
   AuthenticatedGasOrderFlagaRoute: typeof AuthenticatedGasOrderFlagaRoute
   AuthenticatedInventoryRoute: typeof AuthenticatedInventoryRoute
+  AuthenticatedLoanedCylindersRoute: typeof AuthenticatedLoanedCylindersRoute
   AuthenticatedMoreRoute: typeof AuthenticatedMoreRoute
   AuthenticatedPartnersRoute: typeof AuthenticatedPartnersRouteWithChildren
   AuthenticatedPriceListRoute: typeof AuthenticatedPriceListRoute
@@ -639,6 +660,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedGasOrderRoute: AuthenticatedGasOrderRoute,
   AuthenticatedGasOrderFlagaRoute: AuthenticatedGasOrderFlagaRoute,
   AuthenticatedInventoryRoute: AuthenticatedInventoryRoute,
+  AuthenticatedLoanedCylindersRoute: AuthenticatedLoanedCylindersRoute,
   AuthenticatedMoreRoute: AuthenticatedMoreRoute,
   AuthenticatedPartnersRoute: AuthenticatedPartnersRouteWithChildren,
   AuthenticatedPriceListRoute: AuthenticatedPriceListRoute,

@@ -29,6 +29,7 @@ export type PartnerOperationType =
   | "exchange"
   | "sale"
   | "empty_return"
+  | "loan"
   | "chinese_sale"
   | "flaga_sale"
   | "flaga_pb_sale"
