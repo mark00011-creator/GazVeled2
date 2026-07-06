@@ -110,6 +110,7 @@ function mapUninvoicedRow(row: {
   let incomingLabel = cylinderLabel(row.incoming);
   let outgoingLabel = cylinderLabel(row.outgoing);
   if (op === "sale") incomingLabel = "— (eladás)";
+  if (op === "loan") incomingLabel = "— (kölcsön)";
   if (op === "chinese_sale") {
     incomingLabel = "—";
     outgoingLabel = row.note?.split(" · ")[0] ?? "Kínai eladás";
