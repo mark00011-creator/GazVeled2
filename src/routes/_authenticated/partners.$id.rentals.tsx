@@ -21,6 +21,7 @@ import {
   type RentalType,
 } from "@/lib/labels";
 import { extendRentalCylinder, fetchPartnerRentalOverview, rentalNumber } from "@/lib/rental-ops";
+import { summarizeRentalQuantityItems } from "@/lib/rental-quantity-stock";
 import { PhoneLink } from "@/components/PhoneLink";
 import { toast } from "sonner";
 
@@ -83,7 +84,9 @@ function PartnerRentalsPage() {
   }
 
   const allCylinders = (overview ?? []).flatMap((o) => o.cylinders);
+  const allQtyItems = (overview ?? []).flatMap((o) => o.quantity_items);
   const summary = summarizeRentalCylinders(allCylinders);
+  const qtySummary = summarizeRentalQuantityItems(allQtyItems);
 
   return (
     <AppShell title={partner.name}>
@@ -110,11 +113,14 @@ function PartnerRentalsPage() {
             Telefon: <PhoneLink phone={partner.phone} />
           </div>
         )}
-        {summary.length > 0 && (
+        {(summary.length > 0 || qtySummary.length > 0) && (
           <div className="mt-3">
-            <div className="text-xs font-medium text-muted-foreground">Bérelt palackok összesen:</div>
+            <div className="text-xs font-medium text-muted-foreground">Bérelt tételek összesen:</div>
             <div className="mt-1 space-y-0.5">
               {summary.map((line) => (
+                <div key={line} className="text-sm text-primary">{line}</div>
+              ))}
+              {qtySummary.map((line) => (
                 <div key={line} className="text-sm text-primary">{line}</div>
               ))}
             </div>
@@ -125,10 +131,11 @@ function PartnerRentalsPage() {
       {isError && <div className="py-4 text-center text-sm text-destructive">Bérleti adatok betöltése sikertelen</div>}
 
       <div className="space-y-4">
-        {(overview ?? []).map(({ rental, cylinders }) => {
+        {(overview ?? []).map(({ rental, cylinders, quantity_items }) => {
           const type = (rental.rental_type ?? "yearly") as RentalType;
           const hasExpiredCylinder = rentalHasExpiredCylinder(cylinders);
           const displayStatus = rentalDisplayStatus(rental.status);
+          const qtyLines = summarizeRentalQuantityItems(quantity_items);
 
           return (
             <Card key={rental.id} className="overflow-hidden p-0">
@@ -145,8 +152,20 @@ function PartnerRentalsPage() {
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
                   <span>Kezdete: {fmtDate(rental.start_date)}</span>
-                  <span className="text-muted-foreground">{cylinders.length} palack</span>
+                  {cylinders.length > 0 && (
+                    <span className="text-muted-foreground">{cylinders.length} palack</span>
+                  )}
+                  {qtyLines.length > 0 && (
+                    <span className="text-muted-foreground">{qtyLines.length} darabszám tétel</span>
+                  )}
                 </div>
+                {qtyLines.length > 0 && (
+                  <div className="mt-2 space-y-0.5">
+                    {qtyLines.map((line) => (
+                      <div key={line} className="text-xs text-primary">{line}</div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-0">

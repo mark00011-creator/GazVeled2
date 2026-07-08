@@ -39,6 +39,7 @@ import {
   fetchRentalQuantityItems,
   returnRentalQuantityItems,
   type RentalQuantityInput,
+  type RentalQuantityItem,
 } from "@/lib/rental-quantity-stock";
 
 
@@ -1074,6 +1075,7 @@ export type PartnerRentalOverview = {
     monthly_fee: number;
   };
   cylinders: RentalCylinderDetail[];
+  quantity_items: RentalQuantityItem[];
 };
 
 export async function fetchPartnerRentalOverview(partnerId: string): Promise<PartnerRentalOverview[]> {
@@ -1089,7 +1091,8 @@ export async function fetchPartnerRentalOverview(partnerId: string): Promise<Par
   const result: PartnerRentalOverview[] = [];
   for (const rental of rentals ?? []) {
     const cylinders = await fetchRentalCylinderDetails(rental.id);
-    if (cylinders.length === 0) continue;
+    const quantity_items = await fetchRentalQuantityItems(rental.id);
+    if (cylinders.length === 0 && quantity_items.length === 0) continue;
     result.push({
       rental: {
         id: rental.id,
@@ -1100,6 +1103,7 @@ export async function fetchPartnerRentalOverview(partnerId: string): Promise<Par
         monthly_fee: Number(rental.monthly_fee),
       },
       cylinders,
+      quantity_items,
     });
   }
   return result;

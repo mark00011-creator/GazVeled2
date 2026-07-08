@@ -326,3 +326,17 @@ export function toContractStockItems(items: RentalQuantityItem[]): RentalContrac
     quantity: item.quantity,
   }));
 }
+
+export function summarizeRentalQuantityItems(items: RentalQuantityItem[]): string[] {
+  const byKey = new Map<string, { label: string; qty: number }>();
+  for (const item of items) {
+    const kind = item.stock_kind as RentalQuantityStockKind;
+    const kindLabel = RENTAL_QUANTITY_KIND_LABELS[kind] ?? item.stock_kind;
+    const key = `${kind}\0${item.gas_type}\0${item.size}`;
+    const label = `${kindLabel}: ${item.gas_type} ${item.size}`;
+    const existing = byKey.get(key);
+    if (existing) existing.qty += item.quantity;
+    else byKey.set(key, { label, qty: item.quantity });
+  }
+  return [...byKey.values()].map(({ label, qty }) => `${label} – ${qty} db`);
+}
