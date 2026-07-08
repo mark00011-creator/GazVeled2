@@ -45,11 +45,26 @@ import {
   recordSale,
   recordEmptyReturn,
   recordChineseSale,
+  recordChineseBrought,
+  recordChineseTake,
   recordFlagaPbSale,
   recordPrimaPbSale,
   type CylinderRow,
   type PartnerOperationType,
 } from "@/lib/cylinder-ops";
+import {
+  deriveExchangeCirculationSideFromCylinder,
+  formatExchangeCirculationLabel,
+  isSameExchangeCirculation,
+  suggestOutgoingCirculation,
+  type ExchangeCirculationSide,
+} from "@/lib/exchange-circulation";
+import {
+  fetchOpenCirculationDifferences,
+  findDiffsMatchingIncoming,
+  findSettleableDifferences,
+} from "@/lib/circulation-differences";
+import { CirculationDifferenceWarnings } from "@/components/CirculationDifferenceWarnings";
 import { getLoanOutgoingValidationError, recordCylinderLoan } from "@/lib/loan-ops";
 import { findActiveRentalIdForCylinder } from "@/lib/rental-ops";
 import { PhoneLink } from "@/components/PhoneLink";
@@ -68,6 +83,7 @@ export const Route = createFileRoute("/_authenticated/quick-exchange")({
 
 type IncomingKind = "rental" | "own" | "new";
 type SaleMode = "barcode" | "chinese" | "flaga_pb" | "prima_pb";
+type ExchangeMode = "barcode" | "chinese_brought" | "chinese_take";
 
 const OP_LABELS: Record<PartnerOperationType, string> = {
   exchange: "Csere",
@@ -75,6 +91,8 @@ const OP_LABELS: Record<PartnerOperationType, string> = {
   empty_return: "Üres visszavétel",
   loan: "Kölcsön",
   chinese_sale: "Kínai eladás",
+  chinese_brought: "Hozott kínai",
+  chinese_take: "Kínait visz",
   flaga_sale: "FLAGA eladás",
   flaga_pb_sale: "FLAGA PB eladás",
   prima_pb_sale: "PRÍMA PB eladás",
@@ -83,6 +101,7 @@ const OP_LABELS: Record<PartnerOperationType, string> = {
 function QuickExchange() {
   const qc = useQueryClient();
   const [operation, setOperation] = useState<PartnerOperationType>("exchange");
+  const [exchangeMode, setExchangeMode] = useState<ExchangeMode>("barcode");
   const [saleMode, setSaleMode] = useState<SaleMode>("barcode");
   const [partnerId, setPartnerId] = useState<string>("");
   const [scanning, setScanning] = useState<"in" | "out" | null>(null);
@@ -121,7 +140,6 @@ function QuickExchange() {
   const [reassign, setReassign] = useState<"yes" | "no" | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
-  const [reason, setReason] = useState("");
 
   const { data: partners } = useQuery({
     queryKey: ["partners-min"],
@@ -187,6 +205,47 @@ function QuickExchange() {
     return "own";
   }, [incoming, incomingCreated, rentedCylIds, incomingRentalId]);
 
+  const { data: openCirculationDiffs } = useQuery({
+    queryKey: ["circulation-differences", partnerId],
+    enabled: !!partnerId,
+    queryFn: () => fetchOpenCirculationDifferences(partnerId),
+  });
+
+  const incomingSide: ExchangeCirculationSide | null = useMemo(() => {
+    if (!incoming) return null;
+    return deriveExchangeCirculationSideFromCylinder(incoming);
+  }, [incoming]);
+
+  const outgoingSide: ExchangeCirculationSide | null = useMemo(() => {
+    if (!outgoing) return null;
+    return deriveExchangeCirculationSideFromCylinder(outgoing);
+  }, [outgoing]);
+
+  const settleableDiffs = useMemo(() => {
+    if (!incomingSide || !outgoingSide || !openCirculationDiffs?.length) return [];
+    return findSettleableDifferences(openCirculationDiffs, incomingSide, outgoingSide);
+  }, [incomingSide, outgoingSide, openCirculationDiffs]);
+
+  const matchingIncomingDiffs = useMemo(() => {
+    if (!incomingSide || !openCirculationDiffs?.length) return [];
+    return findDiffsMatchingIncoming(openCirculationDiffs, incomingSide);
+  }, [incomingSide, openCirculationDiffs]);
+
+  const primarySettleableDiff = settleableDiffs[0] ?? matchingIncomingDiffs[0] ?? null;
+
+  const suggestedOutgoingKey = useMemo(() => {
+    if (primarySettleableDiff) {
+      return primarySettleableDiff.incoming_exchange_circulation as ExchangeCirculationSide["key"];
+    }
+    if (incomingSide) return suggestOutgoingCirculation(incomingSide);
+    return null;
+  }, [primarySettleableDiff, incomingSide]);
+
+  const isCirculationMismatch = useMemo(() => {
+    if (!incomingSide || !outgoingSide) return false;
+    return !isSameExchangeCirculation(incomingSide, outgoingSide);
+  }, [incomingSide, outgoingSide]);
+
   const { data: history } = useQuery({
     queryKey: ["history", incoming?.id],
     enabled: !!incoming?.id,
@@ -209,13 +268,13 @@ function QuickExchange() {
     setIncomingCreated(false);
     setOutgoingCreated(false);
     setReassign(null);
-    setReason("");
   }
 
   function switchOperation(op: PartnerOperationType) {
     setOperation(op);
     resetCylinders();
     if (op === "sale") setSaleMode("barcode");
+    if (op === "exchange") setExchangeMode("barcode");
   }
 
   async function lookupIncoming() {
@@ -244,29 +303,39 @@ function QuickExchange() {
     }
   }
 
-  const isForced =
-    operation === "exchange" &&
-    incoming &&
-    outgoing &&
-    incoming.circulation !== outgoing.circulation;
+  const isForced = operation === "exchange" && exchangeMode === "barcode" && isCirculationMismatch;
   const needsRentalQuestion =
     operation === "exchange" &&
+    exchangeMode === "barcode" &&
     incomingKind === "rental" &&
     incoming &&
     outgoing &&
     reassign === null;
 
-  const showIncoming = operation === "exchange" || operation === "empty_return";
+  const showIncoming =
+    operation === "exchange"
+      ? exchangeMode === "barcode" || exchangeMode === "chinese_take"
+      : operation === "empty_return";
   const showOutgoing =
-    operation === "exchange" ||
-    operation === "loan" ||
-    (operation === "sale" && saleMode === "barcode");
+    operation === "exchange"
+      ? exchangeMode === "barcode"
+      : operation === "loan" || (operation === "sale" && saleMode === "barcode");
 
   const loanOutgoingError = outgoing && operation === "loan" ? getLoanOutgoingValidationError(outgoing) : null;
 
   const canComplete =
     partnerId &&
-    ((operation === "exchange" && incoming && outgoing) ||
+    ((operation === "exchange" &&
+      exchangeMode === "barcode" &&
+      incoming &&
+      outgoing) ||
+      (operation === "exchange" &&
+        exchangeMode === "chinese_brought" &&
+        Number(chineseQty) > 0) ||
+      (operation === "exchange" &&
+        exchangeMode === "chinese_take" &&
+        incoming &&
+        Number(chineseQty) > 0) ||
       (operation === "loan" && outgoing && !loanOutgoingError) ||
       (operation === "sale" && saleMode === "barcode" && outgoing) ||
       (operation === "sale" && saleMode === "chinese" && Number(chineseQty) > 0) ||
@@ -283,34 +352,67 @@ function QuickExchange() {
     setBusy(true);
     try {
       if (operation === "exchange") {
-        if (!incoming || !outgoing) {
-          toast.error("Cserehez bejövő és kimenő palack is kell");
-          return;
+        if (exchangeMode === "chinese_brought") {
+          const qty = Number(chineseQty);
+          if (!Number.isFinite(qty) || qty <= 0) {
+            toast.error("Érvényes darabszámot adj meg");
+            return;
+          }
+          await recordChineseBrought({
+            partner_id: partnerId,
+            gas_type: chineseGas,
+            size: chineseSize,
+            quantity: qty,
+            note: note || null,
+          });
+          toast.success("Hozott kínai rögzítve");
+        } else if (exchangeMode === "chinese_take") {
+          if (!incoming) {
+            toast.error("Válassz beérkező palackot");
+            return;
+          }
+          const qty = Number(chineseQty);
+          if (!Number.isFinite(qty) || qty <= 0) {
+            toast.error("Érvényes darabszámot adj meg");
+            return;
+          }
+          await recordChineseTake({
+            partner_id: partnerId,
+            incoming_id: incoming.id,
+            gas_type: chineseGas,
+            size: chineseSize,
+            quantity: qty,
+            note: note || null,
+          });
+          toast.success("Kínait visz rögzítve");
+        } else {
+          if (!incoming || !outgoing) {
+            toast.error("Cserehez bejövő és kimenő palack is kell");
+            return;
+          }
+          if (incoming.id === outgoing.id) {
+            toast.error("A beérkező és kiadott palack nem lehet ugyanaz");
+            return;
+          }
+          if (needsRentalQuestion) {
+            toast.error("Döntsd el az újrarendelés kérdést");
+            return;
+          }
+          const rentalId = incomingRentalId ?? (activeRentals ?? [])[0]?.id ?? null;
+          const reassignYes = !!(rentalId && reassign === "yes");
+          await recordExchange({
+            partner_id: partnerId,
+            incoming_id: incoming.id,
+            outgoing_id: outgoing.id,
+            reason: null,
+            note: note || null,
+            rental_id: rentalId,
+            reassign_rental: reassignYes,
+          });
+          toast.success(
+            primarySettleableDiff ? "Csere rögzítve – körforgás-eltérés rendezve" : "Csere rögzítve",
+          );
         }
-        if (incoming.id === outgoing.id) {
-          toast.error("A beérkező és kiadott palack nem lehet ugyanaz");
-          return;
-        }
-        if (isForced && !reason.trim()) {
-          toast.error("Add meg a kényszerhelyettesítés okát");
-          return;
-        }
-        if (needsRentalQuestion) {
-          toast.error("Döntsd el az újrarendelés kérdést");
-          return;
-        }
-        const rentalId = incomingRentalId ?? (activeRentals ?? [])[0]?.id ?? null;
-        const reassignYes = !!(rentalId && reassign === "yes");
-        await recordExchange({
-          partner_id: partnerId,
-          incoming_id: incoming.id,
-          outgoing_id: outgoing.id,
-          reason: isForced ? reason : null,
-          note: note || null,
-          rental_id: rentalId,
-          reassign_rental: reassignYes,
-        });
-        toast.success("Csere rögzítve");
       } else if (operation === "sale") {
         if (saleMode === "chinese") {
           const qty = Number(chineseQty);
@@ -421,6 +523,8 @@ function QuickExchange() {
     qc.invalidateQueries({ queryKey: ["flaga-pb-stock"] });
     qc.invalidateQueries({ queryKey: ["prima-pb-stock"] });
     qc.invalidateQueries({ queryKey: ["loaned-cylinders"] });
+    qc.invalidateQueries({ queryKey: ["circulation-differences"] });
+    qc.invalidateQueries({ queryKey: ["partner-quantity-stock"] });
   }
 
   const chineseSizes = getAvailableSizes(chineseGas);
@@ -537,6 +641,13 @@ function QuickExchange() {
         )}
       </Card>
 
+      {partnerId && (
+        <CirculationDifferenceWarnings
+          differences={openCirculationDiffs ?? []}
+          settleable={settleableDiffs.length > 0 ? settleableDiffs : matchingIncomingDiffs}
+        />
+      )}
+
       {partnerId && operation === "exchange" && (activeRentals?.length ?? 0) > 0 && (
         <Card className="mb-3 border-destructive/50 bg-destructive/10 p-4">
           <div className="mb-2 flex items-center gap-2 text-destructive">
@@ -548,6 +659,47 @@ function QuickExchange() {
               {c.barcode}
             </div>
           ))}
+        </Card>
+      )}
+
+      {partnerId && operation === "exchange" && (
+        <Card className="mb-3 p-4">
+          <Label className="mb-2 block">Csere típusa</Label>
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <Button
+              type="button"
+              variant={exchangeMode === "barcode" ? "default" : "outline"}
+              className="flex-1"
+              onClick={() => {
+                setExchangeMode("barcode");
+              }}
+            >
+              Vonalkódos csere
+            </Button>
+            <Button
+              type="button"
+              variant={exchangeMode === "chinese_brought" ? "default" : "outline"}
+              className="flex-1"
+              onClick={() => {
+                setExchangeMode("chinese_brought");
+                resetCylinders();
+              }}
+            >
+              Hozott kínai
+            </Button>
+            <Button
+              type="button"
+              variant={exchangeMode === "chinese_take" ? "default" : "outline"}
+              className="flex-1"
+              onClick={() => {
+                setExchangeMode("chinese_take");
+                setOutgoing(null);
+                setOutgoingBc("");
+              }}
+            >
+              Kínait visz
+            </Button>
+          </div>
         </Card>
       )}
 
@@ -625,7 +777,35 @@ function QuickExchange() {
           </div>
           {incoming && (
             <div className="mt-3 space-y-2">
-              {operation === "exchange" && incomingKind && <KindBadge kind={incomingKind} />}
+              {incoming && operation === "exchange" && exchangeMode === "barcode" && incomingKind && (
+            <KindBadge kind={incomingKind} />
+          )}
+          {incoming && operation === "exchange" && exchangeMode === "barcode" && suggestedOutgoingKey && (
+            <div className="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
+              {primarySettleableDiff ? (
+                <>
+                  <span className="font-medium text-primary">Elsődleges javaslat (rendezés):</span>{" "}
+                  kiadandó körforgás{" "}
+                  <strong>{formatExchangeCirculationLabel(suggestedOutgoingKey)}</strong>
+                  {primarySettleableDiff.incoming_gas_type !== incoming?.gas_type ||
+                  primarySettleableDiff.size !== incoming?.size ? (
+                    <>
+                      {" "}
+                      · {primarySettleableDiff.incoming_gas_type} {primarySettleableDiff.size}
+                    </>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  Ajánlott kiadott körforgás:{" "}
+                  <strong>{formatExchangeCirculationLabel(suggestedOutgoingKey)}</strong>
+                  {incomingSide && !isSameExchangeCirculation(incomingSide, { ...incomingSide, key: suggestedOutgoingKey }) ? (
+                    <> (eltérés rögzítésre kerül)</>
+                  ) : null}
+                </>
+              )}
+            </div>
+          )}
               <div className="flex flex-wrap gap-2">
                 <Badge
                   style={{
@@ -715,21 +895,67 @@ function QuickExchange() {
             </div>
           )}
           {isForced && (
-            <div className="mt-3 space-y-2 rounded-md bg-warning/15 p-2 text-xs text-warning">
+            <div className="mt-3 rounded-md bg-warning/15 p-2 text-xs text-warning">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="mt-0.5 h-4 w-4" />
                 <div>
-                  Kényszerhelyettesítés: {circulationLabels[incoming!.circulation]} →{" "}
-                  {circulationLabels[outgoing!.circulation]}
+                  Körforgás-eltérés: {incomingSide && formatExchangeCirculationLabel(incomingSide.key)} →{" "}
+                  {outgoingSide && formatExchangeCirculationLabel(outgoingSide.key)} (automatikusan rögzítve)
                 </div>
               </div>
-              <Input
-                placeholder="Indoklás (kötelező)"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-              />
             </div>
           )}
+        </Card>
+      )}
+
+      {partnerId &&
+        operation === "exchange" &&
+        (exchangeMode === "chinese_brought" || exchangeMode === "chinese_take") && (
+        <Card className="mb-3 p-4">
+          <Label className="mb-2 block">
+            {exchangeMode === "chinese_brought" ? "Hozott kínai (üres)" : "Kínai teli kiadás"}
+          </Label>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">Gáz</Label>
+              <Select value={chineseGas} onValueChange={(v) => setChineseGas(v)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {GAS_TYPES.map((g) => (
+                    <SelectItem key={g} value={g}>
+                      {g}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Méret</Label>
+              <Select value={chineseSize} onValueChange={setChineseSize}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {chineseSizes.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-2">
+              <Label className="text-xs">Darabszám</Label>
+              <Input
+                type="number"
+                min={1}
+                value={chineseQty}
+                onChange={(e) => setChineseQty(e.target.value)}
+              />
+            </div>
+          </div>
         </Card>
       )}
 

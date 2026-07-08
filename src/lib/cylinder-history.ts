@@ -14,6 +14,12 @@ export type CylinderHistoryEventType =
   | "cylinder_created"
   | "cylinder_edited"
   | "quick_exchange"
+  | "forced_substitution"
+  | "circulation_difference_created"
+  | "circulation_difference_partial_settlement"
+  | "circulation_difference_closed"
+  | "chinese_brought"
+  | "chinese_take"
   | "partner_issue"
   | "partner_return"
   | "rental_start"
@@ -33,6 +39,12 @@ export const cylinderHistoryEventLabels: Record<CylinderHistoryEventType, string
   cylinder_created: "Palack létrehozása",
   cylinder_edited: "Palack szerkesztése",
   quick_exchange: "Gyors csere",
+  forced_substitution: "Kényszerhelyettesítés",
+  circulation_difference_created: "Körforgás-eltérés létrehozva",
+  circulation_difference_partial_settlement: "Körforgás-eltérés részben rendezve",
+  circulation_difference_closed: "Körforgás-eltérés lezárva",
+  chinese_brought: "Hozott kínai",
+  chinese_take: "Kínait visz",
   partner_issue: "Partnerhez kiadás",
   partner_return: "Partnertől visszavétel",
   rental_start: "Bérbeadás",
@@ -385,4 +397,103 @@ export async function logRentalClose(
 export async function fetchPartnerName(partnerId: string): Promise<string | undefined> {
   const { data } = await supabase.from("partners").select("name").eq("id", partnerId).maybeSingle();
   return data?.name ?? undefined;
+}
+
+export async function logCirculationDifferenceEvents(args: {
+  exchange_id: string;
+  partner_id: string;
+  incoming_id?: string;
+  outgoing_id?: string;
+  incoming_barcode?: string;
+  outgoing_barcode?: string;
+  partner_name?: string;
+  incoming_side: { key: string; gas_type: string; size: string };
+  outgoing_side: { key: string; gas_type: string; size: string };
+  reason?: string | null;
+  settlement_only?: boolean;
+}): Promise<void> {
+  const forced =
+    args.incoming_side.key !== args.outgoing_side.key ||
+    args.incoming_side.gas_type !== args.outgoing_side.gas_type;
+
+  const { data: createdDiff } = await supabase
+    .from("circulation_differences")
+    .select("*")
+    .eq("exchange_id", args.exchange_id)
+    .maybeSingle();
+
+  const { data: settlements } = await supabase
+    .from("circulation_difference_settlements")
+    .select("*, circulation_differences(*)")
+    .eq("settling_exchange_id", args.exchange_id);
+
+  const warnText = createdDiff
+    ? `${formatExchangeCirculationLabel(createdDiff.incoming_exchange_circulation)} ${createdDiff.incoming_gas_type} ${createdDiff.size} helyett ${formatExchangeCirculationLabel(createdDiff.outgoing_exchange_circulation)} ${createdDiff.outgoing_gas_type} ${createdDiff.size} lett kiadva.`
+    : null;
+
+  if (forced && !args.settlement_only && createdDiff) {
+    const meta = {
+      difference_id: createdDiff.id,
+      incoming_key: args.incoming_side.key,
+      outgoing_key: args.outgoing_side.key,
+    };
+    if (args.incoming_id) {
+      await logCylinderHistory({
+        cylinder_id: args.incoming_id,
+        event_type: "circulation_difference_created",
+        partner_id: args.partner_id,
+        description: warnText ?? undefined,
+        metadata: meta,
+      });
+      await logCylinderHistory({
+        cylinder_id: args.incoming_id,
+        event_type: "forced_substitution",
+        partner_id: args.partner_id,
+        description: args.reason ? `Indok: ${args.reason}` : warnText ?? undefined,
+        metadata: meta,
+      });
+    }
+    if (args.outgoing_id) {
+      await logCylinderHistory({
+        cylinder_id: args.outgoing_id,
+        event_type: "circulation_difference_created",
+        partner_id: args.partner_id,
+        description: warnText ?? undefined,
+        metadata: meta,
+      });
+    }
+  }
+
+  for (const s of settlements ?? []) {
+    const diff = (s as { circulation_differences?: { id: string; status: string } })
+      .circulation_differences;
+    if (!diff) continue;
+    const eventType =
+      diff.status === "closed"
+        ? "circulation_difference_closed"
+        : "circulation_difference_partial_settlement";
+    const targetId = args.incoming_id ?? args.outgoing_id;
+    if (!targetId) continue;
+    await logCylinderHistory({
+      cylinder_id: targetId,
+      event_type: eventType,
+      partner_id: args.partner_id,
+      description: `Rendezve: ${s.quantity_settled} db`,
+      metadata: { difference_id: diff.id, settling_exchange_id: args.exchange_id },
+    });
+  }
+}
+
+function formatExchangeCirculationLabel(key: string): string {
+  const labels: Record<string, string> = {
+    siad_rental: "SIAD bérpalack",
+    own_siad: "SIAD saját",
+    linde: "LINDE",
+    messer: "MESSER",
+    other: "Egyéb",
+    chinese: "Kínai",
+    flaga_pb: "FLAGA PB",
+    prima_pb: "PRÍMA PB",
+  };
+  return labels[key] ?? key;
 }

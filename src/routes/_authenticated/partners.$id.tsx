@@ -21,6 +21,8 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 import { ArrowLeft, Building2, Cylinder, Mail, MapPin, Pencil, Phone, StickyNote } from "lucide-react";
+import { fetchOpenCirculationDifferences } from "@/lib/circulation-differences";
+import { CirculationDifferenceWarnings } from "@/components/CirculationDifferenceWarnings";
 
 import { circulationLabels, cylinderExpiryDate, fmtDate, formatPressureTestYear, isRentalExpired, rentalDisplayStatus, rentalStatusLabels, rentalTypeLabels, statusLabels, type Circulation, type RentalType } from "@/lib/labels";
 
@@ -224,6 +226,12 @@ function PartnerDetail() {
 
     },
 
+  });
+
+  const { data: openCirculationDiffs } = useQuery({
+    queryKey: ["circulation-differences", id],
+    enabled: !!partner,
+    queryFn: () => fetchOpenCirculationDifferences(id),
   });
 
   const rentalIds = useMemo(() => (allRentals ?? []).map((r) => r.id), [allRentals]);
@@ -462,6 +470,10 @@ function PartnerDetail() {
         </Button>
 
       </Link>
+
+
+
+      <CirculationDifferenceWarnings differences={openCirculationDiffs ?? []} />
 
 
 

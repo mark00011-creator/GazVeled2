@@ -1615,9 +1615,12 @@ export type Database = {
         | "empty_return"
         | "loan"
         | "chinese_sale"
+        | "chinese_brought"
+        | "chinese_take"
         | "flaga_sale"
         | "flaga_pb_sale"
         | "prima_pb_sale"
+      circulation_difference_status: "open" | "partially_settled" | "closed"
       cyl_status: "full" | "empty" | "service"
       gas_order_status: "planned" | "ordered" | "received"
       location_type:

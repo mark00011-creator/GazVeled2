@@ -1,12 +1,16 @@
 import { detectManufacturerFromBarcode } from "@/lib/barcode-manufacturer";
 import {
   fetchPartnerName,
+  logCirculationDifferenceEvents,
   logCylinderCreated,
   logCylinderUpdateDiff,
   logPartnerIssue,
   logPartnerReturn,
   logQuickExchange,
 } from "@/lib/cylinder-history";
+import {
+  deriveExchangeCirculationSideFromCylinder,
+} from "@/lib/exchange-circulation";
 import { supabase } from "@/integrations/supabase/client";
 import { statusLabels, type Circulation, type Manufacturer } from "@/lib/labels";
 import {
@@ -31,6 +35,8 @@ export type PartnerOperationType =
   | "empty_return"
   | "loan"
   | "chinese_sale"
+  | "chinese_brought"
+  | "chinese_take"
   | "flaga_sale"
   | "flaga_pb_sale"
   | "prima_pb_sale";
@@ -245,8 +251,8 @@ export async function recordExchange(args: {
   await storeExchangeProfit(exchangeId, args.outgoing_id);
 
   const [{ data: inCyl }, { data: outCyl }, partnerName] = await Promise.all([
-    supabase.from("cylinders").select("barcode").eq("id", args.incoming_id).single(),
-    supabase.from("cylinders").select("barcode").eq("id", args.outgoing_id).single(),
+    supabase.from("cylinders").select("barcode, gas_type, size, circulation, manufacturer").eq("id", args.incoming_id).single(),
+    supabase.from("cylinders").select("barcode, gas_type, size, circulation, manufacturer").eq("id", args.outgoing_id).single(),
     fetchPartnerName(args.partner_id),
   ]);
   if (inCyl && outCyl) {
@@ -258,6 +264,37 @@ export async function recordExchange(args: {
       outgoing_barcode: outCyl.barcode,
       partner_name: partnerName,
     });
+
+    const inSide = deriveExchangeCirculationSideFromCylinder(inCyl as CylinderRow);
+    const outSide = deriveExchangeCirculationSideFromCylinder(outCyl as CylinderRow);
+    const forced = inSide.key !== outSide.key || inSide.gas_type !== outSide.gas_type;
+    if (forced) {
+      await logCirculationDifferenceEvents({
+        exchange_id: exchangeId,
+        partner_id: args.partner_id,
+        incoming_id: args.incoming_id,
+        outgoing_id: args.outgoing_id,
+        incoming_barcode: inCyl.barcode,
+        outgoing_barcode: outCyl.barcode,
+        partner_name: partnerName,
+        incoming_side: inSide,
+        outgoing_side: outSide,
+        reason: args.reason,
+      });
+    } else {
+      await logCirculationDifferenceEvents({
+        exchange_id: exchangeId,
+        partner_id: args.partner_id,
+        incoming_id: args.incoming_id,
+        outgoing_id: args.outgoing_id,
+        incoming_barcode: inCyl.barcode,
+        outgoing_barcode: outCyl.barcode,
+        partner_name: partnerName,
+        incoming_side: inSide,
+        outgoing_side: outSide,
+        settlement_only: true,
+      });
+    }
   }
 
   await syncRentalCylindersAfterExchange(args);
@@ -374,6 +411,15 @@ export async function recordChineseSale(args: {
   if (error || !data) {
     throw new Error(formatSupabaseError(error, "Kínai eladás rögzítése"));
   }
+
+  await supabase.rpc("adjust_partner_quantity_stock", {
+    p_partner_id: args.partner_id,
+    p_stock_kind: "chinese",
+    p_gas_type: gas_type,
+    p_size: size,
+    p_delta: quantity,
+  });
+
   return data.id;
 }
 
@@ -479,6 +525,83 @@ export async function recordPrimaPbSale(args: {
 
   if (error || !data) throw new Error(formatSupabaseError(error, "PRÍMA PB eladás rögzítése"));
   return data.id;
+}
+
+/** Hozott kínai: üres kínai palack be vonalkód nélkül (darabszám). */
+export async function recordChineseBrought(args: {
+  partner_id: string;
+  gas_type: string;
+  size: string;
+  quantity: number;
+  note?: string | null;
+}): Promise<string> {
+  const gas_type = canonicalGasType(args.gas_type);
+  const size = canonicalSize(gas_type, args.size);
+  const quantity = Math.round(args.quantity);
+  if (quantity <= 0) throw new Error("A mennyiségnek pozitívnak kell lennie");
+
+  const { data, error } = await supabase.rpc("record_chinese_brought", {
+    p_partner_id: args.partner_id,
+    p_gas_type: gas_type,
+    p_size: size,
+    p_quantity: quantity,
+    p_note: args.note ?? undefined,
+  });
+  if (error) throw new Error(formatSupabaseError(error, "Hozott kínai rögzítése"));
+  if (!data) throw new Error("A művelet rögzítése sikertelen");
+  return data as string;
+}
+
+/** Kínait visz: sorszámos üres be + kínai teli ki (darabszám). */
+export async function recordChineseTake(args: {
+  partner_id: string;
+  incoming_id: string;
+  gas_type: string;
+  size: string;
+  quantity: number;
+  note?: string | null;
+}): Promise<string> {
+  const gas_type = canonicalGasType(args.gas_type);
+  const size = canonicalSize(gas_type, args.size);
+  const quantity = Math.round(args.quantity);
+  if (quantity <= 0) throw new Error("A mennyiségnek pozitívnak kell lennie");
+
+  const [{ data: inCyl }, partnerName] = await Promise.all([
+    supabase
+      .from("cylinders")
+      .select("id, barcode, gas_type, size, circulation, manufacturer")
+      .eq("id", args.incoming_id)
+      .single(),
+    fetchPartnerName(args.partner_id),
+  ]);
+
+  const { data, error } = await supabase.rpc("record_chinese_take", {
+    p_partner_id: args.partner_id,
+    p_incoming_id: args.incoming_id,
+    p_gas_type: gas_type,
+    p_size: size,
+    p_quantity: quantity,
+    p_note: args.note ?? undefined,
+  });
+  if (error) throw new Error(formatSupabaseError(error, "Kínait visz rögzítése"));
+  if (!data) throw new Error("A művelet rögzítése sikertelen");
+
+  const exchangeId = data as string;
+  if (inCyl) {
+    const inSide = deriveExchangeCirculationSideFromCylinder(inCyl as CylinderRow);
+    const outSide = { key: "chinese" as const, gas_type, size };
+    await logCirculationDifferenceEvents({
+      exchange_id: exchangeId,
+      partner_id: args.partner_id,
+      incoming_id: args.incoming_id,
+      incoming_barcode: inCyl.barcode,
+      partner_name: partnerName,
+      incoming_side: inSide,
+      outgoing_side: outSide,
+      reason: null,
+    });
+  }
+  return exchangeId;
 }
 
 async function storeExchangeProfit(exchangeId: string, outgoingId: string): Promise<void> {
