@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -58,9 +58,13 @@ import {
 } from "@/lib/rental-contract-pdf";
 import {
   fetchRentalQuantityItems,
-  parseRentalQuantityLines,
   toContractStockItems,
 } from "@/lib/rental-quantity-stock";
+import {
+  RentalQuantityItemsEditor,
+  rentalQuantityRowsToInputs,
+  type RentalQuantityRowDraft,
+} from "@/components/RentalQuantityItemsEditor";
 
 function statusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
   if (status === "active") return "default";
@@ -115,13 +119,14 @@ function makeEmptyForm() {
     status: "active" as RentalStatus,
     cylinder_barcodes: "",
     cylinder_specs: "",
-    quantity_stock_lines: "",
+    quantity_rows: [] as RentalQuantityRowDraft[],
     note: "",
   };
 }
 
 function RentalsList() {
   const { status: searchStatus } = Route.useSearch();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>(searchStatus ?? "all");
   const [q, setQ] = useState("");
@@ -288,12 +293,11 @@ function RentalsList() {
 
     const barcodes = parseBulkBarcodes(form.cylinder_barcodes);
     const specs = parseRentalCylinderSpecs(form.cylinder_specs);
-    let quantityItems: ReturnType<typeof parseRentalQuantityLines> = [];
-    if (form.quantity_stock_lines.trim()) {
-      try {
-        quantityItems = parseRentalQuantityLines(form.quantity_stock_lines);
-      } catch (e) {
-        toast.error((e as Error).message);
+    const quantityItems = rentalQuantityRowsToInputs(form.quantity_rows);
+
+    for (const row of form.quantity_rows) {
+      if (row.quantity <= 0) {
+        toast.error("A darabszámnak legalább 1-nek kell lennie");
         return;
       }
     }
@@ -319,6 +323,7 @@ function RentalsList() {
       toast.success("Bérlet létrehozva");
       setLastCreatedId(id);
       setForm(makeEmptyForm());
+      setOpen(false);
       qc.invalidateQueries({ queryKey: ["rentals"] });
       qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
       qc.invalidateQueries({ queryKey: ["cylinders"] });
@@ -326,6 +331,7 @@ function RentalsList() {
       qc.invalidateQueries({ queryKey: ["flaga-pb-stock"] });
       qc.invalidateQueries({ queryKey: ["prima-pb-stock"] });
       qc.invalidateQueries({ queryKey: ["chinese-stock"] });
+      navigate({ to: "/rentals/$id", params: { id } });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setSaveError(msg);
@@ -575,18 +581,10 @@ function RentalsList() {
                   onChange={(e) => setForm({ ...form, cylinder_specs: e.target.value })}
                 />
               </div>
-              <div>
-                <Label>Darabszám alapú készlet (kind,gáz,méret,darab)</Label>
-                <Textarea
-                  className="min-h-[80px] font-mono text-sm"
-                  placeholder={"chinese,Széndioxid,10 kg,2\nflaga_pb,Motorüzemű Flaga,11 kg,1\nprima_pb,Motor,12,5 kg,1"}
-                  value={form.quantity_stock_lines}
-                  onChange={(e) => setForm({ ...form, quantity_stock_lines: e.target.value })}
-                />
-                <p className="mt-1 text-xs text-muted-foreground">
-                  kind: chinese, flaga_pb, prima_pb
-                </p>
-              </div>
+              <RentalQuantityItemsEditor
+                rows={form.quantity_rows}
+                onChange={(quantity_rows) => setForm({ ...form, quantity_rows })}
+              />
               <div>
                 <Label>Megjegyzés</Label>
                 <Input

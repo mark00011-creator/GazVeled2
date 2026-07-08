@@ -1,10 +1,14 @@
 import { supabase } from "@/integrations/supabase/client";
-import { adjustChineseStock } from "@/lib/chinese-stock";
-import { adjustFlagaPbStock } from "@/lib/flaga-pb-stock";
-import { adjustPrimaPbStock } from "@/lib/prima-pb-stock";
+import { adjustChineseStock, fetchChineseStock } from "@/lib/chinese-stock";
+import { canonicalGasType, canonicalSize } from "@/lib/product-prices";
+import { adjustFlagaPbStock, canonicalFlagaPbItem, fetchFlagaPbStock } from "@/lib/flaga-pb-stock";
+import { adjustPrimaPbStock, canonicalPrimaPbItem, fetchPrimaPbStock } from "@/lib/prima-pb-stock";
 import { formatSupabaseError } from "@/lib/supabase-error";
 import { isSchemaMissingError } from "@/lib/supabase-schema";
 import type { RentalContractStockItem, RentalQuantityStockKindLegacy } from "@/lib/rental-contract-labels";
+
+export const RENTAL_QUANTITY_INSUFFICIENT_STOCK_MSG =
+  "Nincs elegendő teli készlet a kiválasztott darabszámos tételből.";
 
 export type RentalQuantityStockKind = "chinese" | "flaga_pb" | "prima_pb";
 
@@ -166,11 +170,82 @@ async function returnStockFromRental(
   }
 }
 
+function aggregateQuantityInputs(items: RentalQuantityInput[]): RentalQuantityInput[] {
+  const byKey = new Map<string, RentalQuantityInput>();
+  for (const item of items) {
+    const key = `${item.stock_kind}\0${item.gas_type}\0${item.size}`;
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.quantity += Math.round(item.quantity);
+    } else {
+      byKey.set(key, {
+        stock_kind: item.stock_kind,
+        gas_type: item.gas_type,
+        size: item.size,
+        quantity: Math.round(item.quantity),
+      });
+    }
+  }
+  return [...byKey.values()];
+}
+
+function fullStockCount(
+  item: RentalQuantityInput,
+  chineseRows: Awaited<ReturnType<typeof fetchChineseStock>>,
+  flagaRows: Awaited<ReturnType<typeof fetchFlagaPbStock>>,
+  primaRows: Awaited<ReturnType<typeof fetchPrimaPbStock>>,
+): number {
+  switch (item.stock_kind) {
+    case "chinese": {
+      const gas = canonicalGasType(item.gas_type);
+      const size = canonicalSize(gas, item.size);
+      const row = chineseRows.find((r) => r.gas_type === gas && r.size === size);
+      return row?.full_count ?? 0;
+    }
+    case "flaga_pb": {
+      const canonical = canonicalFlagaPbItem(item.gas_type, item.size);
+      const row = flagaRows.find(
+        (r) => r.gas_type === canonical.gas_type && r.size === canonical.size,
+      );
+      return row?.full_count ?? 0;
+    }
+    case "prima_pb": {
+      const canonical = canonicalPrimaPbItem(item.gas_type, item.size);
+      const row = primaRows.find(
+        (r) => r.gas_type === canonical.gas_type && r.size === canonical.size,
+      );
+      return row?.full_count ?? 0;
+    }
+    default:
+      return 0;
+  }
+}
+
+/** Teli készlet ellenőrzése mentés előtt (darabszám alapú bérleti tételek). */
+export async function validateRentalQuantityFullStock(items: RentalQuantityInput[]): Promise<void> {
+  if (items.length === 0) return;
+
+  const aggregated = aggregateQuantityInputs(items);
+  const [chineseRows, flagaRows, primaRows] = await Promise.all([
+    fetchChineseStock(),
+    fetchFlagaPbStock(),
+    fetchPrimaPbStock(),
+  ]);
+
+  for (const item of aggregated) {
+    const available = fullStockCount(item, chineseRows, flagaRows, primaRows);
+    if (available < item.quantity) {
+      throw new Error(RENTAL_QUANTITY_INSUFFICIENT_STOCK_MSG);
+    }
+  }
+}
+
 export async function assignQuantityItemsToRental(
   rentalId: string,
   items: RentalQuantityInput[],
 ): Promise<void> {
   if (items.length === 0) return;
+  await validateRentalQuantityFullStock(items);
   for (const item of items) {
     await issueStockToRental(item, rentalId);
   }
