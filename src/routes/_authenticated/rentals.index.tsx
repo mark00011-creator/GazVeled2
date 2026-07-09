@@ -58,7 +58,9 @@ import {
 } from "@/lib/rental-contract-pdf";
 import {
   fetchRentalQuantityItems,
+  summarizeRentalQuantityItems,
   toContractStockItems,
+  type RentalQuantityItem,
 } from "@/lib/rental-quantity-stock";
 import {
   RentalQuantityItemsEditor,
@@ -182,7 +184,13 @@ function RentalsList() {
         .in("rental_id", rentalIds)
         .is("removed_at", null);
       if (linkErr) throw linkErr;
-      if (!links?.length) return { summaries: {} as Record<string, string[]>, expired: new Set<string>() };
+      if (!links?.length) {
+        return {
+          summaries: {} as Record<string, string[]>,
+          rawByRental: {} as Record<string, { gas_type: string; size: string }[]>,
+          expired: new Set<string>(),
+        };
+      }
 
       const cylIds = [...new Set(links.map((l) => l.cylinder_id))];
       const { data: cyls, error: cylErr } = await supabase
@@ -205,14 +213,41 @@ function RentalsList() {
         }
       }
       const summaries: Record<string, string[]> = {};
+      const rawByRental: Record<string, { gas_type: string; size: string }[]> = {};
       for (const [rid, list] of byRental) {
         summaries[rid] = summarizeRentalCylinders(list);
+        rawByRental[rid] = list;
       }
-      return { summaries, expired: expiredRentals };
+      return { summaries, rawByRental, expired: expiredRentals };
     },
   });
 
   const rentalCylExpired = rentalCylSummaries?.expired ?? new Set<string>();
+
+  const { data: rentalQtyByRental } = useQuery({
+    queryKey: ["rental-qty-summaries", rentalIds],
+    enabled: rentalIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("rental_quantity_items")
+        .select("rental_id, stock_kind, gas_type, size, quantity")
+        .in("rental_id", rentalIds)
+        .is("removed_at", null);
+      if (error) {
+        if (error.code === "42P01" || error.message?.includes("does not exist")) {
+          return {} as Record<string, RentalQuantityItem[]>;
+        }
+        throw error;
+      }
+      const byRental: Record<string, RentalQuantityItem[]> = {};
+      for (const row of data ?? []) {
+        const list = byRental[row.rental_id] ?? [];
+        list.push(row as RentalQuantityItem);
+        byRental[row.rental_id] = list;
+      }
+      return byRental;
+    },
+  });
 
   const { data: partners } = useQuery({
     queryKey: ["partners-min"],
@@ -246,6 +281,51 @@ function RentalsList() {
       return hay.includes(needle);
     });
   }, [statusFiltered, q]);
+
+  const partnerGroups = useMemo(() => {
+    const map = new Map<string, RentalRow[]>();
+    for (const r of filtered) {
+      const list = map.get(r.partner_id) ?? [];
+      list.push(r);
+      map.set(r.partner_id, list);
+    }
+    return [...map.entries()]
+      .map(([partner_id, rentals]) => {
+        const sorted = [...rentals].sort((a, b) => b.start_date.localeCompare(a.start_date));
+        const p = sorted[0].partners;
+        const allCyls: { gas_type: string; size: string }[] = [];
+        const allQty: RentalQuantityItem[] = [];
+        for (const r of sorted) {
+          allCyls.push(...(rentalCylSummaries?.rawByRental?.[r.id] ?? []));
+          allQty.push(...(rentalQtyByRental?.[r.id] ?? []));
+        }
+        const hasExpiredCylinder = sorted.some((r) => rentalCylExpired.has(r.id));
+        const openRentals = sorted.filter((r) => r.status !== "closed" && r.status !== "cancelled");
+        const primary = openRentals[0] ?? sorted[0];
+        const displayStatus = rentalDisplayStatus(primary.status);
+        const earliestStart = sorted.reduce(
+          (min, r) => (r.start_date < min ? r.start_date : min),
+          sorted[0].start_date,
+        );
+        const monthlyRental = sorted.find((r) => r.rental_type === "monthly" && r.status === "active");
+        const days = monthlyRental ? daysUntil(monthlyRental.next_invoice_date) : null;
+        const urgency = invoiceUrgency(days);
+        return {
+          partner_id,
+          partner: p,
+          rentals: sorted,
+          serialLines: summarizeRentalCylinders(allCyls),
+          quantityLines: summarizeRentalQuantityItems(allQty),
+          hasExpiredCylinder,
+          displayStatus,
+          earliestStart,
+          monthlyRental,
+          days,
+          urgency,
+        };
+      })
+      .sort((a, b) => b.rentals[0].start_date.localeCompare(a.rentals[0].start_date));
+  }, [filtered, rentalCylSummaries, rentalQtyByRental, rentalCylExpired]);
 
   function onStartChange(start: string) {
     setForm((f) => ({
@@ -628,78 +708,113 @@ function RentalsList() {
       )}
 
       <div className="space-y-2">
-        {filtered.map((r) => {
-          const p = r.partners;
-          const hasExpiredCylinder = rentalCylExpired.has(r.id);
-          const displayStatus = rentalDisplayStatus(r.status);
-          const cylSummary = rentalCylSummaries?.summaries?.[r.id];
-          const days = r.rental_type === "monthly" ? daysUntil(r.next_invoice_date) : null;
-          const urgency = invoiceUrgency(days);
+        {partnerGroups.map((g) => {
+          const p = g.partner;
+          const singleRental = g.rentals.length === 1;
+          const cardTo = singleRental
+            ? { to: "/rentals/$id" as const, params: { id: g.rentals[0].id } }
+            : { to: "/partners/$id/rentals" as const, params: { id: g.partner_id } };
           const urgencyCls =
-            urgency === "red"
+            g.urgency === "red"
               ? "bg-destructive/15 text-destructive"
-              : urgency === "yellow"
+              : g.urgency === "yellow"
                 ? "bg-warning/15 text-warning"
                 : "bg-green-600/10 text-green-700";
 
           return (
-            <Link key={r.id} to="/rentals/$id" params={{ id: r.id }}>
+            <Link key={g.partner_id} {...cardTo}>
               <Card
-                className={`p-3 transition-colors hover:bg-accent/50 ${hasExpiredCylinder && r.status !== "closed" ? "border-destructive/30" : ""}`}
+                className={`p-3 transition-colors hover:bg-accent/50 ${g.hasExpiredCylinder && g.displayStatus !== "closed" ? "border-destructive/30" : ""}`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Link
-                        to="/partners/$id/rentals"
-                        params={{ id: r.partner_id }}
-                        className="font-semibold hover:underline"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {p?.name ?? "—"}
-                      </Link>
-                      <Badge variant={statusVariant(displayStatus)}>
-                        {rentalStatusLabels[displayStatus] ?? displayStatus}
+                      <span className="font-semibold">{p?.name ?? "—"}</span>
+                      <Badge variant={statusVariant(g.displayStatus)}>
+                        {rentalStatusLabels[g.displayStatus] ?? g.displayStatus}
                       </Badge>
-                      {hasExpiredCylinder && r.status !== "closed" && (
+                      {g.hasExpiredCylinder && g.displayStatus !== "closed" && (
                         <Badge variant="destructive">LEJÁRT PALACK</Badge>
                       )}
-                      <Badge variant="outline">{rentalTypeLabels[r.rental_type ?? "yearly"]}</Badge>
-                      <span className="font-mono text-[10px] text-muted-foreground">
-                        {rentalNumber(r.id)}
-                      </span>
+                      {g.rentals.some((r) => r.rental_type === "monthly") && (
+                        <Badge variant="outline">{rentalTypeLabels.monthly}</Badge>
+                      )}
+                      {g.rentals.some((r) => r.rental_type === "yearly") && (
+                        <Badge variant="outline">{rentalTypeLabels.yearly}</Badge>
+                      )}
                     </div>
                     {p?.company_name && (
                       <div className="text-xs text-muted-foreground">{p.company_name}</div>
                     )}
-                    {hasExpiredCylinder && r.status !== "closed" && (
+                    {g.hasExpiredCylinder && g.displayStatus !== "closed" && (
                       <div className="mt-1 text-xs font-medium text-destructive">
                         Van lejárt palack
                       </div>
                     )}
-                    {cylSummary && cylSummary.length > 0 && (
-                      <div className="mt-1 space-y-0.5">
-                        {cylSummary.map((line) => (
-                          <div key={line} className="text-xs text-primary">
-                            {line}
-                          </div>
-                        ))}
+                    {g.serialLines.length > 0 && (
+                      <div className="mt-2">
+                        <div className="text-xs font-medium text-muted-foreground">
+                          Sorszámos palackok:
+                        </div>
+                        <div className="mt-0.5 space-y-0.5">
+                          {g.serialLines.map((line) => (
+                            <div key={line} className="text-xs text-primary">
+                              {line}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {g.quantityLines.length > 0 && (
+                      <div className="mt-2">
+                        <div className="text-xs font-medium text-muted-foreground">
+                          Darabszámos tételek:
+                        </div>
+                        <div className="mt-0.5 space-y-0.5">
+                          {g.quantityLines.map((line) => (
+                            <div key={line} className="text-xs text-primary">
+                              {line}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      <span>Kezdés: {fmtDate(r.start_date)}</span>
-                      {r.rental_type === "monthly" && (
-                        <span>{Number(r.monthly_fee).toLocaleString("hu-HU")} Ft/hó</span>
+                      <span>Kezdés: {fmtDate(g.earliestStart)}</span>
+                      {g.monthlyRental && (
+                        <span>
+                          {Number(g.monthlyRental.monthly_fee).toLocaleString("hu-HU")} Ft/hó
+                        </span>
                       )}
-                      {r.rental_type === "monthly" && r.next_invoice_date && (
+                      {g.monthlyRental?.next_invoice_date && (
                         <span className={`rounded px-1.5 py-0.5 ${urgencyCls}`}>
-                          Köv. számlázás: {fmtDate(r.next_invoice_date)}
-                          {days !== null &&
-                            days <= 5 &&
-                            ` (${days < 0 ? `${Math.abs(days)} napja lejárt` : `${days} nap`})`}
+                          Köv. számlázás: {fmtDate(g.monthlyRental.next_invoice_date)}
+                          {g.days !== null &&
+                            g.days <= 5 &&
+                            ` (${g.days < 0 ? `${Math.abs(g.days)} napja lejárt` : `${g.days} nap`})`}
                         </span>
                       )}
                     </div>
+                    {!singleRental && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {g.rentals.map((r) => (
+                          <Link
+                            key={r.id}
+                            to="/rentals/$id"
+                            params={{ id: r.id }}
+                            className="font-mono text-[10px] text-muted-foreground hover:text-primary hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {rentalNumber(r.id)}
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                    {singleRental && (
+                      <span className="mt-1 block font-mono text-[10px] text-muted-foreground">
+                        {rentalNumber(g.rentals[0].id)}
+                      </span>
+                    )}
                   </div>
                   <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                 </div>
@@ -707,7 +822,7 @@ function RentalsList() {
             </Link>
           );
         })}
-        {!isLoading && !isError && filtered.length === 0 && (
+        {!isLoading && !isError && partnerGroups.length === 0 && (
           <div className="py-8 text-center text-sm text-muted-foreground">
             Nincs bérlet a szűrésnek megfelelően
           </div>
