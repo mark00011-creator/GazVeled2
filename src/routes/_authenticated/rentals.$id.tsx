@@ -5,7 +5,21 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, CalendarPlus, FileDown, Pencil, RotateCcw } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ArrowLeft, CalendarPlus, FileDown, Pencil, RotateCcw, ArrowRightLeft } from "lucide-react";
 import {
   circulationLabels,
   cylinderExpiryDate,
@@ -19,9 +33,11 @@ import {
 } from "@/lib/labels";
 import {
   advanceRentalBilling,
+  convertTempRentalCylinderToChinese,
   extendRentalCylinder,
   fetchRentalCylinderDetails,
   fetchRentalWithPartner,
+  isTempRentalCylinder,
   rentalNumber,
   updateRentalCylinderExpiry,
 } from "@/lib/rental-ops";
@@ -41,6 +57,7 @@ import {
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
 import { PhoneLink } from "@/components/PhoneLink";
+import { GAS_TYPES, getAvailableSizes } from "@/lib/gas-cylinder-form";
 
 export const Route = createFileRoute("/_authenticated/rentals/$id")({
   head: () => ({ meta: [{ title: "Bérlet – Gáz Veled" }] }),
@@ -55,6 +72,10 @@ function RentalDetail() {
   const [editingBarcodeId, setEditingBarcodeId] = useState<string | null>(null);
   const [barcodeEdits, setBarcodeEdits] = useState<Record<string, string>>({});
   const [cylinderExpiryEdits, setCylinderExpiryEdits] = useState<Record<string, string>>({});
+  const [convertTarget, setConvertTarget] = useState<{ cylinder_id: string; barcode: string } | null>(null);
+  const [convertGas, setConvertGas] = useState("Stargon");
+  const [convertSize, setConvertSize] = useState("20 L");
+  const [convertQty, setConvertQty] = useState("1");
 
   const {
     data: rental,
@@ -134,12 +155,45 @@ function RentalDetail() {
     await Promise.all([
       refetchRental(),
       refetchCyls(),
+      refetchQty(),
       qc.invalidateQueries({ queryKey: ["rentals"] }),
+      qc.invalidateQueries({ queryKey: ["rental-qty-items", id] }),
+      qc.invalidateQueries({ queryKey: ["rental-qty-summaries"] }),
+      qc.invalidateQueries({ queryKey: ["rental-cyl-summaries"] }),
       qc.invalidateQueries({ queryKey: ["dashboard-stats"] }),
       qc.invalidateQueries({ queryKey: ["partner-rental-overview"] }),
       qc.invalidateQueries({ queryKey: ["partner-rental-summaries"] }),
+      qc.invalidateQueries({ queryKey: ["history"] }),
     ]);
   }
+
+  async function saveTempToChinese() {
+    if (!convertTarget) return;
+    const qty = Number(convertQty);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      toast.error("Érvényes darabszámot adj meg");
+      return;
+    }
+    setBusyId(`convert-${convertTarget.cylinder_id}`);
+    try {
+      await convertTempRentalCylinderToChinese({
+        rental_id: id,
+        cylinder_id: convertTarget.cylinder_id,
+        gas_type: convertGas,
+        size: convertSize,
+        quantity: qty,
+      });
+      toast.success("TEMP palack átalakítva kínai tétellé");
+      setConvertTarget(null);
+      await invalidateRentalQueries();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const convertSizes = getAvailableSizes(convertGas);
 
   async function doExtendCylinder(cylinderId: string) {
     setBusyId(`extend-${cylinderId}`);
@@ -529,6 +583,20 @@ function RentalDetail() {
                         </Link>
                       </Button>
                     )}
+                    {isTempRentalCylinder(c) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setConvertTarget({ cylinder_id: c.cylinder_id, barcode: c.barcode });
+                          setConvertGas(c.gas_type !== "ISMERETLEN" ? c.gas_type : "Stargon");
+                          setConvertSize(c.size !== "—" ? c.size : "20 L");
+                          setConvertQty("1");
+                        }}
+                      >
+                        <ArrowRightLeft className="mr-1 h-3.5 w-3.5" /> Átalakítás kínai palackká
+                      </Button>
+                    )}
                   </div>
                 </div>
               );
@@ -536,6 +604,73 @@ function RentalDetail() {
           </div>
         )}
       </Card>
+
+      <Dialog open={!!convertTarget} onOpenChange={(open) => !open && setConvertTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Átalakítás kínai palackká</DialogTitle>
+          </DialogHeader>
+          {convertTarget && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                TEMP palack: <span className="font-mono">{convertTarget.barcode}</span>
+              </p>
+              <div>
+                <Label>Gáz</Label>
+                <Select
+                  value={convertGas}
+                  onValueChange={(v) => {
+                    setConvertGas(v);
+                    setConvertSize(getAvailableSizes(v)[0] ?? "20 L");
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GAS_TYPES.map((g) => (
+                      <SelectItem key={g} value={g}>
+                        {g}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Méret</Label>
+                <Select value={convertSize} onValueChange={setConvertSize}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {convertSizes.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Darabszám</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={convertQty}
+                  onChange={(e) => setConvertQty(e.target.value)}
+                />
+              </div>
+              <Button
+                className="w-full"
+                disabled={busyId === `convert-${convertTarget.cylinder_id}`}
+                onClick={saveTempToChinese}
+              >
+                Mentés
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

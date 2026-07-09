@@ -22,12 +22,14 @@ import {
   logRentalClose,
   logRentalExtend,
   logRentalStart,
+  logCylinderHistory,
 } from "@/lib/cylinder-history";
-
 import { addYears, todayLocal } from "@/lib/date-utils";
 
 import { addMonths } from "@/lib/rental-billing";
 import { summarizeRentalCylinders, type Circulation, type RentalType } from "@/lib/labels";
+import { canonicalGasType, canonicalSize } from "@/lib/product-prices";
+import { isTempBarcode } from "@/lib/rental-contract-labels";
 
 import {
   isMissingRentalCylinderColumnError,
@@ -326,6 +328,8 @@ export type RentalCylinderDetail = {
 
   pressure_test_year: number | null;
 
+  is_temporary: boolean;
+
 };
 
 const RENTAL_CYLINDER_LINK_SELECT_FULL =
@@ -499,7 +503,7 @@ export async function fetchRentalCylinderDetails(rentalId: string): Promise<Rent
 
   const { data: cyls, error: cylErr } = await supabase
     .from("cylinders")
-    .select("id, barcode, gas_type, size, manufacturer, factory_serial, replacement_value, owner, circulation, status, pressure_test_year")
+    .select("id, barcode, gas_type, size, manufacturer, factory_serial, replacement_value, owner, circulation, status, pressure_test_year, is_temporary")
     .in("id", allIds)
     .eq("active", true);
   if (cylErr) throwSupabaseError("fetchRentalCylinderDetails → cylinders", cylErr);
@@ -525,9 +529,126 @@ export async function fetchRentalCylinderDetails(rentalId: string): Promise<Rent
         circulation: c.circulation,
         status: c.status,
         pressure_test_year: c.pressure_test_year ?? null,
+        is_temporary: !!c.is_temporary,
       };
     })
     .sort((a, b) => a.barcode.localeCompare(b.barcode));
+}
+
+export function isTempRentalCylinder(c: { barcode: string; is_temporary?: boolean }): boolean {
+  return !!c.is_temporary || isTempBarcode(c.barcode);
+}
+
+export async function convertTempRentalCylinderToChinese(args: {
+  rental_id: string;
+  cylinder_id: string;
+  gas_type: string;
+  size: string;
+  quantity: number;
+}): Promise<void> {
+  const quantity = Math.round(args.quantity);
+  if (quantity <= 0) throw new Error("A darabszámnak pozitívnak kell lennie");
+
+  const gas_type = canonicalGasType(args.gas_type);
+  const size = canonicalSize(gas_type, args.size);
+
+  const { data: cyl, error: cylErr } = await supabase
+    .from("cylinders")
+    .select("id, barcode, is_temporary, rental_id, active")
+    .eq("id", args.cylinder_id)
+    .eq("active", true)
+    .maybeSingle();
+  if (cylErr) throwSupabaseError("convertTempRentalCylinderToChinese → cylinders", cylErr);
+  if (!cyl) throw new Error("Palack nem található");
+  if (!isTempRentalCylinder(cyl)) throw new Error("Csak TEMP palack alakítható át kínai térellé");
+
+  const { data: link, error: linkErr } = await supabase
+    .from("rental_cylinders")
+    .select("cylinder_id")
+    .eq("rental_id", args.rental_id)
+    .eq("cylinder_id", args.cylinder_id)
+    .is("removed_at", null)
+    .maybeSingle();
+  if (linkErr) throwSupabaseError("convertTempRentalCylinderToChinese → rental_cylinders", linkErr);
+  if (!link) throw new Error("A palack nem tartozik ehhez a bérlethez");
+
+  const { data: rental, error: rentErr } = await supabase
+    .from("rentals")
+    .select("partner_id, current_cylinder_id, original_cylinder_id")
+    .eq("id", args.rental_id)
+    .single();
+  if (rentErr) throwSupabaseError("convertTempRentalCylinderToChinese → rentals", rentErr);
+
+  const now = new Date().toISOString();
+  const endDate = now.slice(0, 10);
+
+  const { error: rcUpdErr } = await supabase
+    .from("rental_cylinders")
+    .update({ removed_at: now, rental_end_date: endDate })
+    .eq("rental_id", args.rental_id)
+    .eq("cylinder_id", args.cylinder_id);
+  if (rcUpdErr && isMissingRentalCylinderColumnError(rcUpdErr)) {
+    const { error: legacyUpdErr } = await supabase
+      .from("rental_cylinders")
+      .update({ removed_at: now })
+      .eq("rental_id", args.rental_id)
+      .eq("cylinder_id", args.cylinder_id);
+    if (legacyUpdErr) {
+      throwSupabaseError("convertTempRentalCylinderToChinese → rental_cylinders UPDATE (legacy)", legacyUpdErr);
+    }
+  } else if (rcUpdErr) {
+    throwSupabaseError("convertTempRentalCylinderToChinese → rental_cylinders UPDATE", rcUpdErr);
+  }
+
+  const { error: cylUpdErr } = await supabase
+    .from("cylinders")
+    .update({ active: false, rental_id: null, updated_at: now })
+    .eq("id", args.cylinder_id);
+  if (cylUpdErr) throwSupabaseError("convertTempRentalCylinderToChinese → cylinders UPDATE", cylUpdErr);
+
+  const rentalUpdates: Record<string, unknown> = { updated_at: now };
+  if (rental.current_cylinder_id === args.cylinder_id) rentalUpdates.current_cylinder_id = null;
+  if (rental.original_cylinder_id === args.cylinder_id) rentalUpdates.original_cylinder_id = null;
+  if (Object.keys(rentalUpdates).length > 1) {
+    const { error: rentalUpdErr } = await supabase.from("rentals").update(rentalUpdates).eq("id", args.rental_id);
+    if (rentalUpdErr) throwSupabaseError("convertTempRentalCylinderToChinese → rentals UPDATE", rentalUpdErr);
+  }
+
+  const existingItems = await fetchRentalQuantityItems(args.rental_id);
+  const match = existingItems.find(
+    (i) => i.stock_kind === "chinese" && i.gas_type === gas_type && i.size === size,
+  );
+  if (match) {
+    const { error: qtyUpdErr } = await supabase
+      .from("rental_quantity_items")
+      .update({ quantity: match.quantity + quantity })
+      .eq("id", match.id);
+    if (qtyUpdErr) throwSupabaseError("convertTempRentalCylinderToChinese → rental_quantity_items UPDATE", qtyUpdErr);
+  } else {
+    const { error: qtyInsErr } = await supabase.from("rental_quantity_items").insert({
+      rental_id: args.rental_id,
+      stock_kind: "chinese",
+      gas_type,
+      size,
+      quantity,
+    });
+    if (qtyInsErr) throwSupabaseError("convertTempRentalCylinderToChinese → rental_quantity_items INSERT", qtyInsErr);
+  }
+
+  const partnerName = await fetchPartnerName(rental.partner_id);
+  await logCylinderHistory({
+    cylinder_id: args.cylinder_id,
+    event_type: "cylinder_edited",
+    partner_id: rental.partner_id,
+    description: "TEMP palack átalakítva kínai darabszámos tétellé",
+    old_value: cyl.barcode,
+    new_value: `${gas_type} ${size} (${quantity} db)`,
+    metadata: {
+      rental_id: args.rental_id,
+      conversion: "temp_to_chinese_quantity",
+      partner_name: partnerName,
+    },
+  });
 }
 
 

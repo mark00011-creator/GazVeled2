@@ -64,7 +64,7 @@ function legacyFlagaSubtypeLabel(gasType: string): string {
   return "FLAGA körforgásos";
 }
 
-function isTempBarcode(barcode: string | null | undefined): boolean {
+export function isTempBarcode(barcode: string | null | undefined): boolean {
   const bc = barcode?.trim() ?? "";
   return !bc || /^temp-/i.test(bc);
 }
