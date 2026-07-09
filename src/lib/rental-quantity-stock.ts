@@ -47,7 +47,7 @@ export async function fetchRentalQuantityItems(rentalId: string): Promise<Rental
     if (isSchemaMissingError(error)) return [];
     throw new Error(formatSupabaseError(error, "Bérleti darabszám tételek"));
   }
-  return (data ?? []) as RentalQuantityItem[];
+  return ((data ?? []) as RentalQuantityItem[]).filter((i) => i.quantity > 0);
 }
 
 export async function fetchActiveDeployedQuantitySummary(): Promise<

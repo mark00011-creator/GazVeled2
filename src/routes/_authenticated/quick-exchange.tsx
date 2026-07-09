@@ -599,6 +599,10 @@ function QuickExchange() {
     qc.invalidateQueries({ queryKey: ["loaned-cylinders"] });
     qc.invalidateQueries({ queryKey: ["circulation-differences"] });
     qc.invalidateQueries({ queryKey: ["partner-quantity-stock"] });
+    qc.invalidateQueries({ queryKey: ["rental-qty-items"] });
+    qc.invalidateQueries({ queryKey: ["rental-qty-summaries"] });
+    qc.invalidateQueries({ queryKey: ["partner-rental-overview"] });
+    qc.invalidateQueries({ queryKey: ["partner-rental-summaries"] });
   }
 
   const chineseSizes = getAvailableSizes(chineseGas);

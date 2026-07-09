@@ -709,6 +709,8 @@ export async function recordChineseTake(args: {
 
   const exchangeId = data as string;
   if (inCyl) {
+    await logPartnerReturn(args.incoming_id, args.partner_id, inCyl.barcode, partnerName);
+
     const inSide = deriveExchangeCirculationSideFromCylinder(inCyl as CylinderRow);
     const outSide = { key: "chinese" as const, gas_type, size };
     await logCirculationDifferenceEvents({
