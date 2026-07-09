@@ -424,6 +424,10 @@ function QuickExchange() {
               toast.error("Érvényes darabszámot adj meg a kiadott kínai teli palackhoz");
               return;
             }
+            if (outQty !== qty) {
+              toast.error("A hozott és kiadott darabszámnak egyeznie kell");
+              return;
+            }
             await recordChineseBroughtExchange({
               partner_id: partnerId,
               in_gas_type: chineseGas,
