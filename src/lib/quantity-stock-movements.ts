@@ -5,7 +5,8 @@ export type QuantityStockMovementType =
   | "customer_exchange"
   | "supplier_exchange"
   | "empty_return"
-  | "adjustment";
+  | "adjustment"
+  | "empty_adjustment";
 
 /** Régi API: exchange = ügyfélcsere */
 export type LegacyQuantityStockMovementType = QuantityStockMovementType | "exchange";
@@ -16,16 +17,18 @@ export const QUANTITY_STOCK_MOVEMENT_LABELS: Record<QuantityStockMovementType, s
   customer_exchange: "Ügyfélcsere: teli ki, üres be",
   supplier_exchange: "Beszállítói csere: üres ki, teli be",
   empty_return: "Üres visszahozás (üres +)",
-  adjustment: "Készletkorrekció (teli +, megjegyzés kötelező)",
+  adjustment: "Készletkorrekció (teli +)",
+  empty_adjustment: "Készletkorrekció (üres −)",
 };
 
 export const CHINESE_STOCK_UI_MOVEMENTS: QuantityStockMovementType[] = [
   "purchase",
   "sale",
-  "customer_exchange",
-  "supplier_exchange",
   "empty_return",
   "adjustment",
+  "empty_adjustment",
+  "customer_exchange",
+  "supplier_exchange",
 ];
 
 export function parseStockQuantityInput(value: string): number {

@@ -60,6 +60,13 @@ function ChineseStockPage() {
       toast.error((err as Error).message);
       return;
     }
+    if (
+      (movementType === "adjustment" || movementType === "empty_adjustment") &&
+      !note.trim()
+    ) {
+      toast.error("Korrekciónál megjegyzés kötelező");
+      return;
+    }
     setBusy(true);
     try {
       await adjustChineseStock({
@@ -162,7 +169,15 @@ function ChineseStockPage() {
             </div>
           </div>
           <div>
-            <Label>Megjegyzés (opcionális)</Label>
+            <Label>
+              Megjegyzés
+              {(movementType === "adjustment" || movementType === "empty_adjustment") && (
+                <span className="text-destructive"> *</span>
+              )}
+              {movementType !== "adjustment" && movementType !== "empty_adjustment" && (
+                <span className="text-muted-foreground"> (opcionális)</span>
+              )}
+            </Label>
             <Input value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
           <Button type="submit" disabled={busy} className="w-full">
