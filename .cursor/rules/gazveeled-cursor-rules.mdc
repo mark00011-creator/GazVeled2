@@ -1,0 +1,67 @@
+---
+description: GazVeled hivatalos fejlesztési szabályzata (CURSOR_RULES.md)
+alwaysApply: true
+---
+
+# GazVeled – kötelező fejlesztési szabályok
+
+Hivatalos forrás: `CURSOR_RULES.md` a projekt gyökerében. Módosításkor a két fájlt szinkronban tartsd.
+
+## Fejlesztési alapelvek
+
+- Egy prompt = egy üzleti funkció.
+- Ne próbálj egyszerre több külön fejlesztést megvalósítani.
+- Ha a felhasználó több funkciót kér egyszerre, bontsd külön feladatokra.
+- Mindig csak az aktuális feladatot implementáld.
+
+## Implementálás
+
+- Ne készíts hosszú elemzést, tervet vagy magyarázatot.
+- Közvetlenül implementálj.
+
+## Projekt bejárása
+
+- Ne keress végig feleslegesen a teljes projektben.
+- Csak az érintett fájlokat nyisd meg.
+- Csak akkor nyiss meg új fájlt, ha arra valóban szükség van.
+
+## Refaktor
+
+- Ne refaktorálj, optimalizálj, nevezz át vagy mozgass fájlokat, ha a feladat nem kéri.
+
+## UI
+
+- Csak az érintett képernyőt módosítsd.
+- Ne változtass működő UI vagy design elemeket.
+
+## Adatbázis
+
+- Csak szükség esetén migráció; használd a meglévő struktúrát; ne duplikálj; IF NOT EXISTS kötelező.
+
+## Üzleti logika
+
+- Ne tilts; figyelmeztess; a felhasználó felülbírálhat; minden fontos esemény naplózva legyen.
+
+## Production-first
+
+Feladat kész, ha: build sikeres, production deploy sikeres, production UI működik. Localhost nem elegendő.
+
+## Build / Git / Commit / Vercel
+
+- Feladat végén: `npm run build` (ha kód változott).
+- `git status` – minden új fájl Gitben.
+- Commit + `push origin/main` (kivéve ha a felhasználó megtiltja).
+- Push után Vercel production READY állapot.
+
+## Production UI ellenőrzés
+
+Ellenőrizd: funkció működik, nincs konzol/runtime hiba, nincs hiányzó UI/route/mező. Hiba esetén: javítás → build → commit → push → deploy → újraellenőrzés.
+
+## Jelentés (rövid)
+
+Csak: módosított fájlok, DB változás, migráció, build, commit SHA, push, Vercel READY, production UI eredmény.
+
+## GazVeled speciális
+
+- Valós üzleti folyamatok támogatása; ne akadályozz; figyelmeztess.
+- Üzleti események strukturáltan tárolva (későbbi AI elemzéshez).
