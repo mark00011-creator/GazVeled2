@@ -35,11 +35,13 @@ import {
   advanceRentalBilling,
   convertTempRentalCylinderToChinese,
   extendRentalCylinder,
+  extendRentalQuantityItem,
   fetchRentalCylinderDetails,
   fetchRentalWithPartner,
   isTempRentalCylinder,
   rentalNumber,
   updateRentalCylinderExpiry,
+  updateRentalQuantityItemExpiry,
 } from "@/lib/rental-ops";
 import { logSupabaseError } from "@/lib/supabase-error";
 import { updateCylinderBarcode } from "@/lib/cylinder-ops";
@@ -51,6 +53,8 @@ import {
 } from "@/lib/rental-contract-pdf";
 import {
   fetchRentalQuantityItems,
+  quantityItemExpiryDate,
+  quantityItemStartDate,
   RENTAL_QUANTITY_KIND_LABELS,
   toContractStockItems,
 } from "@/lib/rental-quantity-stock";
@@ -72,6 +76,7 @@ function RentalDetail() {
   const [editingBarcodeId, setEditingBarcodeId] = useState<string | null>(null);
   const [barcodeEdits, setBarcodeEdits] = useState<Record<string, string>>({});
   const [cylinderExpiryEdits, setCylinderExpiryEdits] = useState<Record<string, string>>({});
+  const [qtyExpiryEdits, setQtyExpiryEdits] = useState<Record<string, string>>({});
   const [convertTarget, setConvertTarget] = useState<{ cylinder_id: string; barcode: string } | null>(null);
   const [convertGas, setConvertGas] = useState("Stargon");
   const [convertSize, setConvertSize] = useState("20 L");
@@ -137,6 +142,15 @@ function RentalDetail() {
     }
     setCylinderExpiryEdits(next);
   }, [cylLinks]);
+
+  useEffect(() => {
+    if (!qtyItems) return;
+    const next: Record<string, string> = {};
+    for (const item of qtyItems) {
+      next[item.id] = quantityItemExpiryDate(item);
+    }
+    setQtyExpiryEdits(next);
+  }, [qtyItems]);
 
   async function markInvoiced() {
     setBusyId("invoice");
@@ -218,6 +232,37 @@ function RentalDetail() {
     try {
       await updateRentalCylinderExpiry(id, cylinderId, expiry);
       toast.success("Palack lejárata mentve");
+      await invalidateRentalQueries();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function doExtendQuantityItem(itemId: string) {
+    setBusyId(`extend-qty-${itemId}`);
+    try {
+      await extendRentalQuantityItem(id, itemId);
+      toast.success("Darabszámos tétel bérlete meghosszabbítva");
+      await invalidateRentalQueries();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function saveQuantityItemExpiry(itemId: string) {
+    const expiry = qtyExpiryEdits[itemId];
+    if (!expiry) {
+      toast.error("Add meg a lejárati dátumot");
+      return;
+    }
+    setBusyId(`expiry-qty-${itemId}`);
+    try {
+      await updateRentalQuantityItemExpiry(id, itemId, expiry);
+      toast.success("Darabszámos tétel lejárata mentve");
       await invalidateRentalQueries();
     } catch (e) {
       toast.error((e as Error).message);
@@ -326,8 +371,9 @@ function RentalDetail() {
   const days = rentalType === "monthly" ? daysUntil(rental.next_invoice_date) : null;
   const urgency = invoiceUrgency(days);
   const hasActiveCylinders = (cylLinks ?? []).length > 0;
-  const canExtend = rental.status !== "closed" && hasActiveCylinders;
-  const canReturn = rental.status !== "closed" && hasActiveCylinders;
+  const hasActiveQtyItems = (qtyItems ?? []).length > 0;
+  const canExtend = rental.status !== "closed" && (hasActiveCylinders || hasActiveQtyItems);
+  const canReturn = rental.status !== "closed" && (hasActiveCylinders || hasActiveQtyItems);
 
   return (
     <AppShell title="Bérlet adatlap">
@@ -415,17 +461,23 @@ function RentalDetail() {
           <div className="p-4 text-sm text-muted-foreground">Nincs darabszám alapú tétel</div>
         ) : (
           <div>
-            {(qtyItems ?? []).map((item) => (
+            {(qtyItems ?? []).map((item) => {
+              const itemStart = quantityItemStartDate(item);
+              const itemExpiry = quantityItemExpiryDate(item);
+              const itemExpired = isRentalExpired(itemExpiry);
+              const kind =
+                RENTAL_QUANTITY_KIND_LABELS[item.stock_kind as keyof typeof RENTAL_QUANTITY_KIND_LABELS] ??
+                item.stock_kind;
+
+              return (
               <div
                 key={item.id}
-                className="border-b border-border/40 p-4 last:border-b-0"
+                className={`border-b border-border/40 p-4 last:border-b-0 ${itemExpired ? "border-l-4 border-l-destructive bg-destructive/5" : ""}`}
               >
                 <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs sm:grid-cols-4">
                   <div>
                     <div className="text-muted-foreground">Típus</div>
-                    <div className="font-semibold">
-                      {RENTAL_QUANTITY_KIND_LABELS[item.stock_kind]}
-                    </div>
+                    <div className="font-semibold">{kind}</div>
                   </div>
                   <div>
                     <div className="text-muted-foreground">Gáz</div>
@@ -437,11 +489,76 @@ function RentalDetail() {
                   </div>
                   <div>
                     <div className="text-muted-foreground">Darabszám</div>
-                    <div className="font-bold">{item.quantity}</div>
+                    <div className="font-bold">{item.quantity} db</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Kezdet</div>
+                    <div>{fmtDate(itemStart)}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Lejárat</div>
+                    {canExtend ? (
+                      <div className="mt-1 flex gap-1">
+                        <Input
+                          type="date"
+                          className="h-8 text-xs"
+                          value={qtyExpiryEdits[item.id] ?? itemExpiry}
+                          onChange={(e) =>
+                            setQtyExpiryEdits((prev) => ({
+                              ...prev,
+                              [item.id]: e.target.value,
+                            }))
+                          }
+                        />
+                        <Button
+                          size="sm"
+                          className="h-8 shrink-0 px-2 text-xs"
+                          disabled={busyId === `expiry-qty-${item.id}`}
+                          onClick={() => saveQuantityItemExpiry(item.id)}
+                        >
+                          Mentés
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className={itemExpired ? "font-medium text-destructive" : ""}>
+                        {fmtDate(itemExpiry)}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Státusz</div>
+                    <div className={itemExpired ? "font-medium text-destructive" : ""}>
+                      {itemExpired ? "Lejárt" : "Aktív"}
+                    </div>
                   </div>
                 </div>
+                {itemExpired && (
+                  <Badge variant="destructive" className="mt-2">
+                    LEJÁRT
+                  </Badge>
+                )}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {canExtend && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busyId === `extend-qty-${item.id}`}
+                      onClick={() => doExtendQuantityItem(item.id)}
+                    >
+                      <CalendarPlus className="mr-1 h-3.5 w-3.5" /> Tovább bérli
+                    </Button>
+                  )}
+                  {canReturn && (
+                    <Button size="sm" variant="secondary" asChild>
+                      <Link to="/rental-return" search={{ rentalId: id }}>
+                        <RotateCcw className="mr-1 h-3.5 w-3.5" /> Visszahozta
+                      </Link>
+                    </Button>
+                  )}
+                </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>

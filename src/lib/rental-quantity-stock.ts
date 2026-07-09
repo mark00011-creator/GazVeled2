@@ -1,3 +1,4 @@
+import { addYears } from "@/lib/date-utils";
 import { supabase } from "@/integrations/supabase/client";
 import { adjustChineseStock, fetchChineseStock } from "@/lib/chinese-stock";
 import { canonicalGasType, canonicalSize } from "@/lib/product-prices";
@@ -27,7 +28,21 @@ export type RentalQuantityItem = {
   quantity: number;
   added_at: string;
   removed_at: string | null;
+  rental_start_date: string | null;
+  expiry_date: string | null;
 };
+
+export function quantityItemStartDate(
+  item: Pick<RentalQuantityItem, "rental_start_date" | "added_at">,
+): string {
+  return item.rental_start_date ?? item.added_at.slice(0, 10);
+}
+
+export function quantityItemExpiryDate(
+  item: Pick<RentalQuantityItem, "rental_start_date" | "expiry_date" | "added_at">,
+): string {
+  return item.expiry_date ?? addYears(quantityItemStartDate(item), 1);
+}
 
 export type RentalQuantityInput = {
   stock_kind: RentalQuantityStockKind;
@@ -243,6 +258,7 @@ export async function validateRentalQuantityFullStock(items: RentalQuantityInput
 export async function assignQuantityItemsToRental(
   rentalId: string,
   items: RentalQuantityInput[],
+  dates?: { start_date: string; expiry_date: string },
 ): Promise<void> {
   if (items.length === 0) return;
   await validateRentalQuantityFullStock(items);
@@ -255,6 +271,9 @@ export async function assignQuantityItemsToRental(
     gas_type: item.gas_type,
     size: item.size,
     quantity: Math.round(item.quantity),
+    ...(dates
+      ? { rental_start_date: dates.start_date, expiry_date: dates.expiry_date }
+      : {}),
   }));
   const { error } = await supabase.from("rental_quantity_items").insert(rows);
   if (error) throw new Error(formatSupabaseError(error, "Bérleti darabszám rögzítése"));
@@ -330,6 +349,8 @@ export function toContractStockItems(items: RentalQuantityItem[]): RentalContrac
     size: item.size,
     kind: item.stock_kind,
     quantity: item.quantity,
+    rental_start_date: quantityItemStartDate(item),
+    expiry_date: quantityItemExpiryDate(item),
   }));
 }
 

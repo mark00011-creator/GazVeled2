@@ -36,6 +36,8 @@ export type RentalContractStockItem = {
   kind: RentalQuantityStockKindLegacy;
   quantity?: number;
   replacement_value?: number | null;
+  rental_start_date?: string | null;
+  expiry_date?: string | null;
 };
 
 export type RentalContractLine = {
@@ -166,6 +168,10 @@ function lineFromStockItem(item: RentalContractStockItem): RentalContractLine {
         : item.kind === "prima_pb"
           ? "PRÍMA PB"
           : "FLAGA";
+  const start = item.rental_start_date ? fmtDate(item.rental_start_date) : null;
+  const expiry = item.expiry_date ? fmtDate(item.expiry_date) : null;
+  const lejarat =
+    start && expiry ? `${start} – ${expiry}` : expiry ?? start ?? "—";
   return {
     palackTipus: derivePalackTipus(item, { stockKind: item.kind }),
     gaz: item.gas_type,
@@ -175,7 +181,7 @@ function lineFromStockItem(item: RentalContractStockItem): RentalContractLine {
     vonalkodAzonosito: deriveVonalkodAzonosito({}, { stockKind: item.kind, quantityLine: true }),
     nyomasProba: "—",
     potlasiErtek: resolveReplacementValue(item.replacement_value),
-    lejarat: "—",
+    lejarat,
   };
 }
 

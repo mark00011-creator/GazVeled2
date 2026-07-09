@@ -576,7 +576,7 @@ export async function convertTempRentalCylinderToChinese(args: {
 
   const { data: rental, error: rentErr } = await supabase
     .from("rentals")
-    .select("partner_id, current_cylinder_id, original_cylinder_id")
+    .select("partner_id, current_cylinder_id, original_cylinder_id, start_date, expiry_date")
     .eq("id", args.rental_id)
     .single();
   if (rentErr) throwSupabaseError("convertTempRentalCylinderToChinese → rentals", rentErr);
@@ -633,6 +633,8 @@ export async function convertTempRentalCylinderToChinese(args: {
       gas_type,
       size,
       quantity,
+      rental_start_date: rental.start_date,
+      expiry_date: rental.expiry_date ?? defaultExpiryDate(rental.start_date),
     });
     if (qtyInsErr) throwSupabaseError("convertTempRentalCylinderToChinese → rental_quantity_items INSERT", qtyInsErr);
   }
@@ -1096,7 +1098,10 @@ export async function createRentalWithCylinders(args: {
     }
 
     if (quantityItems.length > 0) {
-      await assignQuantityItemsToRental(rentalId, quantityItems);
+      await assignQuantityItemsToRental(rentalId, quantityItems, {
+        start_date: args.start_date,
+        expiry_date: args.expiry_date,
+      });
     }
 
   } catch (e) {
@@ -1148,6 +1153,72 @@ export async function extendRentalCylinder(rentalId: string, cylinderId: string)
   if (updErr) throw new Error(parseDbError(updErr.message));
   await logRentalExtend(cylinderId, rental.partner_id, rentalId, base, newExpiry);
   await logRentalAudit(rentalId, "Palack bérlet meghosszabbítva", { cylinder_id: cylinderId, expiry_date: newExpiry });
+}
+
+export async function extendRentalQuantityItem(rentalId: string, itemId: string): Promise<void> {
+  const { data: item, error } = await supabase
+    .from("rental_quantity_items")
+    .select("expiry_date, rental_start_date, added_at")
+    .eq("id", itemId)
+    .eq("rental_id", rentalId)
+    .is("removed_at", null)
+    .single();
+
+  if (error || !item) throw new Error("Darabszámos bérleti tétel nem található");
+
+  const base =
+    item.expiry_date ??
+    (item.rental_start_date ?? item.added_at.slice(0, 10));
+  const newExpiry = addYears(base, 1);
+
+  const { error: updErr } = await supabase
+    .from("rental_quantity_items")
+    .update({ expiry_date: newExpiry })
+    .eq("id", itemId)
+    .eq("rental_id", rentalId);
+
+  if (updErr) throw new Error(parseDbError(updErr.message));
+  await logRentalAudit(rentalId, "Darabszámos bérleti tétel meghosszabbítva", {
+    item_id: itemId,
+    expiry_date: newExpiry,
+  });
+}
+
+export async function updateRentalQuantityItemExpiry(
+  rentalId: string,
+  itemId: string,
+  expiryDate: string,
+): Promise<void> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(expiryDate)) throw new Error("Érvénytelen dátum");
+
+  const { data: rental, error: rentErr } = await supabase
+    .from("rentals")
+    .select("id, status")
+    .eq("id", rentalId)
+    .single();
+  if (rentErr || !rental) throw new Error("Bérlet nem található");
+  if (rental.status === "closed") throw new Error("Lezárt bérlet nem módosítható");
+
+  const { data: item, error } = await supabase
+    .from("rental_quantity_items")
+    .select("expiry_date")
+    .eq("id", itemId)
+    .eq("rental_id", rentalId)
+    .is("removed_at", null)
+    .single();
+  if (error || !item) throw new Error("Darabszámos bérleti tétel nem található");
+
+  const { error: updErr } = await supabase
+    .from("rental_quantity_items")
+    .update({ expiry_date: expiryDate })
+    .eq("id", itemId)
+    .eq("rental_id", rentalId);
+
+  if (updErr) throw new Error(parseDbError(updErr.message));
+  await logRentalAudit(rentalId, "Darabszámos tétel lejárati dátuma módosítva", {
+    item_id: itemId,
+    expiry_date: expiryDate,
+  });
 }
 
 /** Uniform expiry for all active cylinders – does not touch rentals.expiry_date. */
