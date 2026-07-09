@@ -78,7 +78,7 @@ BEGIN
 
     IF v_return_qty >= v_row.quantity THEN
       UPDATE public.rental_quantity_items
-      SET quantity = 0, removed_at = now()
+      SET removed_at = now()
       WHERE id = v_row.id;
     ELSE
       UPDATE public.rental_quantity_items

@@ -293,7 +293,7 @@ export async function returnPartialRentalQuantityItems(
     p_items: filtered,
     p_note: note?.trim() || undefined,
   });
-  if (error) throw new Error(formatSupabaseError(error, "Darabszámos bérleti visszavétel"));
+  if (error) throw new Error("A darabszámos bérleti tétel visszavétele nem sikerült.");
 }
 
 /** Soronként: kind,gáz,méret,darab – pl. flaga_pb,Motorüzemű Flaga,11 kg,2 */
