@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
@@ -17,6 +17,11 @@ import {
   rentalNumber,
   type RentalCylinderDetail,
 } from "@/lib/rental-ops";
+import {
+  fetchRentalQuantityItems,
+  RENTAL_QUANTITY_KIND_LABELS,
+  type RentalQuantityItem,
+} from "@/lib/rental-quantity-stock";
 
 export const Route = createFileRoute("/_authenticated/rental-return")({
   validateSearch: (s: Record<string, unknown>) => ({
@@ -56,11 +61,59 @@ function CylinderRow({
   );
 }
 
+function QuantityItemRow({
+  item,
+  returnQty,
+  onChange,
+}: {
+  item: RentalQuantityItem;
+  returnQty: number;
+  onChange: (id: string, qty: number) => void;
+}) {
+  const kind =
+    RENTAL_QUANTITY_KIND_LABELS[item.stock_kind as keyof typeof RENTAL_QUANTITY_KIND_LABELS] ??
+    item.stock_kind;
+  return (
+    <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2 rounded-md border border-border/60 p-2 sm:grid-cols-[minmax(0,1fr)_5rem_5rem]">
+      <div className="min-w-0">
+        <div className="text-sm font-medium">{kind}</div>
+        <div className="text-xs text-muted-foreground">
+          {item.gas_type} · {item.size}
+        </div>
+      </div>
+      <div className="text-center text-xs text-muted-foreground">
+        <div className="font-medium text-foreground">{item.quantity} db</div>
+        <div>nála</div>
+      </div>
+      <div>
+        <Label className="sr-only" htmlFor={`qty-${item.id}`}>
+          Visszavétel
+        </Label>
+        <Input
+          id={`qty-${item.id}`}
+          type="number"
+          min={0}
+          max={item.quantity}
+          value={returnQty}
+          onChange={(e) => {
+            const raw = Number(e.target.value);
+            if (!Number.isFinite(raw)) return;
+            const clamped = Math.max(0, Math.min(item.quantity, Math.round(raw)));
+            onChange(item.id, clamped);
+          }}
+          className="h-9"
+        />
+      </div>
+    </div>
+  );
+}
+
 function RentalReturn() {
   const { rentalId: initialRentalId, cylinderId: initialCylinderId } = Route.useSearch();
   const qc = useQueryClient();
   const [rentalId, setRentalId] = useState(initialRentalId);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [qtyReturns, setQtyReturns] = useState<Record<string, number>>({});
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -98,8 +151,20 @@ function RentalReturn() {
     queryFn: () => fetchRentalCylinderDetails(rentalId),
   });
 
+  const {
+    data: qtyItems,
+    isLoading: qtyLoading,
+    isError: qtyError,
+    isFetching: qtyFetching,
+  } = useQuery({
+    queryKey: ["rental-return-qty", rentalId],
+    enabled: !!rentalId,
+    queryFn: () => fetchRentalQuantityItems(rentalId),
+  });
+
   useEffect(() => {
     setSelected(new Set());
+    setQtyReturns({});
   }, [rentalId]);
 
   useEffect(() => {
@@ -112,6 +177,14 @@ function RentalReturn() {
     }
   }, [cylLinks, cylsFetching, initialCylinderId]);
 
+  useEffect(() => {
+    if (!qtyFetching && qtyItems) {
+      const init: Record<string, number> = {};
+      for (const item of qtyItems) init[item.id] = 0;
+      setQtyReturns(init);
+    }
+  }, [qtyItems, qtyFetching]);
+
   const toggle = useCallback((id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -121,34 +194,64 @@ function RentalReturn() {
     });
   }, []);
 
+  const qtyReturnCount = useMemo(
+    () => Object.values(qtyReturns).reduce((sum, q) => sum + (q > 0 ? q : 0), 0),
+    [qtyReturns],
+  );
+
+  const quantityReturns = useMemo(
+    () =>
+      Object.entries(qtyReturns)
+        .filter(([, q]) => q > 0)
+        .map(([item_id, quantity]) => ({ item_id, quantity })),
+    [qtyReturns],
+  );
+
+  const canSubmit = selected.size > 0 || qtyReturnCount > 0;
+
   async function submit() {
     if (!rental) return;
-    if (selected.size === 0) {
-      toast.error("Válassz legalább egy palackot");
+    if (!canSubmit) {
+      toast.error("Válassz legalább egy palackot vagy darabszámú tételt");
       return;
     }
     setBusy(true);
     try {
       await returnRentalCylinders({
         rental_id: rental.id,
-        cylinder_ids: [...selected],
+        cylinder_ids: selected.size > 0 ? [...selected] : [],
+        quantity_returns: quantityReturns,
         note: note.trim() || null,
       });
-      toast.success("Palackok visszavéve");
+      toast.success("Visszavétel rögzítve");
       setNote("");
       await qc.invalidateQueries({ queryKey: ["rental-return-cyls", rental.id] });
+      await qc.invalidateQueries({ queryKey: ["rental-return-qty", rental.id] });
       await qc.invalidateQueries({ queryKey: ["rentals-returnable"] });
       await qc.invalidateQueries({ queryKey: ["rentals"] });
       await qc.invalidateQueries({ queryKey: ["rental", rental.id] });
       await qc.invalidateQueries({ queryKey: ["rental-cyls", rental.id] });
+      await qc.invalidateQueries({ queryKey: ["rental-qty-items"] });
+      await qc.invalidateQueries({ queryKey: ["rental-qty-summaries"] });
       await qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
       await qc.invalidateQueries({ queryKey: ["partner-rental-summaries"] });
+      await qc.invalidateQueries({ queryKey: ["partner-rental-overview"] });
+      await qc.invalidateQueries({ queryKey: ["chinese-stock"] });
+      await qc.invalidateQueries({ queryKey: ["flaga-pb-stock"] });
+      await qc.invalidateQueries({ queryKey: ["prima-pb-stock"] });
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
       setBusy(false);
     }
   }
+
+  const submitLabel =
+    selected.size > 0 && qtyReturnCount > 0
+      ? `Visszavétel (${selected.size} palack, ${qtyReturnCount} db)`
+      : selected.size > 0
+        ? `Visszavétel (${selected.size} palack)`
+        : `Visszavétel (${qtyReturnCount} db)`;
 
   return (
     <AppShell title="Bérlet visszavétel">
@@ -196,7 +299,7 @@ function RentalReturn() {
             ) : cylsError ? (
               <div className="text-sm text-destructive">Palackok betöltése sikertelen</div>
             ) : (cylLinks ?? []).length === 0 ? (
-              <div className="text-sm text-muted-foreground">Nincs kint lévő palack</div>
+              <div className="text-sm text-muted-foreground">Nincs kint lévő sorszámos palack</div>
             ) : (
               <div className="space-y-2">
                 {(cylLinks ?? []).map((c) => (
@@ -211,11 +314,43 @@ function RentalReturn() {
             )}
           </Card>
 
+          <Card className="mb-3 p-4">
+            <Label className="mb-3 block">Darabszámos bérelt tételek</Label>
+            {qtyLoading || qtyFetching ? (
+              <div className="text-sm text-muted-foreground">Tételek betöltése…</div>
+            ) : qtyError ? (
+              <div className="text-sm text-destructive">Tételek betöltése sikertelen</div>
+            ) : (qtyItems ?? []).length === 0 ? (
+              <div className="text-sm text-muted-foreground">Nincs kint lévő darabszámos tétel</div>
+            ) : (
+              <div className="space-y-2">
+                <div className="hidden grid-cols-[minmax(0,1fr)_5rem_5rem] gap-2 px-2 text-xs text-muted-foreground sm:grid">
+                  <span>Tétel</span>
+                  <span className="text-center">Nála</span>
+                  <span>Visszavétel</span>
+                </div>
+                {(qtyItems ?? []).map((item) => (
+                  <QuantityItemRow
+                    key={item.id}
+                    item={item}
+                    returnQty={qtyReturns[item.id] ?? 0}
+                    onChange={(id, qty) => setQtyReturns((prev) => ({ ...prev, [id]: qty }))}
+                  />
+                ))}
+              </div>
+            )}
+          </Card>
+
           <Input className="mb-3" placeholder="Megjegyzés (opcionális)" value={note} onChange={(e) => setNote(e.target.value)} />
 
-          <Button size="lg" className="w-full" disabled={busy || selected.size === 0 || cylsLoading} onClick={submit}>
+          <Button
+            size="lg"
+            className="w-full"
+            disabled={busy || !canSubmit || cylsLoading || qtyLoading}
+            onClick={submit}
+          >
             <Check className="mr-2 h-5 w-5" />
-            Visszavétel ({selected.size} palack)
+            {submitLabel}
           </Button>
         </>
       )}

@@ -270,24 +270,30 @@ export async function returnRentalQuantityItems(
     : items;
   if (toReturn.length === 0) return;
 
-  for (const item of toReturn) {
-    await returnStockFromRental(
-      {
-        stock_kind: item.stock_kind,
-        gas_type: item.gas_type,
-        size: item.size,
-        quantity: item.quantity,
-      },
-      rentalId,
-    );
-  }
+  await returnPartialRentalQuantityItems(
+    rentalId,
+    toReturn.map((i) => ({ item_id: i.id, quantity: i.quantity })),
+  );
+}
 
-  const ids = toReturn.map((i) => i.id);
-  const { error } = await supabase
-    .from("rental_quantity_items")
-    .update({ removed_at: new Date().toISOString() })
-    .in("id", ids);
-  if (error) throw new Error(formatSupabaseError(error, "Bérleti darabszám lezárása"));
+export type RentalQuantityReturnInput = { item_id: string; quantity: number };
+
+export async function returnPartialRentalQuantityItems(
+  rentalId: string,
+  items: RentalQuantityReturnInput[],
+  note?: string | null,
+): Promise<void> {
+  const filtered = items
+    .map((i) => ({ item_id: i.item_id, quantity: Math.round(i.quantity) }))
+    .filter((i) => i.quantity > 0);
+  if (filtered.length === 0) return;
+
+  const { error } = await supabase.rpc("return_rental_quantity_items_partial", {
+    p_rental_id: rentalId,
+    p_items: filtered,
+    p_note: note?.trim() || undefined,
+  });
+  if (error) throw new Error(formatSupabaseError(error, "Darabszámos bérleti visszavétel"));
 }
 
 /** Soronként: kind,gáz,méret,darab – pl. flaga_pb,Motorüzemű Flaga,11 kg,2 */

@@ -39,9 +39,11 @@ import {
 import {
   assignQuantityItemsToRental,
   fetchRentalQuantityItems,
+  returnPartialRentalQuantityItems,
   returnRentalQuantityItems,
   type RentalQuantityInput,
   type RentalQuantityItem,
+  type RentalQuantityReturnInput,
 } from "@/lib/rental-quantity-stock";
 
 
@@ -1349,6 +1351,8 @@ export async function returnRentalCylinders(args: {
 
   cylinder_ids?: string[];
 
+  quantity_returns?: RentalQuantityReturnInput[];
+
   note?: string | null;
 
 }): Promise<void> {
@@ -1379,6 +1383,12 @@ export async function returnRentalCylinders(args: {
 
   }
 
+  const hasQtyReturns = (args.quantity_returns ?? []).some((r) => r.quantity > 0);
+
+  if (hasQtyReturns) {
+    await returnPartialRentalQuantityItems(args.rental_id, args.quantity_returns ?? [], args.note);
+  }
+
 
 
   const { data: links, error: linkErr } = await supabase
@@ -1399,23 +1409,18 @@ export async function returnRentalCylinders(args: {
 
   let linkIds = (links ?? []).map((l) => l.cylinder_id);
 
-  if (args.cylinder_ids?.length) {
-
-    const idSet = new Set(args.cylinder_ids);
-
-    linkIds = linkIds.filter((id) => idSet.has(id));
-
+  if (args.cylinder_ids !== undefined) {
+    if (args.cylinder_ids.length === 0) {
+      linkIds = [];
+    } else {
+      const idSet = new Set(args.cylinder_ids);
+      linkIds = linkIds.filter((id) => idSet.has(id));
+    }
   }
 
 
 
-  if (linkIds.length === 0) {
-    const qtyItems = await fetchRentalQuantityItems(args.rental_id);
-    if (qtyItems.length === 0) {
-      throw new Error("Nincs visszavételezhető palack vagy darabszámú tétel");
-    }
-    await returnRentalQuantityItems(args.rental_id);
-  } else {
+  if (linkIds.length > 0) {
     const { data: cylRows, error: cylErr } = await supabase
       .from("cylinders")
       .select("id, barcode, gas_type, size, status, location_type, location_partner_id")
@@ -1471,6 +1476,12 @@ export async function returnRentalCylinders(args: {
         throwSupabaseError("returnRentalCylinders → rental_cylinders UPDATE", rcUpdErr);
       }
     }
+  } else if (!hasQtyReturns) {
+    const qtyItems = await fetchRentalQuantityItems(args.rental_id);
+    if (qtyItems.length === 0) {
+      throw new Error("Nincs visszavételezhető palack vagy darabszámú tétel");
+    }
+    await returnRentalQuantityItems(args.rental_id);
   }
 
   const now = new Date().toISOString();
