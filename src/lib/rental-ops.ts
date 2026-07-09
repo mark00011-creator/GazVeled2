@@ -653,6 +653,86 @@ export async function convertTempRentalCylinderToChinese(args: {
 
 
 
+/** Active rental id for partner, or null. If duplicates exist, returns the most recent by start_date. */
+export async function findActiveRentalForPartner(partnerId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("rentals")
+    .select("id")
+    .eq("partner_id", partnerId)
+    .eq("status", "active")
+    .order("start_date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throwSupabaseError("findActiveRentalForPartner → rentals SELECT", error, { partnerId });
+  return data?.id ?? null;
+}
+
+export type ActiveRentalCreateParams = {
+  partner_id: string;
+  start_date: string;
+  expiry_date: string;
+  rental_type: RentalType;
+  first_invoice_date?: string | null;
+  next_invoice_date?: string | null;
+  billing_cycle_months?: number;
+  monthly_fee: number;
+  deposit: number;
+  status: RentalStatus;
+  note?: string | null;
+  first_cylinder_id?: string | null;
+};
+
+async function insertNewRental(args: ActiveRentalCreateParams): Promise<string> {
+  const rentalPayload: Record<string, unknown> = {
+    partner_id: args.partner_id,
+    start_date: args.start_date,
+    expiry_date: args.expiry_date,
+    rental_type: args.rental_type,
+    billing_cycle_months: args.billing_cycle_months ?? 1,
+    monthly_fee: args.monthly_fee,
+    deposit: args.deposit,
+    status: args.status,
+    note: args.note ?? null,
+    current_cylinder_id: args.first_cylinder_id ?? null,
+    original_cylinder_id: args.first_cylinder_id ?? null,
+  };
+
+  if (args.rental_type === "monthly") {
+    rentalPayload.first_invoice_date = args.first_invoice_date ?? args.start_date;
+    rentalPayload.next_invoice_date = args.next_invoice_date ?? args.first_invoice_date ?? args.start_date;
+  } else {
+    rentalPayload.first_invoice_date = null;
+    rentalPayload.next_invoice_date = null;
+  }
+
+  const { data: contractNumber, error: cnErr } = await supabase.rpc("next_rental_contract_number", {
+    p_start_date: args.start_date,
+  });
+  if (!cnErr && contractNumber) {
+    rentalPayload.contract_number = contractNumber;
+  }
+
+  const { data: rental, error: rentErr } = await supabase
+    .from("rentals")
+    .insert(rentalPayload as never)
+    .select("id")
+    .single();
+
+  if (rentErr) throwSupabaseError("insertNewRental → rentals INSERT", rentErr, { payload: rentalPayload });
+  if (!rental) throw new Error("Bérlet létrehozása sikertelen: üres válasz");
+  return rental.id;
+}
+
+/** Returns the partner's active rental, or creates a new one if none exists. */
+export async function getOrCreateActiveRentalForPartner(
+  args: ActiveRentalCreateParams,
+): Promise<{ rentalId: string; created: boolean }> {
+  const existingId = await findActiveRentalForPartner(args.partner_id);
+  if (existingId) return { rentalId: existingId, created: false };
+  const rentalId = await insertNewRental(args);
+  return { rentalId, created: true };
+}
+
 export async function findActiveRentalIdForCylinder(cylinderId: string): Promise<string | null> {
 
   const { data: links, error: linkErr } = await supabase
@@ -944,7 +1024,7 @@ export async function createRentalWithCylinders(args: {
   cylinder_specs?: { gas_type: string; size: string }[];
   quantity_items?: RentalQuantityInput[];
 
-}): Promise<string> {
+}): Promise<{ id: string; addedToExisting: boolean }> {
 
   if (args.rental_type === "monthly" && args.monthly_fee <= 0) {
 
@@ -980,74 +1060,20 @@ export async function createRentalWithCylinders(args: {
     cylinders.push(await createTempRentalCylinder(spec.gas_type, spec.size));
   }
 
-
-
-  const rentalPayload: Record<string, unknown> = {
-
+  const { rentalId, created } = await getOrCreateActiveRentalForPartner({
     partner_id: args.partner_id,
-
     start_date: args.start_date,
-
     expiry_date: args.expiry_date,
-
     rental_type: args.rental_type,
-
-    billing_cycle_months: args.billing_cycle_months ?? 1,
-
+    first_invoice_date: args.first_invoice_date,
+    next_invoice_date: args.next_invoice_date,
+    billing_cycle_months: args.billing_cycle_months,
     monthly_fee: args.monthly_fee,
-
     deposit: args.deposit,
-
     status: args.status,
-
-    note: args.note ?? null,
-
-    current_cylinder_id: cylinders[0]?.id ?? null,
-
-    original_cylinder_id: cylinders[0]?.id ?? null,
-
-  };
-
-
-
-  if (args.rental_type === "monthly") {
-
-    rentalPayload.first_invoice_date = args.first_invoice_date ?? args.start_date;
-
-    rentalPayload.next_invoice_date = args.next_invoice_date ?? args.first_invoice_date ?? args.start_date;
-
-  } else {
-
-    rentalPayload.first_invoice_date = null;
-
-    rentalPayload.next_invoice_date = null;
-
-  }
-
-  const { data: contractNumber, error: cnErr } = await supabase.rpc("next_rental_contract_number", {
-    p_start_date: args.start_date,
+    note: args.note,
+    first_cylinder_id: cylinders[0]?.id ?? null,
   });
-  if (!cnErr && contractNumber) {
-    rentalPayload.contract_number = contractNumber;
-  }
-
-
-
-  const { data: rental, error: rentErr } = await supabase
-
-    .from("rentals")
-
-    .insert(rentalPayload as never)
-
-    .select("id")
-
-    .single();
-
-
-
-  if (rentErr) throwSupabaseError("createRentalWithCylinders → rentals INSERT", rentErr, { payload: rentalPayload });
-
-  if (!rental) throw new Error("Bérlet létrehozása sikertelen: üres válasz");
 
 
 
@@ -1056,7 +1082,7 @@ export async function createRentalWithCylinders(args: {
     for (const cyl of cylinders) {
 
       await assignCylinderToRental(
-        rental.id,
+        rentalId,
         args.partner_id,
         cyl,
         uid,
@@ -1068,12 +1094,14 @@ export async function createRentalWithCylinders(args: {
     }
 
     if (quantityItems.length > 0) {
-      await assignQuantityItemsToRental(rental.id, quantityItems);
+      await assignQuantityItemsToRental(rentalId, quantityItems);
     }
 
   } catch (e) {
 
-    await supabase.from("rentals").delete().eq("id", rental.id);
+    if (created) {
+      await supabase.from("rentals").delete().eq("id", rentalId);
+    }
 
     throw e;
 
@@ -1081,7 +1109,7 @@ export async function createRentalWithCylinders(args: {
 
 
 
-  return rental.id;
+  return { id: rentalId, addedToExisting: !created };
 
 }
 

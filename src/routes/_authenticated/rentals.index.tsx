@@ -46,6 +46,7 @@ import {
   defaultExpiryDate,
   fetchRentalCylinderDetails,
   fetchRentalWithPartner,
+  findActiveRentalForPartner,
   parseRentalCylinderSpecs,
   rentalNumber,
 } from "@/lib/rental-ops";
@@ -260,6 +261,12 @@ function RentalsList() {
       ).data ?? [],
   });
 
+  const { data: partnerActiveRentalId } = useQuery({
+    queryKey: ["partner-active-rental", form.partner_id],
+    enabled: !!form.partner_id,
+    queryFn: () => findActiveRentalForPartner(form.partner_id),
+  });
+
   const statusFiltered = useMemo(() => {
     const list = rentals ?? [];
     if (statusFilter !== "expired") return list;
@@ -384,7 +391,7 @@ function RentalsList() {
 
     setBusy(true);
     try {
-      const id = await createRentalWithCylinders({
+      const { id, addedToExisting } = await createRentalWithCylinders({
         partner_id: form.partner_id,
         start_date: form.start_date,
         expiry_date: form.expiry_date,
@@ -400,11 +407,16 @@ function RentalsList() {
         quantity_items: quantityItems,
       });
 
-      toast.success("Bérlet létrehozva");
+      toast.success(
+        addedToExisting
+          ? "Tétel hozzáadva a meglévő bérlethez"
+          : "Bérlet létrehozva",
+      );
       setLastCreatedId(id);
       setForm(makeEmptyForm());
       setOpen(false);
       qc.invalidateQueries({ queryKey: ["rentals"] });
+      qc.invalidateQueries({ queryKey: ["partner-active-rental"] });
       qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
       qc.invalidateQueries({ queryKey: ["cylinders"] });
       qc.invalidateQueries({ queryKey: ["partner-rental-summaries"] });
@@ -544,6 +556,11 @@ function RentalsList() {
                     ))}
                   </SelectContent>
                 </Select>
+                {partnerActiveRentalId && (
+                  <p className="mt-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-primary">
+                    A partnernek már van aktív bérlete. Az új tétel a meglévő bérlethez kerül.
+                  </p>
+                )}
               </div>
               <div>
                 <Label>Bérlet típusa *</Label>
