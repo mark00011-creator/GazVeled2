@@ -1570,6 +1570,20 @@ export type Database = {
         }
         Returns: string
       }
+      record_chinese_brought_exchange: {
+        Args: {
+          p_in_gas_type: string
+          p_in_size: string
+          p_note?: string
+          p_out_gas_type?: string
+          p_out_size?: string
+          p_outgoing_id?: string
+          p_outgoing_kind: string
+          p_partner_id: string
+          p_quantity: number
+        }
+        Returns: string
+      }
       record_cylinder_loan: {
         Args: {
           p_note?: string

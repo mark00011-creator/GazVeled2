@@ -45,8 +45,9 @@ import {
   recordSale,
   recordEmptyReturn,
   recordChineseSale,
-  recordChineseBrought,
-  recordChineseTake,
+      recordChineseBroughtExchange,
+      recordChineseTake,
+      getChineseBroughtSerialOutgoingValidationError,
   recordFlagaPbSale,
   recordPrimaPbSale,
   type CylinderRow,
@@ -84,6 +85,7 @@ export const Route = createFileRoute("/_authenticated/quick-exchange")({
 type IncomingKind = "rental" | "own" | "new";
 type SaleMode = "barcode" | "chinese" | "flaga_pb" | "prima_pb";
 type ExchangeMode = "barcode" | "chinese_brought" | "chinese_take";
+type ChineseBroughtOutKind = "serial" | "chinese";
 
 const OP_LABELS: Record<PartnerOperationType, string> = {
   exchange: "Csere",
@@ -119,6 +121,10 @@ function QuickExchange() {
   const [chineseGas, setChineseGas] = useState("Széndioxid");
   const [chineseSize, setChineseSize] = useState("10 kg");
   const [chineseQty, setChineseQty] = useState("1");
+  const [chineseBroughtOutKind, setChineseBroughtOutKind] = useState<ChineseBroughtOutKind | "">("");
+  const [chineseOutGas, setChineseOutGas] = useState("Széndioxid");
+  const [chineseOutSize, setChineseOutSize] = useState("10 kg");
+  const [chineseOutQty, setChineseOutQty] = useState("1");
 
   const [flagaPbKey, setFlagaPbKey] = useState(
     flagaPbProductKey(FLAGA_PB_CATALOG[0].gas_type, FLAGA_PB_CATALOG[0].size),
@@ -268,6 +274,8 @@ function QuickExchange() {
     setIncomingCreated(false);
     setOutgoingCreated(false);
     setReassign(null);
+    setChineseBroughtOutKind("");
+    setChineseOutQty("1");
   }
 
   function switchOperation(op: PartnerOperationType) {
@@ -296,7 +304,17 @@ function QuickExchange() {
       const cyl = await findCylinderByBarcode(outgoingBc);
       setOutgoing(cyl);
       setOutgoingCreated(false);
-    } catch {
+    } catch (e) {
+      if (
+        operation === "exchange" &&
+        exchangeMode === "chinese_brought" &&
+        chineseBroughtOutKind === "serial"
+      ) {
+        setOutgoing(null);
+        setOutgoingCreated(false);
+        toast.error("A megadott teli palack nem található.");
+        return;
+      }
       setNewCylBarcode(outgoingBc);
       setNewCylPhase("outgoing");
       setNewCylDialog(true);
@@ -322,6 +340,24 @@ function QuickExchange() {
       : operation === "loan" || (operation === "sale" && saleMode === "barcode");
 
   const loanOutgoingError = outgoing && operation === "loan" ? getLoanOutgoingValidationError(outgoing) : null;
+  const chineseBroughtSerialError =
+    outgoing &&
+    operation === "exchange" &&
+    exchangeMode === "chinese_brought" &&
+    chineseBroughtOutKind === "serial"
+      ? getChineseBroughtSerialOutgoingValidationError(outgoing)
+      : null;
+
+  const chineseBroughtInQty = Number(chineseQty);
+  const chineseBroughtOutQty = Number(chineseOutQty);
+  const chineseBroughtIncomingOk =
+    Number.isFinite(chineseBroughtInQty) && chineseBroughtInQty > 0;
+  const chineseBroughtOutgoingOk =
+    chineseBroughtOutKind === "serial"
+      ? !!outgoing && !chineseBroughtSerialError
+      : chineseBroughtOutKind === "chinese" &&
+        Number.isFinite(chineseBroughtOutQty) &&
+        chineseBroughtOutQty > 0;
 
   const canComplete =
     partnerId &&
@@ -331,7 +367,8 @@ function QuickExchange() {
       outgoing) ||
       (operation === "exchange" &&
         exchangeMode === "chinese_brought" &&
-        Number(chineseQty) > 0) ||
+        chineseBroughtIncomingOk &&
+        chineseBroughtOutgoingOk) ||
       (operation === "exchange" &&
         exchangeMode === "chinese_take" &&
         incoming &&
@@ -358,14 +395,47 @@ function QuickExchange() {
             toast.error("Érvényes darabszámot adj meg");
             return;
           }
-          await recordChineseBrought({
-            partner_id: partnerId,
-            gas_type: chineseGas,
-            size: chineseSize,
-            quantity: qty,
-            note: note || null,
-          });
-          toast.success("Hozott kínai rögzítve");
+          if (!chineseBroughtOutKind) {
+            toast.error("Add meg, milyen teli palackot adsz ki a partnernek.");
+            return;
+          }
+          if (chineseBroughtOutKind === "serial") {
+            if (!outgoing) {
+              toast.error("Add meg, milyen teli palackot adsz ki a partnernek.");
+              return;
+            }
+            const serialErr = getChineseBroughtSerialOutgoingValidationError(outgoing);
+            if (serialErr) {
+              toast.error(serialErr);
+              return;
+            }
+            await recordChineseBroughtExchange({
+              partner_id: partnerId,
+              in_gas_type: chineseGas,
+              in_size: chineseSize,
+              quantity: qty,
+              outgoing_kind: "serial",
+              outgoing_id: outgoing.id,
+              note: note || null,
+            });
+          } else {
+            const outQty = Number(chineseOutQty);
+            if (!Number.isFinite(outQty) || outQty <= 0) {
+              toast.error("Érvényes darabszámot adj meg a kiadott kínai teli palackhoz");
+              return;
+            }
+            await recordChineseBroughtExchange({
+              partner_id: partnerId,
+              in_gas_type: chineseGas,
+              in_size: chineseSize,
+              quantity: qty,
+              outgoing_kind: "chinese",
+              out_gas_type: chineseOutGas,
+              out_size: chineseOutSize,
+              note: note || null,
+            });
+          }
+          toast.success("Hozott kínai csere rögzítve");
         } else if (exchangeMode === "chinese_take") {
           if (!incoming) {
             toast.error("Válassz beérkező palackot");
@@ -528,6 +598,7 @@ function QuickExchange() {
   }
 
   const chineseSizes = getAvailableSizes(chineseGas);
+  const chineseOutSizes = getAvailableSizes(chineseOutGas);
 
   return (
     <AppShell title="Gyors csere">
@@ -910,11 +981,180 @@ function QuickExchange() {
 
       {partnerId &&
         operation === "exchange" &&
-        (exchangeMode === "chinese_brought" || exchangeMode === "chinese_take") && (
+        exchangeMode === "chinese_brought" && (
+        <>
+          <Card className="mb-3 p-4">
+            <Label className="mb-2 block">1. Hozott kínai üres palack</Label>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Gáz</Label>
+                <Select value={chineseGas} onValueChange={(v) => setChineseGas(v)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GAS_TYPES.map((g) => (
+                      <SelectItem key={g} value={g}>
+                        {g}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Méret</Label>
+                <Select value={chineseSize} onValueChange={setChineseSize}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {chineseSizes.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="col-span-2">
+                <Label className="text-xs">Darabszám</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={chineseQty}
+                  onChange={(e) => setChineseQty(e.target.value)}
+                />
+              </div>
+            </div>
+          </Card>
+
+          <Card className="mb-3 p-4">
+            <Label className="mb-2 block">2. Kiadott teli palack</Label>
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant={chineseBroughtOutKind === "serial" ? "default" : "outline"}
+                className="flex-1"
+                onClick={() => {
+                  setChineseBroughtOutKind("serial");
+                  setOutgoing(null);
+                  setOutgoingBc("");
+                  setOutgoingCreated(false);
+                }}
+              >
+                Sorszámos teli palack
+              </Button>
+              <Button
+                type="button"
+                variant={chineseBroughtOutKind === "chinese" ? "default" : "outline"}
+                className="flex-1"
+                onClick={() => {
+                  setChineseBroughtOutKind("chinese");
+                  setOutgoing(null);
+                  setOutgoingBc("");
+                  setOutgoingCreated(false);
+                }}
+              >
+                Kínai teli palack
+              </Button>
+            </div>
+
+            {chineseBroughtOutKind === "serial" && (
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Kiadott teli palack vonalkódja"
+                    value={outgoingBc}
+                    onChange={(e) => setOutgoingBc(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && lookupOutgoing()}
+                  />
+                  <Button type="button" variant="outline" onClick={() => setScanning("out")}>
+                    <Camera className="h-4 w-4" />
+                  </Button>
+                  <Button type="button" onClick={lookupOutgoing}>
+                    Keresés
+                  </Button>
+                </div>
+                {outgoing && (
+                  <div className="rounded-md border p-3">
+                    <div className="mb-2 font-mono text-sm font-semibold">{outgoing.barcode}</div>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="outline">
+                        {circulationLabels[outgoing.circulation]}
+                      </Badge>
+                      <Badge variant="outline">
+                        {outgoing.gas_type} · {outgoing.size}
+                      </Badge>
+                      <Badge variant={outgoing.status === "full" ? "secondary" : "destructive"}>
+                        {statusLabels[outgoing.status] ?? outgoing.status}
+                      </Badge>
+                      <Badge variant="outline">
+                        {locationLabels[outgoing.location_type] ?? outgoing.location_type}
+                      </Badge>
+                    </div>
+                    {chineseBroughtSerialError && (
+                      <div className="mt-2 flex items-start gap-2 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span>{chineseBroughtSerialError}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {chineseBroughtOutKind === "chinese" && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Gáz</Label>
+                  <Select value={chineseOutGas} onValueChange={(v) => setChineseOutGas(v)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GAS_TYPES.map((g) => (
+                        <SelectItem key={g} value={g}>
+                          {g}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Méret</Label>
+                  <Select value={chineseOutSize} onValueChange={setChineseOutSize}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {chineseOutSizes.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="col-span-2">
+                  <Label className="text-xs">Darabszám</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={chineseOutQty}
+                    onChange={(e) => setChineseOutQty(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+          </Card>
+        </>
+      )}
+
+      {partnerId &&
+        operation === "exchange" &&
+        exchangeMode === "chinese_take" && (
         <Card className="mb-3 p-4">
-          <Label className="mb-2 block">
-            {exchangeMode === "chinese_brought" ? "Hozott kínai (üres)" : "Kínai teli kiadás"}
-          </Label>
+          <Label className="mb-2 block">Kínai teli kiadás</Label>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-xs">Gáz</Label>

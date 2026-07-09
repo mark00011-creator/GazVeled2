@@ -10,6 +10,7 @@ import {
 } from "@/lib/cylinder-history";
 import {
   deriveExchangeCirculationSideFromCylinder,
+  deriveQuantityExchangeCirculation,
 } from "@/lib/exchange-circulation";
 import { supabase } from "@/integrations/supabase/client";
 import { statusLabels, type Circulation, type Manufacturer } from "@/lib/labels";
@@ -527,7 +528,127 @@ export async function recordPrimaPbSale(args: {
   return data.id;
 }
 
-/** Hozott kínai: üres kínai palack be vonalkód nélkül (darabszám). */
+/** Hozott kínai: üres kínai be + teli ki (egy tranzakcióban). */
+export async function recordChineseBroughtExchange(args: {
+  partner_id: string;
+  in_gas_type: string;
+  in_size: string;
+  quantity: number;
+  outgoing_kind: "serial" | "chinese";
+  outgoing_id?: string | null;
+  out_gas_type?: string | null;
+  out_size?: string | null;
+  note?: string | null;
+}): Promise<string> {
+  const in_gas_type = canonicalGasType(args.in_gas_type);
+  const in_size = canonicalSize(in_gas_type, args.in_size);
+  const quantity = Math.round(args.quantity);
+  if (quantity <= 0) throw new Error("A mennyiségnek pozitívnak kell lennie");
+
+  if (args.outgoing_kind === "serial" && !args.outgoing_id) {
+    throw new Error("Add meg, milyen teli palackot adsz ki a partnernek.");
+  }
+  if (args.outgoing_kind === "chinese" && (!args.out_gas_type || !args.out_size)) {
+    throw new Error("Add meg, milyen teli palackot adsz ki a partnernek.");
+  }
+
+  const out_gas_type =
+    args.outgoing_kind === "chinese" && args.out_gas_type
+      ? canonicalGasType(args.out_gas_type)
+      : undefined;
+  const out_size =
+    args.outgoing_kind === "chinese" && args.out_gas_type && args.out_size
+      ? canonicalSize(canonicalGasType(args.out_gas_type), args.out_size)
+      : undefined;
+
+  const { data, error } = await supabase.rpc("record_chinese_brought_exchange", {
+    p_partner_id: args.partner_id,
+    p_in_gas_type: in_gas_type,
+    p_in_size: in_size,
+    p_quantity: quantity,
+    p_outgoing_kind: args.outgoing_kind,
+    p_outgoing_id: args.outgoing_kind === "serial" ? args.outgoing_id : undefined,
+    p_out_gas_type: out_gas_type,
+    p_out_size: out_size,
+    p_note: args.note ?? undefined,
+  });
+
+  if (error) throw new Error(formatChineseBroughtError(error));
+  if (!data) throw new Error("A csere rögzítése nem sikerült.");
+
+  const exchangeId = data as string;
+
+  if (args.outgoing_kind === "serial" && args.outgoing_id) {
+    await storeExchangeProfit(exchangeId, args.outgoing_id);
+
+    const [{ data: outCyl }, partnerName] = await Promise.all([
+      supabase
+        .from("cylinders")
+        .select("barcode, gas_type, size, circulation, manufacturer")
+        .eq("id", args.outgoing_id)
+        .single(),
+      fetchPartnerName(args.partner_id),
+    ]);
+
+    if (outCyl) {
+      await logPartnerIssue(args.outgoing_id, args.partner_id, outCyl.barcode, partnerName);
+
+      const inSide = deriveQuantityExchangeCirculation("chinese", in_gas_type, in_size);
+      const outSide = deriveExchangeCirculationSideFromCylinder(outCyl as CylinderRow);
+      const forced = inSide.key !== outSide.key || inSide.gas_type !== outSide.gas_type;
+      await logCirculationDifferenceEvents({
+        exchange_id: exchangeId,
+        partner_id: args.partner_id,
+        outgoing_id: args.outgoing_id,
+        outgoing_barcode: outCyl.barcode,
+        partner_name: partnerName,
+        incoming_side: inSide,
+        outgoing_side: outSide,
+        reason: null,
+        settlement_only: !forced,
+      });
+    }
+  } else if (args.outgoing_kind === "chinese" && out_gas_type && out_size) {
+    const partnerName = await fetchPartnerName(args.partner_id);
+    const inSide = deriveQuantityExchangeCirculation("chinese", in_gas_type, in_size);
+    const outSide = deriveQuantityExchangeCirculation("chinese", out_gas_type, out_size);
+    const forced = inSide.gas_type !== outSide.gas_type;
+    await logCirculationDifferenceEvents({
+      exchange_id: exchangeId,
+      partner_id: args.partner_id,
+      partner_name: partnerName,
+      incoming_side: inSide,
+      outgoing_side: outSide,
+      reason: null,
+      settlement_only: !forced,
+    });
+  }
+
+  return exchangeId;
+}
+
+function formatChineseBroughtError(error: { message?: string }): string {
+  const msg = error.message ?? "";
+  if (msg.includes("Add meg, milyen teli")) return msg;
+  if (msg.includes("nem található")) return "A megadott teli palack nem található.";
+  if (msg.includes("nem teli telephelyi")) {
+    return "Ez a palack nem adható ki, mert nem teli telephelyi palack.";
+  }
+  if (msg.includes("Nincs elegendő kínai teli") || msg.includes("Nincs elég teli kínai")) {
+    return "Nincs elegendő kínai teli készlet.";
+  }
+  return formatSupabaseError(error, "A csere rögzítése nem sikerült");
+}
+
+/** Hozott kínai sorszámos teli kiadás: csak telephelyi teli készletből. */
+export function getChineseBroughtSerialOutgoingValidationError(cyl: CylinderRow): string | null {
+  if (cyl.status !== "full" || cyl.location_type !== "warehouse_full") {
+    return "Ez a palack nem adható ki, mert nem teli telephelyi palack.";
+  }
+  return null;
+}
+
+/** @deprecated Use recordChineseBroughtExchange – csak üres be, nincs teli ki. */
 export async function recordChineseBrought(args: {
   partner_id: string;
   gas_type: string;
