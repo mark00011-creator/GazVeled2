@@ -23,11 +23,13 @@ export type ExchangeCirculationSide = {
 };
 
 export function deriveExchangeCirculationFromCylinder(cyl: {
+  owner?: string | null;
   circulation: Circulation;
   manufacturer: Manufacturer | string | null;
 }): ExchangeCirculationKey {
   if (cyl.manufacturer === "chinese") return "chinese";
   return classifySerialCylinder({
+    owner: cyl.owner,
     circulation: cyl.circulation,
     manufacturer: (cyl.manufacturer as Manufacturer | null) ?? null,
   });

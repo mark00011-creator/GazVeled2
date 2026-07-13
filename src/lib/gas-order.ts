@@ -12,6 +12,7 @@ export type OrderableCylinder = {
   gas_type: string;
   size: string;
   circulation: Circulation;
+  owner: Circulation;
   manufacturer: Manufacturer | null;
 };
 
@@ -41,8 +42,11 @@ export type GasOrderGroup = {
   other: OrderableCylinder[];
 };
 
-export function classifySerialCylinder(cylinder: Pick<OrderableCylinder, "circulation" | "manufacturer">): SerialGroupKey {
-  if (cylinder.circulation === "siad") return "siad_rental";
+export function classifySerialCylinder(
+  cylinder: Pick<OrderableCylinder, "owner" | "circulation" | "manufacturer">,
+): SerialGroupKey {
+  const owner = cylinder.owner ?? cylinder.circulation;
+  if (owner === "siad") return "siad_rental";
   if (cylinder.manufacturer === "siad") return "own_siad";
   if (cylinder.manufacturer === "linde") return "linde";
   if (cylinder.manufacturer === "messer") return "messer";
@@ -70,12 +74,11 @@ export function countSerialCylinders(group: GasOrderGroup): number {
 export async function fetchOrderableCylinders(): Promise<GasOrderGroup> {
   const { data, error } = await supabase
     .from("cylinders")
-    .select("id, barcode, gas_type, size, circulation, manufacturer")
+    .select("id, barcode, gas_type, size, circulation, owner, manufacturer")
     .eq("active", true)
     .eq("status", "empty")
     .eq("location_type", "warehouse_empty")
-    .in("circulation", ["siad", "own"])
-    .order("circulation")
+    .order("owner")
     .order("gas_type")
     .order("size")
     .order("barcode");
@@ -91,6 +94,7 @@ export async function fetchOrderableCylinders(): Promise<GasOrderGroup> {
       gas_type: row.gas_type,
       size: row.size,
       circulation: row.circulation as Circulation,
+      owner: row.owner as Circulation,
       manufacturer: (row.manufacturer as Manufacturer | null) ?? null,
     };
     group[classifySerialCylinder(cyl)].push(cyl);
