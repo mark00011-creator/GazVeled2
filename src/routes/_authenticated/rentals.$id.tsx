@@ -44,7 +44,7 @@ import {
   updateRentalQuantityItemExpiry,
 } from "@/lib/rental-ops";
 import { logSupabaseError } from "@/lib/supabase-error";
-import { updateCylinderBarcode } from "@/lib/cylinder-ops";
+import { convertTempCylinderToRealSerial, updateCylinderBarcode } from "@/lib/cylinder-ops";
 import { daysUntil, invoiceUrgency } from "@/lib/rental-billing";
 import {
   buildContractLines,
@@ -277,10 +277,24 @@ function RentalDetail() {
       toast.error("Add meg a vonalkódot");
       return;
     }
+    const cyl = (cylLinks ?? []).find((c) => c.cylinder_id === cylinderId);
     setBusyId(`barcode-${cylinderId}`);
     try {
-      await updateCylinderBarcode(cylinderId, newBarcode);
-      toast.success("Vonalkód mentve");
+      if (cyl && isTempRentalCylinder(c)) {
+        const mode = await convertTempCylinderToRealSerial({
+          temp_cylinder_id: cylinderId,
+          new_barcode: newBarcode,
+          rental_id: id,
+        });
+        toast.success(
+          mode === "migrated"
+            ? "TEMP palack átmigrálva valódi sorszámra"
+            : "TEMP palack valódi sorszámmá alakítva",
+        );
+      } else {
+        await updateCylinderBarcode(cylinderId, newBarcode);
+        toast.success("Vonalkód mentve");
+      }
       setEditingBarcodeId(null);
       setBarcodeEdits((prev) => {
         const next = { ...prev };

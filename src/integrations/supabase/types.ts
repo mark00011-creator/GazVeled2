@@ -1542,6 +1542,43 @@ export type Database = {
         Returns: boolean
       }
       next_temp_barcode: { Args: never; Returns: string }
+      is_temp_cylinder_barcode: { Args: { p_barcode: string }; Returns: boolean }
+      is_temp_cylinder_record: {
+        Args: { p_is_temporary: boolean; p_barcode: string }
+        Returns: boolean
+      }
+      is_deletable_temp_cylinder: {
+        Args: { p_is_temporary: boolean; p_barcode: string }
+        Returns: boolean
+      }
+      temp_cylinder_blocking_reason: {
+        Args: { p_cylinder_id: string }
+        Returns: string
+      }
+      try_delete_orphan_temp_cylinder: {
+        Args: {
+          p_cylinder_id: string
+          p_context?: string
+          p_user_id?: string
+          p_raise_on_block?: boolean
+        }
+        Returns: boolean
+      }
+      migrate_temp_cylinder_refs: {
+        Args: { p_temp_cylinder_id: string; p_real_cylinder_id: string }
+        Returns: undefined
+      }
+      list_orphan_temp_cylinders: {
+        Args: { p_include_blocked?: boolean }
+        Returns: {
+          cylinder_id: string
+          barcode: string
+          gas_type: string
+          size: string
+          deletable: boolean
+          blocking_reason: string
+        }[]
+      }
       reassign_rental_cylinder: {
         Args: {
           p_new_cylinder_id: string

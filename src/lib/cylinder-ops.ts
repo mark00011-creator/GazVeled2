@@ -1070,12 +1070,35 @@ export async function reassignRentalCylinder(args: {
   new_cylinder_id: string;
   note?: string | null;
 }): Promise<void> {
+  const { data: rental, error: rentErr } = await supabase
+    .from("rentals")
+    .select("current_cylinder_id")
+    .eq("id", args.rental_id)
+    .single();
+  if (rentErr) throw new Error(parseDbError(rentErr.message));
+  const oldCylinderId = rental?.current_cylinder_id ?? null;
+
   const { error } = await supabase.rpc("reassign_rental_cylinder", {
     p_rental_id: args.rental_id,
     p_new_cylinder_id: args.new_cylinder_id,
     p_note: args.note ?? undefined,
   });
   if (error) throw new Error(parseDbError(error.message));
+
+  if (oldCylinderId && oldCylinderId !== args.new_cylinder_id) {
+    const { data: oldCyl } = await supabase
+      .from("cylinders")
+      .select("id, barcode, is_temporary")
+      .eq("id", oldCylinderId)
+      .maybeSingle();
+    if (oldCyl && (oldCyl.is_temporary || /^temp-/i.test(oldCyl.barcode))) {
+      await supabase.rpc("try_delete_orphan_temp_cylinder", {
+        p_cylinder_id: oldCylinderId,
+        p_context: "temp_to_serial",
+        p_raise_on_block: false,
+      });
+    }
+  }
 }
 
 /** Update cylinder. */
@@ -1153,10 +1176,89 @@ export async function finalizeCylinderBarcode(
   if (bc.startsWith("temp-") || bc.startsWith("TEMP-"))
     throw new Error("A végleges vonalkód nem lehet ideiglenes");
 
+  const { data: before, error: beforeErr } = await supabase
+    .from("cylinders")
+    .select("*")
+    .eq("id", id)
+    .single();
+  if (beforeErr) throw new Error(parseDbError(beforeErr.message));
+
   const existing = await tryFindCylinderByBarcode(bc);
   if (existing && existing.id !== id) throw new Error("Ez a vonalkód már foglalt");
 
-  return updateCylinder(id, { barcode: bc, is_temporary: false });
+  const wasTemp =
+    !!(before as CylinderRow).is_temporary ||
+    /^temp-/i.test((before as CylinderRow).barcode ?? "");
+  const result = await updateCylinder(id, { barcode: bc, is_temporary: false });
+
+  if (wasTemp) {
+    await supabase.from("audit_log").insert({
+      user_id: (await supabase.auth.getUser()).data.user?.id ?? null,
+      action: "TEMP palack átalakítva valódi sorszámmá (ugyanazon rekordon)",
+      entity_type: "cylinder",
+      entity_id: id,
+      old_value: { barcode: (before as CylinderRow).barcode },
+      new_value: { barcode: bc },
+    });
+  }
+
+  return result;
+}
+
+/** TEMP → valódi sorszám: A) ugyanazon rekordon, B) meglévő valódi rekordra migrálás. */
+export async function convertTempCylinderToRealSerial(args: {
+  temp_cylinder_id: string;
+  new_barcode: string;
+  rental_id?: string;
+}): Promise<"same_record" | "migrated"> {
+  const bc = normalizeBarcode(args.new_barcode);
+  if (!bc) throw new Error("Üres vonalkód");
+  if (/^temp-/i.test(bc)) throw new Error("A végleges vonalkód nem lehet ideiglenes");
+
+  const { data: tempCyl, error: tempErr } = await supabase
+    .from("cylinders")
+    .select("id, barcode, is_temporary")
+    .eq("id", args.temp_cylinder_id)
+    .eq("active", true)
+    .single();
+  if (tempErr || !tempCyl) throw new Error("TEMP palack nem található");
+  if (!tempCyl.is_temporary && !/^temp-/i.test(tempCyl.barcode))
+    throw new Error("Csak TEMP palack alakítható át valódi sorszámmá");
+
+  const existing = await tryFindCylinderByBarcode(bc);
+
+  if (!existing || existing.id === args.temp_cylinder_id) {
+    await finalizeCylinderBarcode(args.temp_cylinder_id, bc);
+    return "same_record";
+  }
+
+  const { error: migErr } = await supabase.rpc("migrate_temp_cylinder_refs", {
+    p_temp_cylinder_id: args.temp_cylinder_id,
+    p_real_cylinder_id: existing.id,
+  });
+  if (migErr) throw new Error(parseDbError(migErr.message));
+
+  await supabase.from("audit_log").insert({
+    user_id: (await supabase.auth.getUser()).data.user?.id ?? null,
+    action: "TEMP palack átalakítva valódi sorszámmá (új rekordra migrálva)",
+    entity_type: "cylinder",
+    entity_id: args.temp_cylinder_id,
+    new_value: {
+      temp_barcode: tempCyl.barcode,
+      real_barcode: bc,
+      real_cylinder_id: existing.id,
+      rental_id: args.rental_id ?? null,
+    },
+  });
+
+  const { error: delErr } = await supabase.rpc("try_delete_orphan_temp_cylinder", {
+    p_cylinder_id: args.temp_cylinder_id,
+    p_context: "temp_to_serial",
+    p_raise_on_block: true,
+  });
+  if (delErr) throw new Error(parseDbError(delErr.message));
+
+  return "migrated";
 }
 
 export type InventoryRegisterResult = {

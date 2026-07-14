@@ -228,6 +228,7 @@ function RentalReturn() {
       await qc.invalidateQueries({ queryKey: ["rental-return-cyls", rental.id] });
       await qc.invalidateQueries({ queryKey: ["rental-return-qty", rental.id] });
       await qc.invalidateQueries({ queryKey: ["rentals-returnable"] });
+      await qc.invalidateQueries({ queryKey: ["cylinders"] });
       await qc.invalidateQueries({ queryKey: ["rentals"] });
       await qc.invalidateQueries({ queryKey: ["rental", rental.id] });
       await qc.invalidateQueries({ queryKey: ["rental-cyls", rental.id] });
