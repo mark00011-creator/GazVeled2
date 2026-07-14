@@ -541,6 +541,20 @@ export function isTempRentalCylinder(c: { barcode: string; is_temporary?: boolea
   return !!c.is_temporary || isTempBarcode(c.barcode);
 }
 
+export async function tryDeleteOrphanTempCylinder(
+  cylinderId: string,
+  context: "rental_return" | "temp_to_chinese" | "temp_to_serial" | "orphan_cleanup" = "rental_return",
+  raiseOnBlock = false,
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("try_delete_orphan_temp_cylinder", {
+    p_cylinder_id: cylinderId,
+    p_context: context,
+    p_raise_on_block: raiseOnBlock,
+  });
+  if (error) throwSupabaseError("tryDeleteOrphanTempCylinder", error, { cylinderId, context });
+  return !!data;
+}
+
 export async function convertTempRentalCylinderToChinese(args: {
   rental_id: string;
   cylinder_id: string;
@@ -604,7 +618,7 @@ export async function convertTempRentalCylinderToChinese(args: {
 
   const { error: cylUpdErr } = await supabase
     .from("cylinders")
-    .update({ active: false, rental_id: null, updated_at: now })
+    .update({ rental_id: null, updated_at: now })
     .eq("id", args.cylinder_id);
   if (cylUpdErr) throwSupabaseError("convertTempRentalCylinderToChinese → cylinders UPDATE", cylUpdErr);
 
@@ -653,6 +667,8 @@ export async function convertTempRentalCylinderToChinese(args: {
       partner_name: partnerName,
     },
   });
+
+  await tryDeleteOrphanTempCylinder(args.cylinder_id, "temp_to_chinese", true);
 }
 
 
@@ -1494,7 +1510,7 @@ export async function returnRentalCylinders(args: {
   if (linkIds.length > 0) {
     const { data: cylRows, error: cylErr } = await supabase
       .from("cylinders")
-      .select("id, barcode, gas_type, size, status, location_type, location_partner_id")
+      .select("id, barcode, gas_type, size, status, location_type, location_partner_id, is_temporary")
       .in("id", linkIds);
 
     if (cylErr) throwSupabaseError("returnRentalCylinders → cylinders", cylErr);
@@ -1545,6 +1561,21 @@ export async function returnRentalCylinders(args: {
         }
       } else if (rcUpdErr) {
         throwSupabaseError("returnRentalCylinders → rental_cylinders UPDATE", rcUpdErr);
+      }
+
+      await supabase
+        .from("rentals")
+        .update({ current_cylinder_id: null, updated_at: now })
+        .eq("id", args.rental_id)
+        .eq("current_cylinder_id", cyl.id);
+      await supabase
+        .from("rentals")
+        .update({ original_cylinder_id: null, updated_at: now })
+        .eq("id", args.rental_id)
+        .eq("original_cylinder_id", cyl.id);
+
+      if (isTempRentalCylinder(cyl)) {
+        await tryDeleteOrphanTempCylinder(cyl.id, "rental_return");
       }
     }
   } else if (!hasQtyReturns) {
