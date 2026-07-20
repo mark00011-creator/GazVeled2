@@ -271,14 +271,17 @@ function RentalDetail() {
     }
   }
 
-  async function saveBarcode(cylinderId: string) {
-    const newBarcode = barcodeEdits[cylinderId];
-    if (!newBarcode?.trim()) {
+  async function saveBarcode(cylinderId: string, rawBarcode?: string) {
+    const busyKey = `barcode-${cylinderId}`;
+    if (busyId === busyKey) return;
+
+    const newBarcode = (rawBarcode ?? barcodeEdits[cylinderId] ?? "").trim();
+    if (!newBarcode) {
       toast.error("Add meg a vonalkódot");
       return;
     }
     const cyl = (cylLinks ?? []).find((c) => c.cylinder_id === cylinderId);
-    setBusyId(`barcode-${cylinderId}`);
+    setBusyId(busyKey);
     try {
       if (cyl && isTempRentalCylinder(c)) {
         const mode = await convertTempCylinderToRealSerial({
@@ -301,8 +304,7 @@ function RentalDetail() {
         delete next[cylinderId];
         return next;
       });
-      await refetchCyls();
-      qc.invalidateQueries({ queryKey: ["cylinders"] });
+      await invalidateRentalQueries();
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -608,10 +610,22 @@ function RentalDetail() {
                       <div className="text-muted-foreground">Vonalkód</div>
                       <div className="font-mono font-semibold">{c.barcode}</div>
                       {isEditing && (
-                        <div className="mt-2 flex gap-1">
+                        <form
+                          className="mt-2 flex gap-1"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const input = e.currentTarget.elements.namedItem(
+                              `barcode-${c.cylinder_id}`,
+                            ) as HTMLInputElement | null;
+                            void saveBarcode(c.cylinder_id, input?.value);
+                          }}
+                        >
                           <Input
+                            name={`barcode-${c.cylinder_id}`}
                             className="h-8 font-mono text-xs"
                             value={editValue}
+                            autoComplete="off"
                             onChange={(e) =>
                               setBarcodeEdits((prev) => ({
                                 ...prev,
@@ -620,14 +634,14 @@ function RentalDetail() {
                             }
                           />
                           <Button
+                            type="submit"
                             size="sm"
                             className="h-8 shrink-0 px-2 text-xs"
                             disabled={busyId === `barcode-${c.cylinder_id}`}
-                            onClick={() => saveBarcode(c.cylinder_id)}
                           >
                             Mentés
                           </Button>
-                        </div>
+                        </form>
                       )}
                     </div>
                     <div>
@@ -666,6 +680,7 @@ function RentalDetail() {
                             }
                           />
                           <Button
+                            type="button"
                             size="sm"
                             className="h-8 shrink-0 px-2 text-xs"
                             disabled={busyId === `expiry-${c.cylinder_id}`}
@@ -688,6 +703,7 @@ function RentalDetail() {
                   )}
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button
+                      type="button"
                       size="sm"
                       variant="outline"
                       onClick={() => {
@@ -792,6 +808,7 @@ function RentalDetail() {
                 />
               </div>
               <Button
+                type="button"
                 className="w-full"
                 disabled={busyId === `convert-${convertTarget.cylinder_id}`}
                 onClick={saveTempToChinese}

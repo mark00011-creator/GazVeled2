@@ -76,6 +76,10 @@ function parseDbError(message: string): string {
   if (message.includes("Reason required")) return "Kényszerhelyettesítéshez indoklás kötelező";
   if (message.includes("invalid input value for enum"))
     return "Érvénytelen tulajdonos típus – használd: Saját, SIAD vagy Egyéb";
+  if (message.includes("duplicate key") || message.includes("cylinders_barcode"))
+    return "Ez a vonalkód már foglalt";
+  if (message.includes("A TEMP palack nem törölhető"))
+    return "A TEMP palack nem törölhető, mert még aktív kapcsolata van.";
   return message;
 }
 
