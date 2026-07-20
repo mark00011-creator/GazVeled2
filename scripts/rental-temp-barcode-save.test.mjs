@@ -28,6 +28,6 @@ describe("TEMP vonalkód mentés – validáció", () => {
   });
 
   it("TEMP utótag elutasítandó véglegesként", () => {
-    assert.match(/^temp-/i, normalizeBarcode("TEMP-999999"));
+    assert.match(normalizeBarcode("TEMP-999999"), /^temp-/);
   });
 });
