@@ -301,13 +301,13 @@ function RentalDetail() {
     const cyl = (cylLinks ?? []).find((c) => c.cylinder_id === cylinderId);
     console.log("[TEMP-BARCODE-DIAG] saveBarcode cylinder row", {
       found: !!cyl,
-      isTemp: cyl ? isTempRentalCylinder(c) : null,
+      isTemp: cyl ? isTempRentalCylinder(cyl) : null,
       barcode: cyl?.barcode,
     });
     barcodeSaveInFlightRef.current = cylinderId;
     setBusyId(busyKey);
     try {
-      if (cyl && isTempRentalCylinder(c)) {
+      if (cyl && isTempRentalCylinder(cyl)) {
         console.log("[TEMP-BARCODE-DIAG] calling convertTempCylinderToRealSerial", {
           temp_cylinder_id: cylinderId,
           new_barcode: newBarcode,
