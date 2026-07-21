@@ -1,6 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
 import {
   fetchPartnerName,
+  logLoanIssue,
+  logLoanReturn,
   logPartnerIssue,
   logPartnerReturn,
 } from "@/lib/cylinder-history";
@@ -132,6 +134,7 @@ export async function recordCylinderLoan(args: {
   ]);
   if (cyl) {
     await logPartnerIssue(args.outgoing_id, args.partner_id, cyl.barcode, partnerName);
+    await logLoanIssue(args.outgoing_id, args.partner_id, cyl.barcode, loanId, partnerName);
   }
 
   return loanId;
@@ -167,19 +170,31 @@ export async function returnCylinderLoan(args: {
   returned_barcode: string;
   partner_id: string;
   note?: string | null;
+  return_mode?: "empty" | "full";
 }): Promise<void> {
   const returned = await findCylinderByBarcode(args.returned_barcode);
+  const mode = args.return_mode ?? "empty";
 
   const { error } = await supabase.rpc("return_cylinder_loan", {
     p_loan_id: args.loan_id,
     p_returned_cylinder_id: returned.id,
     p_note: args.note ?? undefined,
+    p_return_mode: mode,
   });
 
   if (error) throw new Error(parseDbError(error.message));
 
   const partnerName = await fetchPartnerName(args.partner_id);
   await logPartnerReturn(returned.id, args.partner_id, returned.barcode, partnerName);
+  await logLoanReturn({
+    cylinderId: returned.id,
+    partnerId: args.partner_id,
+    barcode: returned.barcode,
+    loanId: args.loan_id,
+    mode,
+    partnerName,
+    note: args.note,
+  });
 }
 
 /** Aktív kölcsönök partnerek szerint csoportosítva. */

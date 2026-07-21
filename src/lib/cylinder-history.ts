@@ -33,7 +33,15 @@ export type CylinderHistoryEventType =
   | "owner_change"
   | "gas_type_change"
   | "size_change"
-  | "pressure_test_year_change";
+  | "pressure_test_year_change"
+  | "loan_issue"
+  | "loan_return_empty"
+  | "loan_return_full"
+  | "supplier_exchange"
+  | "temp_to_serial"
+  | "temp_to_chinese"
+  | "barcode_change"
+  | "complaint";
 
 export const cylinderHistoryEventLabels: Record<CylinderHistoryEventType, string> = {
   cylinder_created: "Palack létrehozása",
@@ -59,6 +67,14 @@ export const cylinderHistoryEventLabels: Record<CylinderHistoryEventType, string
   gas_type_change: "Gáz típusa módosítása",
   size_change: "Méret módosítása",
   pressure_test_year_change: "Nyomáspróba módosítás",
+  loan_issue: "Kölcsön kiadás",
+  loan_return_empty: "Kölcsön visszavétel (üres)",
+  loan_return_full: "Kölcsön visszavétel (teli)",
+  supplier_exchange: "Szolgáltatói csere",
+  temp_to_serial: "TEMP → valós sorszám",
+  temp_to_chinese: "TEMP → kínai tétel",
+  barcode_change: "Vonalkód módosítás",
+  complaint: "Reklamáció",
 };
 
 export type CylinderHistoryRow = {
@@ -118,8 +134,20 @@ async function currentUserId(): Promise<string | null> {
   return data.user?.id ?? null;
 }
 
+async function currentUserLabel(): Promise<string | null> {
+  const { data } = await supabase.auth.getUser();
+  const u = data.user;
+  if (!u) return null;
+  return u.email ?? u.id;
+}
+
 export async function logCylinderHistory(entry: LogEntry): Promise<void> {
   const created_by = entry.created_by ?? (await currentUserId());
+  const user_label = await currentUserLabel();
+  const metadata = {
+    ...(entry.metadata ?? {}),
+    ...(user_label ? { user_label } : {}),
+  };
   const { error } = await supabase.from("cylinder_history").insert({
     cylinder_id: entry.cylinder_id,
     event_type: entry.event_type,
@@ -127,7 +155,7 @@ export async function logCylinderHistory(entry: LogEntry): Promise<void> {
     partner_id: entry.partner_id ?? null,
     old_value: entry.old_value ?? null,
     new_value: entry.new_value ?? null,
-    metadata: entry.metadata ?? {},
+    metadata,
     created_by,
   });
   if (error) throw new Error(error.message);
@@ -263,19 +291,23 @@ export async function logCylinderUpdateDiff(
   }
 
   if (before.barcode !== after.barcode || before.circulation !== after.circulation) {
-    const parts: string[] = [];
-    if (before.barcode !== after.barcode) parts.push(`Vonalkód: ${before.barcode} → ${after.barcode}`);
-    if (before.circulation !== after.circulation) {
-      parts.push(
-        `Körforgás: ${formatOwner(before.circulation)} → ${formatOwner(after.circulation)}`,
-      );
+    if (before.barcode !== after.barcode) {
+      await logCylinderHistory({
+        cylinder_id: after.id,
+        event_type: "barcode_change",
+        partner_id: partnerId,
+        old_value: before.barcode,
+        new_value: after.barcode,
+      });
     }
-    await logCylinderHistory({
-      cylinder_id: after.id,
-      event_type: "cylinder_edited",
-      partner_id: partnerId,
-      description: parts.join(" · "),
-    });
+    if (before.circulation !== after.circulation) {
+      await logCylinderHistory({
+        cylinder_id: after.id,
+        event_type: "cylinder_edited",
+        partner_id: partnerId,
+        description: `Körforgás: ${formatOwner(before.circulation)} → ${formatOwner(after.circulation)}`,
+      });
+    }
   }
 }
 
@@ -391,6 +423,111 @@ export async function logRentalClose(
     partner_id: partnerId,
     description: partnerName ? `Partner: ${partnerName}` : "Bérlet lezárva",
     metadata: { rental_id: rentalId },
+  });
+}
+
+export async function logLoanIssue(
+  cylinderId: string,
+  partnerId: string,
+  barcode: string,
+  loanId: string,
+  partnerName?: string,
+): Promise<void> {
+  await logCylinderHistory({
+    cylinder_id: cylinderId,
+    event_type: "loan_issue",
+    partner_id: partnerId,
+    description: partnerName ? `Partner: ${partnerName}` : "Kölcsön kiadva",
+    new_value: barcode,
+    metadata: { loan_id: loanId },
+  });
+}
+
+export async function logLoanReturn(args: {
+  cylinderId: string;
+  partnerId: string;
+  barcode: string;
+  loanId: string;
+  mode: "empty" | "full";
+  partnerName?: string;
+  note?: string | null;
+}): Promise<void> {
+  await logCylinderHistory({
+    cylinder_id: args.cylinderId,
+    event_type: args.mode === "full" ? "loan_return_full" : "loan_return_empty",
+    partner_id: args.partnerId,
+    description: [args.partnerName ? `Partner: ${args.partnerName}` : null, args.note?.trim() || null]
+      .filter(Boolean)
+      .join("\n"),
+    old_value: args.barcode,
+    metadata: { loan_id: args.loanId, return_mode: args.mode },
+  });
+}
+
+export async function logSupplierExchangeForCylinder(args: {
+  cylinderId: string;
+  supplierId: string;
+  supplierName: string;
+  role: "returned" | "received";
+  barcode: string;
+  pairedBarcodes: string[];
+  exchangeId: string;
+  note?: string | null;
+}): Promise<void> {
+  const paired = args.pairedBarcodes.filter(Boolean);
+  await logCylinderHistory({
+    cylinder_id: args.cylinderId,
+    event_type: "supplier_exchange",
+    description: [
+      `Szolgáltató: ${args.supplierName}`,
+      args.role === "returned"
+        ? `Visszaadott palack: ${args.barcode}`
+        : `Átvett palack: ${args.barcode}`,
+      paired.length > 0 ? `Párban: ${paired.join(", ")}` : null,
+      args.note?.trim() ? `Megjegyzés: ${args.note.trim()}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    old_value: args.role === "returned" ? args.barcode : paired[0] ?? null,
+    new_value: args.role === "received" ? args.barcode : paired[0] ?? null,
+    metadata: {
+      supplier_id: args.supplierId,
+      supplier_name: args.supplierName,
+      supplier_exchange_id: args.exchangeId,
+      role: args.role,
+    },
+  });
+}
+
+export async function logTempToSerial(args: {
+  cylinderId: string;
+  oldBarcode: string;
+  newBarcode: string;
+  rentalId?: string | null;
+}): Promise<void> {
+  await logCylinderHistory({
+    cylinder_id: args.cylinderId,
+    event_type: "temp_to_serial",
+    old_value: args.oldBarcode,
+    new_value: args.newBarcode,
+    metadata: { rental_id: args.rentalId ?? null },
+  });
+}
+
+export async function logTempToChinese(args: {
+  cylinderId: string;
+  tempBarcode: string;
+  rentalId: string;
+  gas_type: string;
+  size: string;
+  quantity: number;
+}): Promise<void> {
+  await logCylinderHistory({
+    cylinder_id: args.cylinderId,
+    event_type: "temp_to_chinese",
+    old_value: args.tempBarcode,
+    new_value: `${args.gas_type} · ${args.size} · ${args.quantity} db`,
+    metadata: { rental_id: args.rentalId },
   });
 }
 

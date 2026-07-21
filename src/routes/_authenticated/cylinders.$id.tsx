@@ -19,8 +19,9 @@ import { Label } from "@/components/ui/label";
 
 import { ArrowLeft } from "lucide-react";
 
-import { circulationLabels, fmtDateTime, formatCylinderLocation, locationLabels, manufacturerLabels, type Manufacturer } from "@/lib/labels";
+import { circulationLabels, fmtDateTime, formatCylinderLocation, manufacturerLabels, type Manufacturer } from "@/lib/labels";
 import { finalizeCylinderBarcode } from "@/lib/cylinder-ops";
+import { CylinderHistorySection } from "@/components/CylinderHistorySection";
 import { toast } from "sonner";
 
 
@@ -68,24 +69,6 @@ function CylinderDetail() {
 
   });
 
-  const { data: moves } = useQuery({
-
-    queryKey: ["cyl-moves", id],
-
-    enabled: !!cyl,
-
-    queryFn: async () => {
-
-      const { data, error } = await supabase.from("movements").select("*").eq("cylinder_id", id).order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      return data ?? [];
-
-    },
-
-  });
-
   async function saveBarcode() {
     if (!cyl) return;
     setSaving(true);
@@ -95,6 +78,7 @@ function CylinderDetail() {
       setNewBarcode("");
       qc.invalidateQueries({ queryKey: ["cyl-d", id] });
       qc.invalidateQueries({ queryKey: ["cylinders"] });
+      qc.invalidateQueries({ queryKey: ["cylinder-history", id] });
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -172,41 +156,7 @@ function CylinderDetail() {
 
       )}
 
-
-
-      {cyl && (
-
-        <>
-
-          <h2 className="mb-2 mt-4 text-sm font-semibold">Előélet</h2>
-
-          <div className="space-y-2">
-
-            {(moves ?? []).map((m) => (
-
-              <Card key={m.id} className="p-3">
-
-                <div className="flex items-center justify-between text-xs">
-
-                  <span>{locationLabels[m.from_location ?? ""] ?? "—"} → {locationLabels[m.to_location] ?? m.to_location}</span>
-
-                  <span className="text-muted-foreground">{fmtDateTime(m.created_at)}</span>
-
-                </div>
-
-                {m.note && <div className="mt-1 text-xs text-muted-foreground">{m.note}</div>}
-
-              </Card>
-
-            ))}
-
-            {moves && moves.length === 0 && <div className="py-4 text-center text-sm text-muted-foreground">Nincs mozgás</div>}
-
-          </div>
-
-        </>
-
-      )}
+      {cyl && <CylinderHistorySection cylinderId={cyl.id} />}
 
     </AppShell>
 

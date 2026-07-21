@@ -1633,6 +1633,7 @@ export type Database = {
         Args: {
           p_loan_id: string
           p_note?: string
+          p_return_mode?: string
           p_returned_cylinder_id: string
         }
         Returns: undefined

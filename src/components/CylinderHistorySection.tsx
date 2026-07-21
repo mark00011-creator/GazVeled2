@@ -40,6 +40,11 @@ function HistoryCard({ row }: { row: CylinderHistoryRow }) {
       </div>
 
       <div className="mt-2 text-xs">
+        <span className="text-muted-foreground">Felhasználó: </span>
+        {typeof meta.user_label === "string" && meta.user_label ? meta.user_label : "—"}
+      </div>
+
+      <div className="mt-2 text-xs">
         <span className="text-muted-foreground">Partner: </span>
         {partnerName ?? "Nincs partner"}
       </div>
@@ -93,7 +98,7 @@ export function CylinderHistorySection({
       {isLoading && <div className="text-sm text-muted-foreground">Betöltés…</div>}
       {isError && <div className="text-sm text-destructive">Előélet betöltése sikertelen</div>}
       {!isLoading && !isError && (
-        <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+        <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
           {rows.map((row) => (
             <HistoryCard key={row.id} row={row} />
           ))}

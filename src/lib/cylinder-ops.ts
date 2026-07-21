@@ -7,6 +7,8 @@ import {
   logPartnerIssue,
   logPartnerReturn,
   logQuickExchange,
+  logSupplierExchangeForCylinder,
+  logTempToSerial,
 } from "@/lib/cylinder-history";
 import {
   deriveExchangeCirculationSideFromCylinder,
@@ -1047,7 +1049,58 @@ export async function submitSupplierExchange(args: {
     .single();
 
   if (error) throw new Error(parseDbError(error.message));
-  return data.id;
+  const exchangeId = data.id as string;
+
+  const { data: supplierRow } = await supabase
+    .from("suppliers")
+    .select("name")
+    .eq("id", args.supplier_id)
+    .single();
+  const supplierName = supplierRow?.name ?? "Beszállító";
+
+  const returnedBarcodes = args.returned.map((c) => c.barcode);
+  const receivedBarcodes = args.received.map((c) => c.barcode);
+
+  for (const cyl of args.returned) {
+    await logSupplierExchangeForCylinder({
+      cylinderId: cyl.id,
+      supplierId: args.supplier_id,
+      supplierName,
+      role: "returned",
+      barcode: cyl.barcode,
+      pairedBarcodes: receivedBarcodes,
+      exchangeId,
+      note: args.note,
+    });
+  }
+  for (const cyl of args.received) {
+    await logSupplierExchangeForCylinder({
+      cylinderId: cyl.id,
+      supplierId: args.supplier_id,
+      supplierName,
+      role: "received",
+      barcode: cyl.barcode,
+      pairedBarcodes: returnedBarcodes,
+      exchangeId,
+      note: args.note,
+    });
+  }
+
+  await supabase.from("audit_log").insert({
+    user_id: uid,
+    action: "Szolgáltatói csere rögzítve",
+    entity_type: "supplier_exchange",
+    entity_id: exchangeId,
+    new_value: {
+      supplier_id: args.supplier_id,
+      supplier_name: supplierName,
+      returned: returnedBarcodes,
+      received: receivedBarcodes,
+      note: args.note ?? null,
+    },
+  });
+
+  return exchangeId;
 }
 
 /** Atomic rental close. */
@@ -1178,6 +1231,7 @@ export async function updateCylinderBarcode(id: string, newBarcode: string): Pro
 export async function finalizeCylinderBarcode(
   id: string,
   newBarcode: string,
+  options?: { rentalId?: string | null },
 ): Promise<CylinderRow> {
   console.log("[TEMP-BARCODE-DIAG] finalizeCylinderBarcode entered", { id, newBarcode });
   const bc = normalizeBarcode(newBarcode);
@@ -1209,6 +1263,12 @@ export async function finalizeCylinderBarcode(
       old_value: { barcode: (before as CylinderRow).barcode },
       new_value: { barcode: bc },
     });
+    await logTempToSerial({
+      cylinderId: id,
+      oldBarcode: (before as CylinderRow).barcode,
+      newBarcode: bc,
+      rentalId: options?.rentalId ?? null,
+    });
   }
 
   return result;
@@ -1239,7 +1299,7 @@ export async function convertTempCylinderToRealSerial(args: {
 
   if (!existing || existing.id === args.temp_cylinder_id) {
     console.log("[TEMP-BARCODE-DIAG] convertTemp same_record path → finalizeCylinderBarcode");
-    await finalizeCylinderBarcode(args.temp_cylinder_id, bc);
+    await finalizeCylinderBarcode(args.temp_cylinder_id, bc, { rentalId: args.rental_id ?? null });
     return "same_record";
   }
 
@@ -1261,6 +1321,13 @@ export async function convertTempCylinderToRealSerial(args: {
       real_cylinder_id: existing.id,
       rental_id: args.rental_id ?? null,
     },
+  });
+
+  await logTempToSerial({
+    cylinderId: existing.id,
+    oldBarcode: tempCyl.barcode,
+    newBarcode: bc,
+    rentalId: args.rental_id ?? null,
   });
 
   const { error: delErr } = await supabase.rpc("try_delete_orphan_temp_cylinder", {

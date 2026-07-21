@@ -22,6 +22,7 @@ import {
   logRentalClose,
   logRentalExtend,
   logRentalStart,
+  logTempToChinese,
   logCylinderHistory,
 } from "@/lib/cylinder-history";
 import { addYears, todayLocal } from "@/lib/date-utils";
@@ -653,19 +654,13 @@ export async function convertTempRentalCylinderToChinese(args: {
     if (qtyInsErr) throwSupabaseError("convertTempRentalCylinderToChinese → rental_quantity_items INSERT", qtyInsErr);
   }
 
-  const partnerName = await fetchPartnerName(rental.partner_id);
-  await logCylinderHistory({
-    cylinder_id: args.cylinder_id,
-    event_type: "cylinder_edited",
-    partner_id: rental.partner_id,
-    description: "TEMP palack átalakítva kínai darabszámos tétellé",
-    old_value: cyl.barcode,
-    new_value: `${gas_type} ${size} (${quantity} db)`,
-    metadata: {
-      rental_id: args.rental_id,
-      conversion: "temp_to_chinese_quantity",
-      partner_name: partnerName,
-    },
+  await logTempToChinese({
+    cylinderId: args.cylinder_id,
+    tempBarcode: cyl.barcode,
+    rentalId: args.rental_id,
+    gas_type,
+    size,
+    quantity,
   });
 
   await tryDeleteOrphanTempCylinder(args.cylinder_id, "temp_to_chinese", true);

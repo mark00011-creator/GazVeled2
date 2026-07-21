@@ -38,6 +38,7 @@ function ReturnForm({
   const [note, setNote] = useState("");
   const [scanning, setScanning] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [returnMode, setReturnMode] = useState<"empty" | "full">("empty");
   const [preview, setPreview] = useState<{ barcode: string; gas_type: string; size: string } | null>(
     null,
   );
@@ -65,6 +66,7 @@ function ReturnForm({
         returned_barcode: returnBc,
         partner_id: partnerId,
         note: note.trim() || null,
+        return_mode: returnMode,
       });
       toast.success("Kölcsön visszavéve");
       onDone();
@@ -127,6 +129,35 @@ function ReturnForm({
           <div className="mt-2 text-xs text-muted-foreground">
             {preview.gas_type} · {preview.size}
           </div>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label className="text-xs">Visszavétel módja</Label>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button
+            type="button"
+            size="sm"
+            variant={returnMode === "empty" ? "default" : "outline"}
+            className="flex-1"
+            onClick={() => setReturnMode("empty")}
+          >
+            Üresen hozta vissza
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={returnMode === "full" ? "default" : "outline"}
+            className="flex-1"
+            onClick={() => setReturnMode("full")}
+          >
+            Teli hozta vissza
+          </Button>
+        </div>
+        {returnMode === "full" && (
+          <p className="text-xs text-muted-foreground">
+            Telephelyi teli készletbe kerül; a kölcsön nem jelenik meg nem számlázott tételek között.
+          </p>
         )}
       </div>
 
@@ -237,6 +268,7 @@ function LoanedCylinders() {
     qc.invalidateQueries({ queryKey: ["cylinders"] });
     qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
     qc.invalidateQueries({ queryKey: ["history"] });
+    qc.invalidateQueries({ queryKey: ["uninvoiced-exchanges"] });
   }
 
   return (
