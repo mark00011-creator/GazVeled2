@@ -59,7 +59,7 @@ import {
   toContractStockItems,
 } from "@/lib/rental-quantity-stock";
 import { toast } from "sonner";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PhoneLink } from "@/components/PhoneLink";
 import { GAS_TYPES, getAvailableSizes } from "@/lib/gas-cylinder-form";
 
@@ -81,6 +81,7 @@ function RentalDetail() {
   const [convertGas, setConvertGas] = useState("Stargon");
   const [convertSize, setConvertSize] = useState("20 L");
   const [convertQty, setConvertQty] = useState("1");
+  const barcodeSaveInFlightRef = useRef<string | null>(null);
 
   const {
     data: rental,
@@ -273,29 +274,60 @@ function RentalDetail() {
 
   async function saveBarcode(cylinderId: string, rawBarcode?: string) {
     const busyKey = `barcode-${cylinderId}`;
-    if (busyId === busyKey) return;
+    console.log("[TEMP-BARCODE-DIAG] saveBarcode entered", {
+      cylinderId,
+      busyId,
+      busyKey,
+      inFlight: barcodeSaveInFlightRef.current,
+      rawBarcode,
+    });
+    if (barcodeSaveInFlightRef.current === cylinderId) {
+      console.log("[TEMP-BARCODE-DIAG] saveBarcode blocked: in-flight ref", { cylinderId });
+      toast.message("Mentés folyamatban…");
+      return;
+    }
+    if (busyId === busyKey) {
+      console.log("[TEMP-BARCODE-DIAG] saveBarcode blocked: busyId match", { busyId, busyKey });
+      toast.message("Mentés folyamatban…");
+      return;
+    }
 
     const newBarcode = (rawBarcode ?? barcodeEdits[cylinderId] ?? "").trim();
+    console.log("[TEMP-BARCODE-DIAG] saveBarcode normalized input", { newBarcode });
     if (!newBarcode) {
       toast.error("Add meg a vonalkódot");
       return;
     }
     const cyl = (cylLinks ?? []).find((c) => c.cylinder_id === cylinderId);
+    console.log("[TEMP-BARCODE-DIAG] saveBarcode cylinder row", {
+      found: !!cyl,
+      isTemp: cyl ? isTempRentalCylinder(c) : null,
+      barcode: cyl?.barcode,
+    });
+    barcodeSaveInFlightRef.current = cylinderId;
     setBusyId(busyKey);
     try {
       if (cyl && isTempRentalCylinder(c)) {
+        console.log("[TEMP-BARCODE-DIAG] calling convertTempCylinderToRealSerial", {
+          temp_cylinder_id: cylinderId,
+          new_barcode: newBarcode,
+          rental_id: id,
+        });
         const mode = await convertTempCylinderToRealSerial({
           temp_cylinder_id: cylinderId,
           new_barcode: newBarcode,
           rental_id: id,
         });
+        console.log("[TEMP-BARCODE-DIAG] convertTempCylinderToRealSerial done", { mode });
         toast.success(
           mode === "migrated"
             ? "TEMP palack átmigrálva valódi sorszámra"
             : "TEMP palack valódi sorszámmá alakítva",
         );
       } else {
+        console.log("[TEMP-BARCODE-DIAG] calling updateCylinderBarcode", { cylinderId, newBarcode });
         await updateCylinderBarcode(cylinderId, newBarcode);
+        console.log("[TEMP-BARCODE-DIAG] updateCylinderBarcode done");
         toast.success("Vonalkód mentve");
       }
       setEditingBarcodeId(null);
@@ -306,9 +338,12 @@ function RentalDetail() {
       });
       await invalidateRentalQueries();
     } catch (e) {
+      console.error("[TEMP-BARCODE-DIAG] saveBarcode error", e);
       toast.error((e as Error).message);
     } finally {
+      barcodeSaveInFlightRef.current = null;
       setBusyId(null);
+      console.log("[TEMP-BARCODE-DIAG] saveBarcode finally");
     }
   }
 
@@ -610,19 +645,8 @@ function RentalDetail() {
                       <div className="text-muted-foreground">Vonalkód</div>
                       <div className="font-mono font-semibold">{c.barcode}</div>
                       {isEditing && (
-                        <form
-                          className="mt-2 flex gap-1"
-                          onSubmit={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            const input = e.currentTarget.elements.namedItem(
-                              `barcode-${c.cylinder_id}`,
-                            ) as HTMLInputElement | null;
-                            void saveBarcode(c.cylinder_id, input?.value);
-                          }}
-                        >
+                        <div className="mt-2 flex gap-1">
                           <Input
-                            name={`barcode-${c.cylinder_id}`}
                             className="h-8 font-mono text-xs"
                             value={editValue}
                             autoComplete="off"
@@ -632,16 +656,36 @@ function RentalDetail() {
                                 [c.cylinder_id]: e.target.value,
                               }))
                             }
+                            onKeyDown={(e) => {
+                              if (e.key !== "Enter") return;
+                              e.preventDefault();
+                              console.log("[TEMP-BARCODE-DIAG] Enter in barcode input", {
+                                cylinderId: c.cylinder_id,
+                              });
+                              void saveBarcode(c.cylinder_id, barcodeEdits[c.cylinder_id] ?? editValue);
+                            }}
                           />
                           <Button
-                            type="submit"
+                            type="button"
                             size="sm"
                             className="h-8 shrink-0 px-2 text-xs"
-                            disabled={busyId === `barcode-${c.cylinder_id}`}
+                            aria-busy={busyId === `barcode-${c.cylinder_id}`}
+                            onClick={() => {
+                              console.log("[TEMP-BARCODE-DIAG] Mentés button click", {
+                                cylinderId: c.cylinder_id,
+                                busyId,
+                                editValue,
+                                barcodeEdit: barcodeEdits[c.cylinder_id],
+                              });
+                              void saveBarcode(
+                                c.cylinder_id,
+                                barcodeEdits[c.cylinder_id] ?? editValue,
+                              );
+                            }}
                           >
-                            Mentés
+                            {busyId === `barcode-${c.cylinder_id}` ? "Mentés…" : "Mentés"}
                           </Button>
-                        </form>
+                        </div>
                       )}
                     </div>
                     <div>

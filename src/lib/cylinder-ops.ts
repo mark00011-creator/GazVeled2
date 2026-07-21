@@ -1144,6 +1144,10 @@ export async function updateCylinder(
     throw new Error("Kínai palackokat a Kínai készlet modulban kezeld, nem egyedi sorszámmal");
   }
 
+  if ("barcode" in payload || payload.is_temporary === false) {
+    console.log("[TEMP-BARCODE-DIAG] updateCylinder PATCH", { id, payload });
+  }
+
   const { data, error } = await supabase
     .from("cylinders")
     .update(payload)
@@ -1175,6 +1179,7 @@ export async function finalizeCylinderBarcode(
   id: string,
   newBarcode: string,
 ): Promise<CylinderRow> {
+  console.log("[TEMP-BARCODE-DIAG] finalizeCylinderBarcode entered", { id, newBarcode });
   const bc = normalizeBarcode(newBarcode);
   if (!bc) throw new Error("Üres vonalkód");
   if (bc.startsWith("temp-") || bc.startsWith("TEMP-"))
@@ -1215,6 +1220,7 @@ export async function convertTempCylinderToRealSerial(args: {
   new_barcode: string;
   rental_id?: string;
 }): Promise<"same_record" | "migrated"> {
+  console.log("[TEMP-BARCODE-DIAG] convertTempCylinderToRealSerial entered", args);
   const bc = normalizeBarcode(args.new_barcode);
   if (!bc) throw new Error("Üres vonalkód");
   if (/^temp-/i.test(bc)) throw new Error("A végleges vonalkód nem lehet ideiglenes");
@@ -1232,10 +1238,12 @@ export async function convertTempCylinderToRealSerial(args: {
   const existing = await tryFindCylinderByBarcode(bc);
 
   if (!existing || existing.id === args.temp_cylinder_id) {
+    console.log("[TEMP-BARCODE-DIAG] convertTemp same_record path → finalizeCylinderBarcode");
     await finalizeCylinderBarcode(args.temp_cylinder_id, bc);
     return "same_record";
   }
 
+  console.log("[TEMP-BARCODE-DIAG] convertTemp migrate path → migrate_temp_cylinder_refs");
   const { error: migErr } = await supabase.rpc("migrate_temp_cylinder_refs", {
     p_temp_cylinder_id: args.temp_cylinder_id,
     p_real_cylinder_id: existing.id,
