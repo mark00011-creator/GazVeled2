@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test": "node --test scripts/rental-temp-barcode-save.test.mjs scripts/cylinder-history-events.test.mjs"
+    "test": "node --test scripts/rental-temp-barcode-save.test.mjs scripts/cylinder-history-events.test.mjs scripts/global-events.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

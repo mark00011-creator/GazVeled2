@@ -9,6 +9,7 @@ import {
   type Manufacturer,
 } from "@/lib/labels";
 import type { CylinderRow } from "@/lib/cylinder-ops";
+import { logEvent } from "@/lib/events";
 
 export type CylinderHistoryEventType =
   | "cylinder_created"
@@ -561,6 +562,39 @@ export async function logQuickExchange(args: {
       related_barcode: args.incoming_barcode,
     },
   });
+
+  await logEvent({
+    event_type: "quick_exchange",
+    event_group_id: eventGroupId,
+    entity_type: "cylinder",
+    entity_id: args.incoming_id,
+    related_entity_type: "cylinder",
+    related_entity_id: args.outgoing_id,
+    partner_id: args.partner_id,
+    payload: {
+      exchange_id: args.exchange_id,
+      role: "incoming",
+      incoming_barcode: args.incoming_barcode,
+      outgoing_barcode: args.outgoing_barcode,
+      partner_name: args.partner_name ?? null,
+    },
+  });
+  await logEvent({
+    event_type: "quick_exchange",
+    event_group_id: eventGroupId,
+    entity_type: "cylinder",
+    entity_id: args.outgoing_id,
+    related_entity_type: "cylinder",
+    related_entity_id: args.incoming_id,
+    partner_id: args.partner_id,
+    payload: {
+      exchange_id: args.exchange_id,
+      role: "outgoing",
+      incoming_barcode: args.incoming_barcode,
+      outgoing_barcode: args.outgoing_barcode,
+      partner_name: args.partner_name ?? null,
+    },
+  });
 }
 
 export async function logPartnerIssue(
@@ -782,6 +816,41 @@ export async function logSupplierExchangePair(args: {
       related_barcode: args.returned.barcode,
     },
   });
+
+  await logEvent({
+    event_type: "supplier_exchange",
+    event_group_id: eventGroupId,
+    entity_type: "cylinder",
+    entity_id: args.returned.id,
+    related_entity_type: "cylinder",
+    related_entity_id: args.received.id,
+    supplier_id: args.supplierId,
+    payload: {
+      supplier_exchange_id: args.supplierExchangeId,
+      role: "returned",
+      returned_barcode: args.returned.barcode,
+      received_barcode: args.received.barcode,
+      supplier_name: args.supplierName,
+      note: args.note ?? null,
+    },
+  });
+  await logEvent({
+    event_type: "supplier_exchange",
+    event_group_id: eventGroupId,
+    entity_type: "cylinder",
+    entity_id: args.received.id,
+    related_entity_type: "cylinder",
+    related_entity_id: args.returned.id,
+    supplier_id: args.supplierId,
+    payload: {
+      supplier_exchange_id: args.supplierExchangeId,
+      role: "received",
+      returned_barcode: args.returned.barcode,
+      received_barcode: args.received.barcode,
+      supplier_name: args.supplierName,
+      note: args.note ?? null,
+    },
+  });
 }
 
 /** @deprecated Use logSupplierExchangePair */
@@ -988,6 +1057,7 @@ export async function logTempToSerial(args: {
   rentalId?: string | null;
   tempCylinderId?: string | null;
 }): Promise<void> {
+  const eventGroupId = newEventGroupId();
   await logCylinderHistory({
     cylinder_id: args.cylinderId,
     event_type: "temp_to_serial",
@@ -996,10 +1066,25 @@ export async function logTempToSerial(args: {
     barcode: args.newBarcode,
     metadata: { rental_id: args.rentalId ?? null, temp_barcode: args.oldBarcode },
     links: {
-      event_group_id: newEventGroupId(),
+      event_group_id: eventGroupId,
       related_rental_id: args.rentalId ?? null,
       related_cylinder_id: args.tempCylinderId ?? null,
       related_barcode: args.oldBarcode,
+    },
+  });
+
+  await logEvent({
+    event_type: "temp_to_real",
+    event_group_id: eventGroupId,
+    entity_type: "cylinder",
+    entity_id: args.cylinderId,
+    related_entity_type: args.tempCylinderId ? "cylinder" : args.rentalId ? "rental" : null,
+    related_entity_id: args.tempCylinderId ?? args.rentalId ?? null,
+    payload: {
+      old_barcode: args.oldBarcode,
+      new_barcode: args.newBarcode,
+      rental_id: args.rentalId ?? null,
+      temp_cylinder_id: args.tempCylinderId ?? null,
     },
   });
 }
@@ -1012,12 +1097,33 @@ export async function logTempToChinese(args: {
   size: string;
   quantity: number;
 }): Promise<void> {
+  const eventGroupId = newEventGroupId();
   await logCylinderHistory({
     cylinder_id: args.cylinderId,
     event_type: "temp_to_chinese",
     old_value: args.tempBarcode,
     new_value: `${args.gas_type} · ${args.size} · ${args.quantity} db`,
     metadata: { rental_id: args.rentalId },
+    links: {
+      event_group_id: eventGroupId,
+      related_rental_id: args.rentalId,
+    },
+  });
+
+  await logEvent({
+    event_type: "temp_to_chinese",
+    event_group_id: eventGroupId,
+    entity_type: "cylinder",
+    entity_id: args.cylinderId,
+    related_entity_type: "rental",
+    related_entity_id: args.rentalId,
+    payload: {
+      temp_barcode: args.tempBarcode,
+      gas_type: args.gas_type,
+      size: args.size,
+      quantity: args.quantity,
+      rental_id: args.rentalId,
+    },
   });
 }
 
