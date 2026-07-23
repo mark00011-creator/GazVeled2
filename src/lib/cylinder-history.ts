@@ -12,6 +12,7 @@ import type { CylinderRow } from "@/lib/cylinder-ops";
 
 export type CylinderHistoryEventType =
   | "cylinder_created"
+  | "temp_created"
   | "cylinder_edited"
   | "quick_exchange"
   | "forced_substitution"
@@ -24,6 +25,7 @@ export type CylinderHistoryEventType =
   | "partner_return"
   | "rental_start"
   | "rental_extend"
+  | "rental_expiry_change"
   | "rental_close"
   | "warehouse_arrival"
   | "warehouse_departure"
@@ -31,6 +33,7 @@ export type CylinderHistoryEventType =
   | "status_change"
   | "manufacturer_change"
   | "owner_change"
+  | "circulation_change"
   | "gas_type_change"
   | "size_change"
   | "pressure_test_year_change"
@@ -38,13 +41,18 @@ export type CylinderHistoryEventType =
   | "loan_return_empty"
   | "loan_return_full"
   | "supplier_exchange"
+  | "supplier_received_from"
   | "temp_to_serial"
   | "temp_to_chinese"
   | "barcode_change"
-  | "complaint";
+  | "complaint"
+  | "complaint_opened"
+  | "complaint_closed"
+  | "scrap";
 
 export const cylinderHistoryEventLabels: Record<CylinderHistoryEventType, string> = {
   cylinder_created: "Palack létrehozása",
+  temp_created: "TEMP palack létrehozása",
   cylinder_edited: "Palack szerkesztése",
   quick_exchange: "Gyors csere",
   forced_substitution: "Kényszerhelyettesítés",
@@ -57,6 +65,7 @@ export const cylinderHistoryEventLabels: Record<CylinderHistoryEventType, string
   partner_return: "Partnertől visszavétel",
   rental_start: "Bérbeadás",
   rental_extend: "Bérlet hosszabbítás",
+  rental_expiry_change: "Bérleti lejárat módosítása",
   rental_close: "Bérlet lezárása",
   warehouse_arrival: "Telephelyre érkezés",
   warehouse_departure: "Telephelyről kiadás",
@@ -64,6 +73,7 @@ export const cylinderHistoryEventLabels: Record<CylinderHistoryEventType, string
   status_change: "Státusz módosítás",
   manufacturer_change: "Gyártó módosítása",
   owner_change: "Tulajdonos módosítása",
+  circulation_change: "Körforgás módosítás",
   gas_type_change: "Gáz típusa módosítása",
   size_change: "Méret módosítása",
   pressure_test_year_change: "Nyomáspróba módosítás",
@@ -71,10 +81,59 @@ export const cylinderHistoryEventLabels: Record<CylinderHistoryEventType, string
   loan_return_empty: "Kölcsön visszavétel (üres)",
   loan_return_full: "Kölcsön visszavétel (teli)",
   supplier_exchange: "Szolgáltatói csere",
+  supplier_received_from: "Szolgáltatótól érkezett",
   temp_to_serial: "TEMP → valós sorszám",
   temp_to_chinese: "TEMP → kínai tétel",
   barcode_change: "Vonalkód módosítás",
   complaint: "Reklamáció",
+  complaint_opened: "Reklamáció indítva",
+  complaint_closed: "Reklamáció lezárva",
+  scrap: "Selejtezés",
+};
+
+/** UI: szín / ikon csoport eseménytípusonként. */
+export const cylinderHistoryEventTheme: Record<
+  CylinderHistoryEventType,
+  { tone: "default" | "success" | "warning" | "danger" | "info" | "muted" }
+> = {
+  cylinder_created: { tone: "success" },
+  temp_created: { tone: "info" },
+  cylinder_edited: { tone: "muted" },
+  quick_exchange: { tone: "default" },
+  forced_substitution: { tone: "warning" },
+  circulation_difference_created: { tone: "warning" },
+  circulation_difference_partial_settlement: { tone: "warning" },
+  circulation_difference_closed: { tone: "success" },
+  chinese_brought: { tone: "info" },
+  chinese_take: { tone: "info" },
+  partner_issue: { tone: "default" },
+  partner_return: { tone: "default" },
+  rental_start: { tone: "success" },
+  rental_extend: { tone: "success" },
+  rental_expiry_change: { tone: "info" },
+  rental_close: { tone: "muted" },
+  warehouse_arrival: { tone: "success" },
+  warehouse_departure: { tone: "default" },
+  location_change: { tone: "muted" },
+  status_change: { tone: "info" },
+  manufacturer_change: { tone: "muted" },
+  owner_change: { tone: "muted" },
+  circulation_change: { tone: "muted" },
+  gas_type_change: { tone: "muted" },
+  size_change: { tone: "muted" },
+  pressure_test_year_change: { tone: "info" },
+  loan_issue: { tone: "default" },
+  loan_return_empty: { tone: "default" },
+  loan_return_full: { tone: "success" },
+  supplier_exchange: { tone: "danger" },
+  supplier_received_from: { tone: "success" },
+  temp_to_serial: { tone: "info" },
+  temp_to_chinese: { tone: "info" },
+  barcode_change: { tone: "warning" },
+  complaint: { tone: "danger" },
+  complaint_opened: { tone: "danger" },
+  complaint_closed: { tone: "success" },
+  scrap: { tone: "danger" },
 };
 
 export type CylinderHistoryRow = {
@@ -100,7 +159,30 @@ type LogEntry = {
   new_value?: string | null;
   metadata?: Record<string, unknown>;
   created_by?: string | null;
+  barcode?: string | null;
+  note?: string | null;
 };
+
+function mergeHistoryMetadata(
+  base: Record<string, unknown>,
+  extras: {
+    user_label?: string | null;
+    barcode?: string | null;
+    partner_name?: string | null;
+    supplier_id?: string | null;
+    supplier_name?: string | null;
+    note?: string | null;
+  },
+): Record<string, unknown> {
+  const out = { ...base };
+  if (extras.user_label) out.user_label = extras.user_label;
+  if (extras.barcode) out.barcode = extras.barcode;
+  if (extras.partner_name) out.partner_name = extras.partner_name;
+  if (extras.supplier_id) out.supplier_id = extras.supplier_id;
+  if (extras.supplier_name) out.supplier_name = extras.supplier_name;
+  if (extras.note) out.note = extras.note;
+  return out;
+}
 
 const WAREHOUSE_LOCS = new Set(["warehouse_full", "warehouse_empty"]);
 
@@ -141,17 +223,41 @@ async function currentUserLabel(): Promise<string | null> {
   return u.email ?? u.id;
 }
 
+async function resolveCylinderBarcode(cylinderId: string, hint?: string | null): Promise<string | null> {
+  if (hint?.trim()) return hint.trim();
+  const { data } = await supabase.from("cylinders").select("barcode").eq("id", cylinderId).maybeSingle();
+  return data?.barcode ?? null;
+}
+
 export async function logCylinderHistory(entry: LogEntry): Promise<void> {
   const created_by = entry.created_by ?? (await currentUserId());
   const user_label = await currentUserLabel();
-  const metadata = {
-    ...(entry.metadata ?? {}),
-    ...(user_label ? { user_label } : {}),
-  };
+  const barcode =
+    entry.barcode ??
+    (typeof entry.metadata?.barcode === "string" ? entry.metadata.barcode : null) ??
+    (await resolveCylinderBarcode(entry.cylinder_id, entry.new_value ?? entry.old_value));
+
+  const meta = entry.metadata ?? {};
+  const partner_name =
+    typeof meta.partner_name === "string" ? meta.partner_name : undefined;
+  const supplier_id = typeof meta.supplier_id === "string" ? meta.supplier_id : undefined;
+  const supplier_name = typeof meta.supplier_name === "string" ? meta.supplier_name : undefined;
+
+  const metadata = mergeHistoryMetadata(meta, {
+    user_label,
+    barcode,
+    partner_name,
+    supplier_id,
+    supplier_name,
+    note: entry.note ?? (typeof meta.note === "string" ? meta.note : null),
+  });
+
+  const description = entry.description ?? null;
+
   const { error } = await supabase.from("cylinder_history").insert({
     cylinder_id: entry.cylinder_id,
     event_type: entry.event_type,
-    description: entry.description ?? null,
+    description,
     partner_id: entry.partner_id ?? null,
     old_value: entry.old_value ?? null,
     new_value: entry.new_value ?? null,
@@ -166,7 +272,7 @@ export async function fetchCylinderHistory(cylinderId: string): Promise<Cylinder
     .from("cylinder_history")
     .select("id, cylinder_id, event_type, description, partner_id, old_value, new_value, metadata, created_at, created_by, partners:partner_id(name)")
     .eq("cylinder_id", cylinderId)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? [])
     .filter((row): row is NonNullable<typeof row> => row != null && typeof row.id === "string")
@@ -189,7 +295,18 @@ export async function logCylinderCreated(cyl: CylinderRow, description?: string)
     event_type: "cylinder_created",
     description: description ?? `Palack felvéve: ${cyl.barcode}`,
     new_value: `${cyl.gas_type} · ${cyl.size}`,
-    metadata: { barcode: cyl.barcode },
+    barcode: cyl.barcode,
+  });
+}
+
+export async function logTempCreated(cyl: CylinderRow, description?: string): Promise<void> {
+  await logCylinderHistory({
+    cylinder_id: cyl.id,
+    event_type: "temp_created",
+    description: description ?? `Ideiglenes bérpalack: ${cyl.barcode}`,
+    new_value: `${cyl.gas_type} · ${cyl.size}`,
+    barcode: cyl.barcode,
+    metadata: { is_temporary: true },
   });
 }
 
@@ -303,9 +420,11 @@ export async function logCylinderUpdateDiff(
     if (before.circulation !== after.circulation) {
       await logCylinderHistory({
         cylinder_id: after.id,
-        event_type: "cylinder_edited",
+        event_type: "circulation_change",
         partner_id: partnerId,
-        description: `Körforgás: ${formatOwner(before.circulation)} → ${formatOwner(after.circulation)}`,
+        old_value: formatOwner(before.circulation),
+        new_value: formatOwner(after.circulation),
+        barcode: after.barcode,
       });
     }
   }
@@ -400,6 +519,7 @@ export async function logRentalExtend(
   rentalId: string,
   oldExpiry: string | null,
   newExpiry: string | null,
+  barcode?: string,
 ): Promise<void> {
   await logCylinderHistory({
     cylinder_id: cylinderId,
@@ -407,7 +527,27 @@ export async function logRentalExtend(
     partner_id: partnerId,
     old_value: oldExpiry ?? "—",
     new_value: newExpiry ?? "—",
+    barcode,
     metadata: { rental_id: rentalId },
+  });
+}
+
+export async function logRentalExpiryChange(args: {
+  cylinderId: string;
+  partnerId: string;
+  rentalId: string;
+  oldExpiry: string | null;
+  newExpiry: string | null;
+  barcode?: string;
+}): Promise<void> {
+  await logCylinderHistory({
+    cylinder_id: args.cylinderId,
+    event_type: "rental_expiry_change",
+    partner_id: args.partnerId,
+    old_value: args.oldExpiry ?? "—",
+    new_value: args.newExpiry ?? "—",
+    barcode: args.barcode,
+    metadata: { rental_id: args.rentalId },
   });
 }
 
@@ -471,31 +611,180 @@ export async function logSupplierExchangeForCylinder(args: {
   role: "returned" | "received";
   barcode: string;
   pairedBarcodes: string[];
+  pairedCylinderIds?: string[];
   exchangeId: string;
   note?: string | null;
 }): Promise<void> {
   const paired = args.pairedBarcodes.filter(Boolean);
+  const pairedIds = (args.pairedCylinderIds ?? []).filter(Boolean);
+  const relatedBarcode = paired[0] ?? null;
+  const relatedCylinderId = pairedIds[0] ?? null;
+  const reasonLine = args.note?.trim() ? `Ok / megjegyzés: ${args.note.trim()}` : null;
+
+  if (args.role === "returned") {
+    await logCylinderHistory({
+      cylinder_id: args.cylinderId,
+      event_type: "supplier_exchange",
+      description: [
+        `Szolgáltató: ${args.supplierName}`,
+        `Visszaküldött palack: ${args.barcode}`,
+        relatedBarcode ? `Helyette érkezett: ${relatedBarcode}` : null,
+        reasonLine,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      old_value: args.barcode,
+      new_value: relatedBarcode,
+      barcode: args.barcode,
+      note: args.note?.trim() || null,
+      metadata: {
+        supplier_id: args.supplierId,
+        supplier_name: args.supplierName,
+        supplier_exchange_id: args.exchangeId,
+        role: "returned",
+        related_cylinder_id: relatedCylinderId,
+        paired_barcodes: paired,
+        paired_cylinder_ids: pairedIds,
+      },
+    });
+    return;
+  }
+
   await logCylinderHistory({
     cylinder_id: args.cylinderId,
-    event_type: "supplier_exchange",
+    event_type: "supplier_received_from",
     description: [
       `Szolgáltató: ${args.supplierName}`,
-      args.role === "returned"
-        ? `Visszaadott palack: ${args.barcode}`
-        : `Átvett palack: ${args.barcode}`,
-      paired.length > 0 ? `Párban: ${paired.join(", ")}` : null,
-      args.note?.trim() ? `Megjegyzés: ${args.note.trim()}` : null,
+      relatedBarcode ? `${relatedBarcode} palack helyett érkezett` : "Szolgáltatótól érkezett",
+      `Palack: ${args.barcode}`,
+      reasonLine,
     ]
       .filter(Boolean)
       .join("\n"),
-    old_value: args.role === "returned" ? args.barcode : paired[0] ?? null,
-    new_value: args.role === "received" ? args.barcode : paired[0] ?? null,
+    old_value: relatedBarcode,
+    new_value: args.barcode,
+    barcode: args.barcode,
+    note: args.note?.trim() || null,
     metadata: {
       supplier_id: args.supplierId,
       supplier_name: args.supplierName,
       supplier_exchange_id: args.exchangeId,
-      role: args.role,
+      role: "received",
+      related_cylinder_id: relatedCylinderId,
+      paired_barcodes: paired,
+      paired_cylinder_ids: pairedIds,
+      replaces_barcode: relatedBarcode,
     },
+  });
+}
+
+export async function logChineseBrought(args: {
+  cylinderId: string;
+  partnerId: string;
+  partnerName?: string;
+  barcode: string;
+  gas_type: string;
+  size: string;
+  quantity: number;
+  exchangeId?: string | null;
+  note?: string | null;
+}): Promise<void> {
+  await logCylinderHistory({
+    cylinder_id: args.cylinderId,
+    event_type: "chinese_brought",
+    partner_id: args.partnerId,
+    description: [
+      args.partnerName ? `Partner: ${args.partnerName}` : null,
+      `Hozott kínai: ${args.quantity}× ${args.gas_type} ${args.size}`,
+      args.note?.trim() ? `Megjegyzés: ${args.note.trim()}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    new_value: `${args.quantity}× ${args.gas_type} ${args.size}`,
+    barcode: args.barcode,
+    note: args.note?.trim() || null,
+    metadata: {
+      partner_name: args.partnerName,
+      exchange_id: args.exchangeId ?? null,
+      gas_type: args.gas_type,
+      size: args.size,
+      quantity: args.quantity,
+    },
+  });
+}
+
+export async function logChineseTake(args: {
+  cylinderId: string;
+  partnerId: string;
+  partnerName?: string;
+  barcode: string;
+  gas_type: string;
+  size: string;
+  quantity: number;
+  exchangeId?: string | null;
+  note?: string | null;
+}): Promise<void> {
+  await logCylinderHistory({
+    cylinder_id: args.cylinderId,
+    event_type: "chinese_take",
+    partner_id: args.partnerId,
+    description: [
+      args.partnerName ? `Partner: ${args.partnerName}` : null,
+      `Kínait visz: ${args.quantity}× ${args.gas_type} ${args.size}`,
+      `Leadott üres: ${args.barcode}`,
+      args.note?.trim() ? `Megjegyzés: ${args.note.trim()}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    old_value: args.barcode,
+    new_value: `${args.quantity}× ${args.gas_type} ${args.size}`,
+    barcode: args.barcode,
+    note: args.note?.trim() || null,
+    metadata: {
+      partner_name: args.partnerName,
+      exchange_id: args.exchangeId ?? null,
+      gas_type: args.gas_type,
+      size: args.size,
+      quantity: args.quantity,
+    },
+  });
+}
+
+export async function logComplaintOpened(args: {
+  cylinderId: string;
+  complaintId: string;
+  barcode?: string;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  reason?: string | null;
+}): Promise<void> {
+  await logCylinderHistory({
+    cylinder_id: args.cylinderId,
+    event_type: "complaint_opened",
+    description: args.reason?.trim() ? `Indok: ${args.reason.trim()}` : "Reklamáció megnyitva",
+    barcode: args.barcode,
+    note: args.reason?.trim() || null,
+    metadata: {
+      complaint_id: args.complaintId,
+      supplier_id: args.supplierId ?? null,
+      supplier_name: args.supplierName ?? null,
+    },
+  });
+}
+
+export async function logComplaintClosed(args: {
+  cylinderId: string;
+  complaintId: string;
+  barcode?: string;
+  resolution?: string | null;
+}): Promise<void> {
+  await logCylinderHistory({
+    cylinder_id: args.cylinderId,
+    event_type: "complaint_closed",
+    description: args.resolution?.trim() ? `Lezárás: ${args.resolution.trim()}` : "Reklamáció lezárva",
+    barcode: args.barcode,
+    note: args.resolution?.trim() || null,
+    metadata: { complaint_id: args.complaintId },
   });
 }
 

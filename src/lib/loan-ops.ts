@@ -3,8 +3,6 @@ import {
   fetchPartnerName,
   logLoanIssue,
   logLoanReturn,
-  logPartnerIssue,
-  logPartnerReturn,
 } from "@/lib/cylinder-history";
 import {
   findCylinderByBarcode,
@@ -133,7 +131,6 @@ export async function recordCylinderLoan(args: {
     fetchPartnerName(args.partner_id),
   ]);
   if (cyl) {
-    await logPartnerIssue(args.outgoing_id, args.partner_id, cyl.barcode, partnerName);
     await logLoanIssue(args.outgoing_id, args.partner_id, cyl.barcode, loanId, partnerName);
   }
 
@@ -185,7 +182,6 @@ export async function returnCylinderLoan(args: {
   if (error) throw new Error(parseDbError(error.message));
 
   const partnerName = await fetchPartnerName(args.partner_id);
-  await logPartnerReturn(returned.id, args.partner_id, returned.barcode, partnerName);
   await logLoanReturn({
     cylinderId: returned.id,
     partnerId: args.partner_id,

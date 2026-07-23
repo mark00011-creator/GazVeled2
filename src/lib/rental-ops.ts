@@ -18,10 +18,11 @@ import {
 
 import {
   fetchPartnerName,
-  logCylinderCreated,
   logRentalClose,
   logRentalExtend,
+  logRentalExpiryChange,
   logRentalStart,
+  logTempCreated,
   logTempToChinese,
   logCylinderHistory,
 } from "@/lib/cylinder-history";
@@ -267,7 +268,7 @@ async function createTempRentalCylinder(gas_type: string, size: string): Promise
   if (error) throwSupabaseError("createTempRentalCylinder → cylinders INSERT", error);
   if (!data) throw new Error("Ideiglenes palack létrehozása sikertelen");
   const row = data as CylinderRow;
-  await logCylinderCreated(row, "Ideiglenes bérpalack létrehozva");
+  await logTempCreated(row, "Ideiglenes bérpalack létrehozva");
   return row;
 }
 
@@ -1245,12 +1246,42 @@ export async function updateRentalExpiry(rentalId: string, expiryDate: string): 
   if (error || !rental) throw new Error("Bérlet nem található");
   if (rental.status === "closed") throw new Error("Lezárt bérlet nem módosítható");
 
+  const { data: rentalMeta } = await supabase
+    .from("rentals")
+    .select("partner_id")
+    .eq("id", rentalId)
+    .single();
+
+  const { data: activeLinks } = await supabase
+    .from("rental_cylinders")
+    .select("cylinder_id, expiry_date, rental_end_date, cylinders(barcode)")
+    .eq("rental_id", rentalId)
+    .is("removed_at", null);
+
   const { error: rcErr } = await supabase
     .from("rental_cylinders")
     .update({ expiry_date: expiryDate, rental_end_date: expiryDate })
     .eq("rental_id", rentalId)
     .is("removed_at", null);
   if (rcErr) throw new Error(parseDbError(rcErr.message));
+
+  if (rentalMeta?.partner_id) {
+    for (const link of activeLinks ?? []) {
+      const oldEnd = link.rental_end_date ?? link.expiry_date;
+      const barcode =
+        link.cylinders && typeof link.cylinders === "object" && "barcode" in link.cylinders
+          ? String((link.cylinders as { barcode: string }).barcode)
+          : undefined;
+      await logRentalExpiryChange({
+        cylinderId: link.cylinder_id,
+        partnerId: rentalMeta.partner_id,
+        rentalId,
+        oldExpiry: oldEnd,
+        newExpiry: expiryDate,
+        barcode,
+      });
+    }
+  }
 
   await logRentalAudit(rentalId, "Összes palack lejárati dátuma módosítva", {
     expiry_date: expiryDate,
@@ -1266,7 +1297,7 @@ export async function updateRentalCylinderExpiry(
 
   const { data: rental, error: rentErr } = await supabase
     .from("rentals")
-    .select("id, status")
+    .select("id, status, partner_id")
     .eq("id", rentalId)
     .single();
   if (rentErr || !rental) throw new Error("Bérlet nem található");
@@ -1290,6 +1321,19 @@ export async function updateRentalCylinderExpiry(
     .eq("rental_id", rentalId)
     .eq("cylinder_id", cylinderId);
   if (updErr) throw new Error(parseDbError(updErr.message));
+
+  const { data: cyl } = await supabase.from("cylinders").select("barcode").eq("id", cylinderId).maybeSingle();
+
+  if (rental.partner_id) {
+    await logRentalExpiryChange({
+      cylinderId,
+      partnerId: rental.partner_id,
+      rentalId,
+      oldExpiry: oldEnd,
+      newExpiry: expiryDate,
+      barcode: cyl?.barcode,
+    });
+  }
 
   await logRentalAudit(rentalId, "Palack lejárati dátum módosítva", {
     cylinder_id: cylinderId,

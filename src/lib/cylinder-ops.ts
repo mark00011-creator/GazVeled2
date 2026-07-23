@@ -2,6 +2,8 @@ import { detectManufacturerFromBarcode } from "@/lib/barcode-manufacturer";
 import {
   fetchPartnerName,
   logCirculationDifferenceEvents,
+  logChineseBrought,
+  logChineseTake,
   logCylinderCreated,
   logCylinderUpdateDiff,
   logPartnerIssue,
@@ -9,6 +11,7 @@ import {
   logQuickExchange,
   logSupplierExchangeForCylinder,
   logTempToSerial,
+  logTempToChinese,
 } from "@/lib/cylinder-history";
 import {
   deriveExchangeCirculationSideFromCylinder,
@@ -597,7 +600,17 @@ export async function recordChineseBroughtExchange(args: {
     ]);
 
     if (outCyl) {
-      await logPartnerIssue(args.outgoing_id, args.partner_id, outCyl.barcode, partnerName);
+      await logChineseBrought({
+        cylinderId: args.outgoing_id,
+        partnerId: args.partner_id,
+        partnerName: partnerName ?? undefined,
+        barcode: outCyl.barcode,
+        gas_type: in_gas_type,
+        size: in_size,
+        quantity,
+        exchangeId,
+        note: args.note,
+      });
 
       const inSide = deriveQuantityExchangeCirculation("chinese", in_gas_type, in_size);
       const outSide = deriveExchangeCirculationSideFromCylinder(outCyl as CylinderRow);
@@ -715,7 +728,17 @@ export async function recordChineseTake(args: {
 
   const exchangeId = data as string;
   if (inCyl) {
-    await logPartnerReturn(args.incoming_id, args.partner_id, inCyl.barcode, partnerName);
+    await logChineseTake({
+      cylinderId: args.incoming_id,
+      partnerId: args.partner_id,
+      partnerName: partnerName ?? undefined,
+      barcode: inCyl.barcode,
+      gas_type,
+      size,
+      quantity,
+      exchangeId,
+      note: args.note,
+    });
 
     const inSide = deriveExchangeCirculationSideFromCylinder(inCyl as CylinderRow);
     const outSide = { key: "chinese" as const, gas_type, size };
@@ -1060,6 +1083,8 @@ export async function submitSupplierExchange(args: {
 
   const returnedBarcodes = args.returned.map((c) => c.barcode);
   const receivedBarcodes = args.received.map((c) => c.barcode);
+  const returnedCylinderIds = args.returned.map((c) => c.id);
+  const receivedCylinderIds = args.received.map((c) => c.id);
 
   for (const cyl of args.returned) {
     await logSupplierExchangeForCylinder({
@@ -1069,6 +1094,7 @@ export async function submitSupplierExchange(args: {
       role: "returned",
       barcode: cyl.barcode,
       pairedBarcodes: receivedBarcodes,
+      pairedCylinderIds: receivedCylinderIds,
       exchangeId,
       note: args.note,
     });
@@ -1081,6 +1107,7 @@ export async function submitSupplierExchange(args: {
       role: "received",
       barcode: cyl.barcode,
       pairedBarcodes: returnedBarcodes,
+      pairedCylinderIds: returnedCylinderIds,
       exchangeId,
       note: args.note,
     });
@@ -1252,7 +1279,11 @@ export async function finalizeCylinderBarcode(
   const wasTemp =
     !!(before as CylinderRow).is_temporary ||
     /^temp-/i.test((before as CylinderRow).barcode ?? "");
-  const result = await updateCylinder(id, { barcode: bc, is_temporary: false });
+  const result = await updateCylinder(
+    id,
+    { barcode: bc, is_temporary: false },
+    wasTemp ? { skipHistory: true } : undefined,
+  );
 
   if (wasTemp) {
     await supabase.from("audit_log").insert({
