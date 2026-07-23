@@ -480,6 +480,7 @@ export type Database = {
           cylinder_id: string
           description: string | null
           document_url: string | null
+          event_group_id: string | null
           event_type: string
           id: string
           ip_address: unknown
@@ -489,6 +490,12 @@ export type Database = {
           partner_id: string | null
           photo_url: string | null
           pressure_test_certificate_url: string | null
+          related_cylinder_id: string | null
+          related_exchange_id: string | null
+          related_partner_id: string | null
+          related_rental_id: string | null
+          related_supplier_id: string | null
+          related_user_id: string | null
           user_note: string | null
         }
         Insert: {
@@ -497,6 +504,7 @@ export type Database = {
           cylinder_id: string
           description?: string | null
           document_url?: string | null
+          event_group_id?: string | null
           event_type: string
           id?: string
           ip_address?: unknown
@@ -506,6 +514,12 @@ export type Database = {
           partner_id?: string | null
           photo_url?: string | null
           pressure_test_certificate_url?: string | null
+          related_cylinder_id?: string | null
+          related_exchange_id?: string | null
+          related_partner_id?: string | null
+          related_rental_id?: string | null
+          related_supplier_id?: string | null
+          related_user_id?: string | null
           user_note?: string | null
         }
         Update: {
@@ -514,6 +528,7 @@ export type Database = {
           cylinder_id?: string
           description?: string | null
           document_url?: string | null
+          event_group_id?: string | null
           event_type?: string
           id?: string
           ip_address?: unknown
@@ -523,6 +538,12 @@ export type Database = {
           partner_id?: string | null
           photo_url?: string | null
           pressure_test_certificate_url?: string | null
+          related_cylinder_id?: string | null
+          related_exchange_id?: string | null
+          related_partner_id?: string | null
+          related_rental_id?: string | null
+          related_supplier_id?: string | null
+          related_user_id?: string | null
           user_note?: string | null
         }
         Relationships: [

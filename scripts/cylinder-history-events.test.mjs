@@ -90,3 +90,10 @@ test("mergeHistoryMetadata barcode és partner megmarad", () => {
   assert.equal(merged.barcode, "hu123");
   assert.equal(merged.partner_name, "Teszt Kft.");
 });
+
+test("event_group_id formátum UUID", () => {
+  const uuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const sample = "a1b2c3d4-e5f6-4789-a012-3456789abcde";
+  assert.ok(uuid.test(sample));
+});

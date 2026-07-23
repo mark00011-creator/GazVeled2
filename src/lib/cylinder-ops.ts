@@ -9,6 +9,7 @@ import {
   logPartnerIssue,
   logPartnerReturn,
   logQuickExchange,
+  logSupplierExchangePair,
   logSupplierExchangeForCylinder,
   logTempToSerial,
   logTempToChinese,
@@ -273,6 +274,7 @@ export async function recordExchange(args: {
       incoming_barcode: inCyl.barcode,
       outgoing_barcode: outCyl.barcode,
       partner_name: partnerName,
+      exchange_id: exchangeId,
     });
 
     const inSide = deriveExchangeCirculationSideFromCylinder(inCyl as CylinderRow);
@@ -1083,33 +1085,19 @@ export async function submitSupplierExchange(args: {
 
   const returnedBarcodes = args.returned.map((c) => c.barcode);
   const receivedBarcodes = args.received.map((c) => c.barcode);
-  const returnedCylinderIds = args.returned.map((c) => c.id);
-  const receivedCylinderIds = args.received.map((c) => c.id);
 
-  for (const cyl of args.returned) {
-    await logSupplierExchangeForCylinder({
-      cylinderId: cyl.id,
+  const pairCount = Math.max(args.returned.length, args.received.length);
+  for (let i = 0; i < pairCount; i++) {
+    const ret = args.returned[i] ?? args.returned[0];
+    const rec = args.received[i] ?? args.received[0];
+    if (!ret || !rec) continue;
+    await logSupplierExchangePair({
       supplierId: args.supplier_id,
       supplierName,
-      role: "returned",
-      barcode: cyl.barcode,
-      pairedBarcodes: receivedBarcodes,
-      pairedCylinderIds: receivedCylinderIds,
-      exchangeId,
+      supplierExchangeId: exchangeId,
       note: args.note,
-    });
-  }
-  for (const cyl of args.received) {
-    await logSupplierExchangeForCylinder({
-      cylinderId: cyl.id,
-      supplierId: args.supplier_id,
-      supplierName,
-      role: "received",
-      barcode: cyl.barcode,
-      pairedBarcodes: returnedBarcodes,
-      pairedCylinderIds: returnedCylinderIds,
-      exchangeId,
-      note: args.note,
+      returned: { id: ret.id, barcode: ret.barcode },
+      received: { id: rec.id, barcode: rec.barcode },
     });
   }
 
@@ -1359,6 +1347,7 @@ export async function convertTempCylinderToRealSerial(args: {
     oldBarcode: tempCyl.barcode,
     newBarcode: bc,
     rentalId: args.rental_id ?? null,
+    tempCylinderId: args.temp_cylinder_id,
   });
 
   const { error: delErr } = await supabase.rpc("try_delete_orphan_temp_cylinder", {

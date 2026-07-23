@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -95,7 +96,32 @@ function resolveNote(row: CylinderHistoryRow): string | null {
   return null;
 }
 
-function HistoryCard({ row }: { row: CylinderHistoryRow }) {
+function resolveRelatedCylinder(
+  row: CylinderHistoryRow,
+  currentCylinderId: string,
+): { id: string; barcode: string } | null {
+  const meta = row.metadata ?? {};
+  const relatedId = row.related_cylinder_id ?? (typeof meta.related_cylinder_id === "string" ? meta.related_cylinder_id : null);
+  if (!relatedId || relatedId === currentCylinderId) return null;
+
+  const barcode =
+    row.related_cylinder?.barcode ??
+    (typeof meta.related_barcode === "string" ? meta.related_barcode : null) ??
+    (row.event_type === "quick_exchange"
+      ? typeof meta.outgoing_barcode === "string" && row.cylinder_id !== currentCylinderId
+        ? meta.outgoing_barcode
+        : typeof meta.incoming_barcode === "string"
+          ? meta.incoming_barcode
+          : null
+      : null) ??
+    row.new_value ??
+    row.old_value;
+
+  if (!barcode) return { id: relatedId, barcode: "Palack" };
+  return { id: relatedId, barcode };
+}
+
+function HistoryCard({ row, currentCylinderId }: { row: CylinderHistoryRow; currentCylinderId: string }) {
   const eventType = row.event_type as CylinderHistoryEventType;
   const label = cylinderHistoryEventLabels[eventType] ?? row.event_type;
   const theme = cylinderHistoryEventTheme[eventType] ?? cylinderHistoryEventTheme.cylinder_edited;
@@ -110,6 +136,7 @@ function HistoryCard({ row }: { row: CylinderHistoryRow }) {
   const outgoing = typeof meta.outgoing_barcode === "string" ? meta.outgoing_barcode : null;
   const hasOld = row.old_value != null && row.old_value !== "";
   const hasNew = row.new_value != null && row.new_value !== "";
+  const related = resolveRelatedCylinder(row, currentCylinderId);
   const dateTime = row.created_at ? fmtDateTime(row.created_at) : "—";
   const [datePart, ...timeParts] = dateTime.split(" ");
 
@@ -172,6 +199,19 @@ function HistoryCard({ row }: { row: CylinderHistoryRow }) {
         </div>
       )}
 
+      {related && (
+        <div className="mt-2 text-xs">
+          <span className="text-muted-foreground">Kapcsolódó palack: </span>
+          <Link
+            to="/cylinders/$id"
+            params={{ id: related.id }}
+            className="font-mono text-primary underline-offset-2 hover:underline"
+          >
+            {related.barcode}
+          </Link>
+        </div>
+      )}
+
       {hasOld && hasNew && (
         <div className="mt-2 text-xs font-medium">
           {row.old_value} → {row.new_value}
@@ -206,7 +246,7 @@ export function CylinderHistorySection({
       {!isLoading && !isError && (
         <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
           {rows.map((row) => (
-            <HistoryCard key={row.id} row={row} />
+            <HistoryCard key={row.id} row={row} currentCylinderId={cylinderId} />
           ))}
           {rows.length === 0 && (
             <div className="py-4 text-center text-sm text-muted-foreground">
