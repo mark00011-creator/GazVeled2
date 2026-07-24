@@ -1,4 +1,7 @@
--- Kölcsön visszavétel: üres / teli mód; teli visszavételnél a kölcsön exchange nem számlázandó
+-- Javítás: a loan_return_mode migráció bejegyzés után is a régi 3 paraméteres RPC maradt productionön.
+-- Idempotens: DROP régi overload + CREATE OR REPLACE a teli/üres mód támogatással.
+
+DROP FUNCTION IF EXISTS public.return_cylinder_loan(uuid, uuid, text);
 
 CREATE OR REPLACE FUNCTION public.return_cylinder_loan(
   p_loan_id uuid,
