@@ -1,0 +1,70 @@
+---
+description: Production verifikáció – DB audit, RPC ellenőrzés, funkcionális teszt (kötelező)
+alwaysApply: true
+---
+
+# Production verifikáció – kötelező szabályok
+
+Teljes szöveg: `CURSOR_RULES.md` §1–§12. Ez a fájl a Cursor sessionben minden fejlesztési feladatra vonatkozik.
+
+## Production projekt
+
+- **Projekt ID:** `snmiwsgtnokvqlnwvfwf`
+- MCP/CLI URL ellenőrzés minden migráció **előtt**
+- Eltérő projekt → STOP, ne migrálj, ne módosíts adatot
+
+## Migráció audit (migration history nem elég)
+
+Migráció után **mindig** futtasd:
+
+```sql
+-- RPC aláírás
+SELECT pg_get_function_identity_arguments(p.oid), pg_get_functiondef(p.oid)
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.prnamespace
+WHERE n.nspname = 'public' AND p.proname = '<rpc_nev>';
+
+-- Régi overloadok
+SELECT pg_get_function_identity_arguments(p.oid)
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.prnamespace
+WHERE n.nspname = 'public' AND p.proname = '<rpc_nev>';
+```
+
+Ellenőrizd: objektum létezik, típusnevek helyesek (pl. `cyl_status`, nem `cylinder_status`), index/RLS/policy/GRANT OK, régi overload nincs.
+
+## RPC + frontend egyezés
+
+- Frontend `supabase.rpc()` paraméternevek = production `pg_get_function_identity_arguments`
+- Extra paraméter PostgREST hibát vagy rossz overloadot okozhat
+- Típushiba a migrációban → függvény nem jön létre, history mégis „alkalmazott” lehet → javító migráció
+
+## Production funkcionális teszt
+
+- Teljes üzleti folyamat, nem csak HTTP 200 / `/auth`
+- Adatmódosító teszt: **előtte/utána** állapot rögzítése
+- Rollback tranzakció csak ellenőrzésre; valós teszt után is audit
+
+### Példa: „Teli hozta vissza”
+
+Kötelező ellenőrzés:
+
+- UI küldi: `return_mode: "full"`
+- RPC 4 paraméter: `p_loan_id, p_returned_cylinder_id, p_note, p_return_mode`
+- `cylinders.location_type = warehouse_full`, `status = full`
+- `cylinder_loans.status = returned`
+- `exchanges.invoiced = true` (ha van exchange)
+- Eltűnik a Nem számlázott listából
+- Megjelenik teli készletben
+- Előélet + events (ha bekötött)
+- Nincs aktív kölcsön, duplikált napló, konzol/42501/404/RPC hiba
+
+## Végső státusz
+
+- **PASS** – minden követelmény bizonyítottan OK
+- **PARTIAL** – pl. nincs production auth; pontosan mi hiányzik
+- **FAIL** – hiba azonosítva; javítás + újraellenőrzés
+
+PARTIAL-t **soha** ne jelents PASS-ként.
+
+## Jelentés kötelező mezői
+
+Követelmények száma/teljesítve/hiány, önrevízió, projekt ID, migráció + history + **tényleges objektum audit**, RPC audit, build, tesztek, commit SHA, push, Vercel deploy SHA, Vercel READY, funkcionális teszt, előtte/utána DB, konzol/Network, végső státusz.

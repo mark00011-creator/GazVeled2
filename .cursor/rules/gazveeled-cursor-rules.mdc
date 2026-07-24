@@ -5,63 +5,48 @@ alwaysApply: true
 
 # GazVeled – kötelező fejlesztési szabályok
 
-Hivatalos forrás: `CURSOR_RULES.md` a projekt gyökerében. Módosításkor a két fájlt szinkronban tartsd.
+Hivatalos forrás: `CURSOR_RULES.md` a projekt gyökerében. Production verifikáció: `.cursor/rules/production-verification.mdc`. Módosításkor a fájlokat szinkronban tartsd.
 
-## Fejlesztési alapelvek
+## Alapelv
 
-- Egy prompt = egy üzleti funkció.
-- Ne próbálj egyszerre több külön fejlesztést megvalósítani.
-- Ha a felhasználó több funkciót kér egyszerre, bontsd külön feladatokra.
-- Mindig csak az aktuális feladatot implementáld.
+Feladat **nem kész**, ha csak kód/build/migráció-fájl/commit/push/Vercel READY kész. Kész csak ha: kód működik, DB-változás **ténylegesen** alkalmazva, production audit PASS, production funkcionális teszt PASS, üzleti követelmény teljesül.
 
-## Implementálás
+## Kötelező folyamat (rövid)
 
-- Ne készíts hosszú elemzést, tervet vagy magyarázatot.
-- Közvetlenül implementálj.
+Olvasás → követelménylista → production állapot ellenőrzés → implement → önrevízió → build → teszt → git diff → migráció productionön → DB audit → commit → push → Vercel READY + SHA egyezés → production funkcionális teszt → PASS/FAIL/PARTIAL jelentés.
 
-## Projekt bejárása
+## Önrevízió (FAIL → automatikus javítás)
 
-- Ne keress végig feleslegesen a teljes projektben.
-- Csak az érintett fájlokat nyisd meg.
-- Csak akkor nyiss meg új fájlt, ha arra valóban szükség van.
-
-## Refaktor
-
-- Ne refaktorálj, optimalizálj, nevezz át vagy mozgass fájlokat, ha a feladat nem kéri.
-
-## UI
-
-- Csak az érintett képernyőt módosítsd.
-- Ne változtass működő UI vagy design elemeket.
+Ellenőrizd: követelmények, DB típusok/enumok/oszlopok, RPC aláírás és overloadok, frontend↔RPC paraméterek, query invalidation, nincs elnyelt kritikus hiba, nincs hamis siker.
 
 ## Adatbázis
 
-- Csak szükség esetén migráció; használd a meglévő struktúrát; ne duplikálj; IF NOT EXISTS kötelező.
+- Idempotens migráció; IF NOT EXISTS / DROP IF EXISTS.
+- Egy migráció = egy logikai változás.
+- Előellenőrző SQL → migráció → audit SQL → PASS/FAIL.
+- **Migration history ≠ bizonyíték.** Objektumot közvetlenül auditáld (`pg_proc`, `pg_get_functiondef`, indexek, RLS, GRANT).
+- Hibás alkalmazott migráció → **új javító migráció**, ne csak régi fájl szerkesztés.
 
-## Üzleti logika
+## Production Supabase
 
-- Ne tilts; figyelmeztess; a felhasználó felülbírálhat; minden fontos esemény naplózva legyen.
+Projekt: **`snmiwsgtnokvqlnwvfwf`**. Minden migráció előtt ellenőrizd. Eltérés → STOP, ne módosíts.
 
-## Production-first
+## Hibák
 
-Feladat kész, ha: build sikeres, production deploy sikeres, production UI működik. Localhost nem elegendő.
+Kritikus RPC/DB/üzleti hiba nem nyelhető el. Ne legyen hamis siker toast. Opcionális telemetria csak dokumentáltan lehet nem blokkoló.
 
-## Build / Git / Commit / Vercel
+## Production teszt
 
-- Feladat végén: `npm run build` (ha kód változott).
-- `git status` – minden új fájl Gitben.
-- Commit + `push origin/main` (kivéve ha a felhasználó megtiltja).
-- Push után Vercel production READY állapot.
+`/auth` betöltés ≠ funkcionális teszt. Nincs auth session → **PARTIAL**, ne PASS.
 
-## Production UI ellenőrzés
+## Tiltott
 
-Ellenőrizd: funkció működik, nincs konzol/runtime hiba, nincs hiányzó UI/route/mező. Hiba esetén: javítás → build → commit → push → deploy → újraellenőrzés.
+Fájl/build/history alapján kész jelentés; alkalmazatlan migráció; nem auditált RPC; PARTIAL → PASS.
 
-## Jelentés (rövid)
+## Build / Git / Vercel
 
-Csak: módosított fájlok, DB változás, migráció, build, commit SHA, push, Vercel READY, production UI eredmény.
+`npm run build`, `npm test`, `git status`, commit + push main (kivéve tiltás), Vercel READY + deploy SHA = commit SHA.
 
 ## GazVeled speciális
 
-- Valós üzleti folyamatok támogatása; ne akadályozz; figyelmeztess.
-- Üzleti események strukturáltan tárolva (későbbi AI elemzéshez).
+Valós üzleti folyamatok; ne akadályozz; figyelmeztess; strukturált eseménynaplózás.
