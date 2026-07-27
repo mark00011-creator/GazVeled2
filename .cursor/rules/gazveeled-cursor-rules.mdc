@@ -5,47 +5,46 @@ alwaysApply: true
 
 # GazVeled – kötelező fejlesztési szabályok
 
-Hivatalos forrás: `CURSOR_RULES.md` a projekt gyökerében. Production verifikáció: `.cursor/rules/production-verification.mdc`. Módosításkor a fájlokat szinkronban tartsd.
+Hivatalos forrás: `CURSOR_RULES.md`. Production verifikáció: `.cursor/rules/production-verification.mdc`. Módosításkor a fájlokat szinkronban tartsd. **Minden közös projektre** ugyanez a szigor kötelező.
 
-## Alapelv
+## Implementálva ≠ bizonyítva
 
-Feladat **nem kész**, ha csak kód/build/migráció-fájl/commit/push/Vercel READY kész. Kész csak ha: kód működik, DB-változás **ténylegesen** alkalmazva, production audit PASS, production funkcionális teszt PASS, üzleti követelmény teljesül.
+Feladat **nem kész**, ha csak kód/build/migráció-fájl/commit/push/Vercel READY. **Bizonyítottan kész** csak ha: önrevízió PASS, **Red Team PASS**, production DB audit PASS, RPC audit PASS, production funkcionális teszt PASS, nincs PARTIAL.
 
 ## Kötelező folyamat (rövid)
 
-Olvasás → követelménylista → production állapot ellenőrzés → implement → önrevízió → build → teszt → git diff → migráció productionön → DB audit → commit → push → Vercel READY + SHA egyezés → production funkcionális teszt → PASS/FAIL/PARTIAL jelentés.
+Olvasás → követelménylista → **műveletbesorolás (elsődleges/másodlagos)** → production állapot → implement → önrevízió → **Red Team** → build → teszt → git diff → migráció → DB audit → commit → push → Vercel READY → funkcionális teszt → jelentés.
 
-## Önrevízió (FAIL → automatikus javítás)
+## Red Team (önrevízió után, kötelező)
 
-Ellenőrizd: követelmények, DB típusok/enumok/oszlopok, RPC aláírás és overloadok, frontend↔RPC paraméterek, query invalidation, nincs elnyelt kritikus hiba, nincs hamis siker.
+Aktívan keresd a hibát: régi RPC overload, hibás enum/típus, history≠objektum, frontend↔RPC/PostgREST eltérés, elnyelt kritikus hiba, új/meglévő/szélső/ismételt adat, duplikáció, árva rekord, UI≠DB. FAIL → automatikus javítás + teljes újraellenőrzés.
+
+## Elsődleges vs másodlagos műveletek
+
+**Elsődleges** (státusz, hely, kölcsön, bérlet, készlet, csere, számlázás, kötelező audit): hiba = FAIL, rollback, nincs hamis siker, nem nyelhető el.
+
+**Másodlagos** (events, opcionális telemetria): lehet nem blokkoló, ha dokumentált, elsődleges OK, hiba látható. `logEvent()` elfogadható nem blokkolóként a szabályok szerint.
 
 ## Adatbázis
 
-- Idempotens migráció; IF NOT EXISTS / DROP IF EXISTS.
-- Egy migráció = egy logikai változás.
-- Előellenőrző SQL → migráció → audit SQL → PASS/FAIL.
-- **Migration history ≠ bizonyíték.** Objektumot közvetlenül auditáld (`pg_proc`, `pg_get_functiondef`, indexek, RLS, GRANT).
-- Hibás alkalmazott migráció → **új javító migráció**, ne csak régi fájl szerkesztés.
+Idempotens migráció; egy migráció = egy logika; előellenőrzés → migráció → audit. **Migration history ≠ bizonyíték.** Javító migráció, ne régi fájl-only fix.
 
 ## Production Supabase
 
-Projekt: **`snmiwsgtnokvqlnwvfwf`**. Minden migráció előtt ellenőrizd. Eltérés → STOP, ne módosíts.
+Projekt: **`snmiwsgtnokvqlnwvfwf`**. Minden migráció előtt ellenőrizd.
 
-## Hibák
+## Végső státuszok
 
-Kritikus RPC/DB/üzleti hiba nem nyelhető el. Ne legyen hamis siker toast. Opcionális telemetria csak dokumentáltan lehet nem blokkoló.
+- **PASS** – minden elsődleges + audit + funkcionális teszt + Red Team OK
+- **PASS WITH TELEMETRY WARNING** – elsődleges OK, csak másodlagos napló hibázott
+- **PARTIAL** – kötelező ellenőrzés hiányzik (pl. auth)
+- **FAIL** – elsődleges hiba, inkonzisztencia, Red Team találat
 
-## Production teszt
-
-`/auth` betöltés ≠ funkcionális teszt. Nincs auth session → **PARTIAL**, ne PASS.
-
-## Tiltott
-
-Fájl/build/history alapján kész jelentés; alkalmazatlan migráció; nem auditált RPC; PARTIAL → PASS.
+PARTIAL vagy telemetria hiba **soha** ne legyen sima PASS.
 
 ## Build / Git / Vercel
 
-`npm run build`, `npm test`, `git status`, commit + push main (kivéve tiltás), Vercel READY + deploy SHA = commit SHA.
+`npm run build`, `npm test`, commit + push main (kivéve tiltás), Vercel READY + deploy SHA.
 
 ## GazVeled speciális
 
