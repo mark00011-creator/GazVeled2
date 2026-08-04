@@ -9,9 +9,11 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as NoAccessRouteImport } from './routes/no-access'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedUsersRouteImport } from './routes/_authenticated/users'
 import { Route as AuthenticatedSuppliersRouteImport } from './routes/_authenticated/suppliers'
 import { Route as AuthenticatedRentalsRouteImport } from './routes/_authenticated/rentals'
 import { Route as AuthenticatedRentalReturnRouteImport } from './routes/_authenticated/rental-return'
@@ -38,6 +40,11 @@ import { Route as AuthenticatedPartnersIdRouteImport } from './routes/_authentic
 import { Route as AuthenticatedCylindersIdRouteImport } from './routes/_authenticated/cylinders.$id'
 import { Route as AuthenticatedPartnersIdRentalsRouteImport } from './routes/_authenticated/partners.$id.rentals'
 
+const NoAccessRoute = NoAccessRouteImport.update({
+  id: '/no-access',
+  path: '/no-access',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
@@ -51,6 +58,11 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedUsersRoute = AuthenticatedUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedSuppliersRoute = AuthenticatedSuppliersRouteImport.update({
   id: '/suppliers',
@@ -193,6 +205,7 @@ const AuthenticatedPartnersIdRentalsRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/no-access': typeof NoAccessRoute
   '/audit': typeof AuthenticatedAuditRoute
   '/chinese-stock': typeof AuthenticatedChineseStockRoute
   '/cylinders': typeof AuthenticatedCylindersRouteWithChildren
@@ -212,6 +225,7 @@ export interface FileRoutesByFullPath {
   '/rental-return': typeof AuthenticatedRentalReturnRoute
   '/rentals': typeof AuthenticatedRentalsRouteWithChildren
   '/suppliers': typeof AuthenticatedSuppliersRoute
+  '/users': typeof AuthenticatedUsersRoute
   '/cylinders/$id': typeof AuthenticatedCylindersIdRoute
   '/partners/$id': typeof AuthenticatedPartnersIdRouteWithChildren
   '/rentals/$id': typeof AuthenticatedRentalsIdRoute
@@ -222,6 +236,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/no-access': typeof NoAccessRoute
   '/audit': typeof AuthenticatedAuditRoute
   '/chinese-stock': typeof AuthenticatedChineseStockRoute
   '/cylinders': typeof AuthenticatedCylindersRouteWithChildren
@@ -239,6 +254,7 @@ export interface FileRoutesByTo {
   '/rental-import': typeof AuthenticatedRentalImportRoute
   '/rental-return': typeof AuthenticatedRentalReturnRoute
   '/suppliers': typeof AuthenticatedSuppliersRoute
+  '/users': typeof AuthenticatedUsersRoute
   '/cylinders/$id': typeof AuthenticatedCylindersIdRoute
   '/partners/$id': typeof AuthenticatedPartnersIdRouteWithChildren
   '/rentals/$id': typeof AuthenticatedRentalsIdRoute
@@ -251,6 +267,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/no-access': typeof NoAccessRoute
   '/_authenticated/audit': typeof AuthenticatedAuditRoute
   '/_authenticated/chinese-stock': typeof AuthenticatedChineseStockRoute
   '/_authenticated/cylinders': typeof AuthenticatedCylindersRouteWithChildren
@@ -270,6 +287,7 @@ export interface FileRoutesById {
   '/_authenticated/rental-return': typeof AuthenticatedRentalReturnRoute
   '/_authenticated/rentals': typeof AuthenticatedRentalsRouteWithChildren
   '/_authenticated/suppliers': typeof AuthenticatedSuppliersRoute
+  '/_authenticated/users': typeof AuthenticatedUsersRoute
   '/_authenticated/cylinders/$id': typeof AuthenticatedCylindersIdRoute
   '/_authenticated/partners/$id': typeof AuthenticatedPartnersIdRouteWithChildren
   '/_authenticated/rentals/$id': typeof AuthenticatedRentalsIdRoute
@@ -282,6 +300,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/no-access'
     | '/audit'
     | '/chinese-stock'
     | '/cylinders'
@@ -301,6 +320,7 @@ export interface FileRouteTypes {
     | '/rental-return'
     | '/rentals'
     | '/suppliers'
+    | '/users'
     | '/cylinders/$id'
     | '/partners/$id'
     | '/rentals/$id'
@@ -311,6 +331,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/no-access'
     | '/audit'
     | '/chinese-stock'
     | '/cylinders'
@@ -328,6 +349,7 @@ export interface FileRouteTypes {
     | '/rental-import'
     | '/rental-return'
     | '/suppliers'
+    | '/users'
     | '/cylinders/$id'
     | '/partners/$id'
     | '/rentals/$id'
@@ -339,6 +361,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/no-access'
     | '/_authenticated/audit'
     | '/_authenticated/chinese-stock'
     | '/_authenticated/cylinders'
@@ -358,6 +381,7 @@ export interface FileRouteTypes {
     | '/_authenticated/rental-return'
     | '/_authenticated/rentals'
     | '/_authenticated/suppliers'
+    | '/_authenticated/users'
     | '/_authenticated/cylinders/$id'
     | '/_authenticated/partners/$id'
     | '/_authenticated/rentals/$id'
@@ -370,10 +394,18 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  NoAccessRoute: typeof NoAccessRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/no-access': {
+      id: '/no-access'
+      path: '/no-access'
+      fullPath: '/no-access'
+      preLoaderRoute: typeof NoAccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth': {
       id: '/auth'
       path: '/auth'
@@ -394,6 +426,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/users': {
+      id: '/_authenticated/users'
+      path: '/users'
+      fullPath: '/users'
+      preLoaderRoute: typeof AuthenticatedUsersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/suppliers': {
       id: '/_authenticated/suppliers'
@@ -649,6 +688,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedRentalReturnRoute: typeof AuthenticatedRentalReturnRoute
   AuthenticatedRentalsRoute: typeof AuthenticatedRentalsRouteWithChildren
   AuthenticatedSuppliersRoute: typeof AuthenticatedSuppliersRoute
+  AuthenticatedUsersRoute: typeof AuthenticatedUsersRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -671,6 +711,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedRentalReturnRoute: AuthenticatedRentalReturnRoute,
   AuthenticatedRentalsRoute: AuthenticatedRentalsRouteWithChildren,
   AuthenticatedSuppliersRoute: AuthenticatedSuppliersRoute,
+  AuthenticatedUsersRoute: AuthenticatedUsersRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
@@ -680,6 +721,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  NoAccessRoute: NoAccessRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

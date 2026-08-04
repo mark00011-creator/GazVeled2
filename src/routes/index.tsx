@@ -1,5 +1,6 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth";
+import { defaultHomeForRole } from "@/lib/roles";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -12,7 +13,14 @@ export const Route = createFileRoute("/")({
 });
 
 function Index() {
-  const { user, loading } = useAuth();
-  if (loading) return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Betöltés…</div>;
-  return <Navigate to={user ? "/dashboard" : "/auth"} replace />;
+  const { user, loading, profile } = useAuth();
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
+        Betöltés…
+      </div>
+    );
+  }
+  if (!user) return <Navigate to="/auth" replace />;
+  return <Navigate to={defaultHomeForRole(profile?.role)} replace />;
 }

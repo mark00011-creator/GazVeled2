@@ -19,13 +19,24 @@ const tabs = [
   { to: "/more", icon: MoreHorizontal, label: "Több" },
 ] as const;
 
-export function AppShell({ children, title }: { children: React.ReactNode; title?: string }) {
+export function AppShell({
+  children,
+  title,
+  variant = "admin",
+}: {
+  children: React.ReactNode;
+  title?: string;
+  variant?: "admin" | "operator";
+}) {
   const loc = useLocation();
+  const navTabs = variant === "operator" ? tabs.filter((t) => t.to === "/quick-exchange") : tabs;
+  const homeTo = variant === "operator" ? "/quick-exchange" : "/dashboard";
+
   return (
     <div className="flex min-h-screen flex-col bg-background pb-20">
       <header className="sticky top-0 z-30 border-b border-border bg-card/90 backdrop-blur">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
-          <Link to="/dashboard" className="text-sm font-bold tracking-wide text-foreground">
+          <Link to={homeTo} className="text-sm font-bold tracking-wide text-foreground">
             <span className="text-primary">GÁZ</span> VELED
           </Link>
           {title && <h1 className="text-sm font-medium text-muted-foreground">{title}</h1>}
@@ -35,7 +46,7 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-4">{children}</main>
       <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur">
         <ul className="mx-auto flex max-w-3xl">
-          {tabs.map((t) => {
+          {navTabs.map((t) => {
             const active = loc.pathname === t.to || (t.to !== "/dashboard" && loc.pathname.startsWith(t.to));
             const Icon = t.icon;
             return (

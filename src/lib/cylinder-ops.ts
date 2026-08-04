@@ -391,6 +391,34 @@ export async function recordChineseSale(args: {
 
   const prices = await fetchProductPrices(true);
   const price = lookupProductPrice(gas_type, size, prices);
+  if (!(await isCurrentUserAdmin())) {
+    const { data: auth } = await supabase.auth.getUser();
+    const detail = `${quantity}× ${gas_type} ${size}`;
+    const { data, error } = await supabase
+      .from("exchanges")
+      .insert({
+        partner_id: args.partner_id,
+        incoming_cylinder_id: null,
+        outgoing_cylinder_id: null,
+        incoming_circulation: "own",
+        outgoing_circulation: "own",
+        is_forced_substitution: false,
+        operation_type: "chinese_sale",
+        note: [detail, args.note?.trim()].filter(Boolean).join(" · "),
+        created_by: auth.user?.id ?? null,
+      })
+      .select("id")
+      .single();
+    if (error || !data) throw new Error(formatSupabaseError(error, "Kínai eladás rögzítése"));
+    await supabase.rpc("adjust_partner_quantity_stock", {
+      p_partner_id: args.partner_id,
+      p_stock_kind: "chinese",
+      p_gas_type: gas_type,
+      p_size: size,
+      p_delta: quantity,
+    });
+    return data.id;
+  }
   if (!price) {
     throw new Error(`Nincs árlista bejegyzés: ${gas_type} ${size}`);
   }
@@ -454,6 +482,28 @@ export async function recordFlagaPbSale(args: {
     note: args.note?.trim() || "Eladás partnernek",
   });
 
+  if (!(await isCurrentUserAdmin())) {
+    const { data: auth } = await supabase.auth.getUser();
+    const detail = `${quantity}× ${args.size} ${args.gas_type}`;
+    const { data, error } = await supabase
+      .from("exchanges")
+      .insert({
+        partner_id: args.partner_id,
+        incoming_cylinder_id: null,
+        outgoing_cylinder_id: null,
+        incoming_circulation: "own",
+        outgoing_circulation: "own",
+        is_forced_substitution: false,
+        operation_type: "flaga_pb_sale",
+        note: [detail, args.note?.trim()].filter(Boolean).join(" · "),
+        created_by: auth.user?.id ?? null,
+      })
+      .select("id")
+      .single();
+    if (error || !data) throw new Error(formatSupabaseError(error, "FLAGA PB eladás rögzítése"));
+    return data.id;
+  }
+
   const prices = await fetchProductPrices(true);
   const price = lookupProductPrice(args.gas_type, args.size, prices);
   if (!price) throw new Error(`Nincs árlista bejegyzés: ${args.gas_type} ${args.size}`);
@@ -505,6 +555,28 @@ export async function recordPrimaPbSale(args: {
     quantity,
     note: args.note?.trim() || "Eladás partnernek",
   });
+
+  if (!(await isCurrentUserAdmin())) {
+    const { data: auth } = await supabase.auth.getUser();
+    const detail = `${quantity}× ${args.size} ${args.gas_type}`;
+    const { data, error } = await supabase
+      .from("exchanges")
+      .insert({
+        partner_id: args.partner_id,
+        incoming_cylinder_id: null,
+        outgoing_cylinder_id: null,
+        incoming_circulation: "own",
+        outgoing_circulation: "own",
+        is_forced_substitution: false,
+        operation_type: "prima_pb_sale",
+        note: [detail, args.note?.trim()].filter(Boolean).join(" · "),
+        created_by: auth.user?.id ?? null,
+      })
+      .select("id")
+      .single();
+    if (error || !data) throw new Error(formatSupabaseError(error, "PRÍMA PB eladás rögzítése"));
+    return data.id;
+  }
 
   const prices = await fetchProductPrices(true);
   const price = lookupProductPrice(args.gas_type, args.size, prices);
@@ -758,7 +830,15 @@ export async function recordChineseTake(args: {
   return exchangeId;
 }
 
+async function isCurrentUserAdmin(): Promise<boolean> {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return false;
+  const { data } = await supabase.from("profiles").select("role").eq("id", auth.user.id).single();
+  return data?.role === "admin";
+}
+
 async function storeExchangeProfit(exchangeId: string, outgoingId: string): Promise<void> {
+  if (!(await isCurrentUserAdmin())) return;
   const { data: cyl, error: cylErr } = await supabase
     .from("cylinders")
     .select("gas_type, size")

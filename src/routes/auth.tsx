@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
+import { defaultHomeForRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +19,7 @@ type AuthMode = "login" | "signup" | "forgot" | "reset";
 
 function AuthPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, profile, loading } = useAuth();
   const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -51,8 +52,10 @@ function AuthPage() {
   }, []);
 
   useEffect(() => {
-    if (user && mode !== "reset") navigate({ to: "/dashboard", replace: true });
-  }, [user, navigate, mode]);
+    if (!loading && user && mode !== "reset") {
+      navigate({ to: defaultHomeForRole(profile?.role), replace: true });
+    }
+  }, [user, profile, loading, navigate, mode]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();

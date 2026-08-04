@@ -22,6 +22,12 @@ export const Route = createFileRoute("/_authenticated/more")({
 
 const adminItems = [
   {
+    to: "/users",
+    icon: ScrollText,
+    label: "Felhasználók",
+    desc: "Szerepkörök: admin, Gyors csere kezelő",
+  },
+  {
     to: "/rental-import",
     icon: FileSpreadsheet,
     label: "Bérlet import",

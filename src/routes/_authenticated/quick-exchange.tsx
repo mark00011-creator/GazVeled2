@@ -3,6 +3,8 @@ import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
+import { OperatorShell } from "@/components/OperatorShell";
+import { useAuth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,6 +104,8 @@ const OP_LABELS: Record<PartnerOperationType, string> = {
 
 function QuickExchange() {
   const qc = useQueryClient();
+  const { isExchangeOperator } = useAuth();
+  const Shell = isExchangeOperator ? OperatorShell : AppShell;
   const [operation, setOperation] = useState<PartnerOperationType>("exchange");
   const [exchangeMode, setExchangeMode] = useState<ExchangeMode>("barcode");
   const [saleMode, setSaleMode] = useState<SaleMode>("barcode");
@@ -609,7 +613,7 @@ function QuickExchange() {
   const chineseOutSizes = getAvailableSizes(chineseOutGas);
 
   return (
-    <AppShell title="Gyors csere">
+    <Shell {...(isExchangeOperator ? {} : { title: "Gyors csere" })}>
       {scanning && (
         <BarcodeScanner
           onResult={async (t) => {
@@ -664,15 +668,17 @@ function QuickExchange() {
         onValueChange={(v) => switchOperation(v as PartnerOperationType)}
         className="mb-4"
       >
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className={`grid w-full ${isExchangeOperator ? "grid-cols-3" : "grid-cols-4"}`}>
           <TabsTrigger value="exchange" className="gap-1 text-xs sm:text-sm">
             <RefreshCw className="h-3.5 w-3.5" />
             {OP_LABELS.exchange}
           </TabsTrigger>
-          <TabsTrigger value="loan" className="gap-1 text-xs sm:text-sm">
-            <HandCoins className="h-3.5 w-3.5" />
-            {OP_LABELS.loan}
-          </TabsTrigger>
+          {!isExchangeOperator && (
+            <TabsTrigger value="loan" className="gap-1 text-xs sm:text-sm">
+              <HandCoins className="h-3.5 w-3.5" />
+              {OP_LABELS.loan}
+            </TabsTrigger>
+          )}
           <TabsTrigger value="sale" className="gap-1 text-xs sm:text-sm">
             <ShoppingCart className="h-3.5 w-3.5" />
             {OP_LABELS.sale}
@@ -1366,7 +1372,7 @@ function QuickExchange() {
           </Button>
         </>
       )}
-    </AppShell>
+    </Shell>
   );
 }
 
