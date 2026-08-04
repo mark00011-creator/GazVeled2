@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as UpdatePasswordRouteImport } from './routes/update-password'
 import { Route as NoAccessRouteImport } from './routes/no-access'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
@@ -40,6 +41,11 @@ import { Route as AuthenticatedPartnersIdRouteImport } from './routes/_authentic
 import { Route as AuthenticatedCylindersIdRouteImport } from './routes/_authenticated/cylinders.$id'
 import { Route as AuthenticatedPartnersIdRentalsRouteImport } from './routes/_authenticated/partners.$id.rentals'
 
+const UpdatePasswordRoute = UpdatePasswordRouteImport.update({
+  id: '/update-password',
+  path: '/update-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const NoAccessRoute = NoAccessRouteImport.update({
   id: '/no-access',
   path: '/no-access',
@@ -206,6 +212,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/no-access': typeof NoAccessRoute
+  '/update-password': typeof UpdatePasswordRoute
   '/audit': typeof AuthenticatedAuditRoute
   '/chinese-stock': typeof AuthenticatedChineseStockRoute
   '/cylinders': typeof AuthenticatedCylindersRouteWithChildren
@@ -237,6 +244,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/no-access': typeof NoAccessRoute
+  '/update-password': typeof UpdatePasswordRoute
   '/audit': typeof AuthenticatedAuditRoute
   '/chinese-stock': typeof AuthenticatedChineseStockRoute
   '/cylinders': typeof AuthenticatedCylindersRouteWithChildren
@@ -268,6 +276,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/no-access': typeof NoAccessRoute
+  '/update-password': typeof UpdatePasswordRoute
   '/_authenticated/audit': typeof AuthenticatedAuditRoute
   '/_authenticated/chinese-stock': typeof AuthenticatedChineseStockRoute
   '/_authenticated/cylinders': typeof AuthenticatedCylindersRouteWithChildren
@@ -301,6 +310,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/no-access'
+    | '/update-password'
     | '/audit'
     | '/chinese-stock'
     | '/cylinders'
@@ -332,6 +342,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/no-access'
+    | '/update-password'
     | '/audit'
     | '/chinese-stock'
     | '/cylinders'
@@ -362,6 +373,7 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/no-access'
+    | '/update-password'
     | '/_authenticated/audit'
     | '/_authenticated/chinese-stock'
     | '/_authenticated/cylinders'
@@ -395,10 +407,18 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   NoAccessRoute: typeof NoAccessRoute
+  UpdatePasswordRoute: typeof UpdatePasswordRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/update-password': {
+      id: '/update-password'
+      path: '/update-password'
+      fullPath: '/update-password'
+      preLoaderRoute: typeof UpdatePasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/no-access': {
       id: '/no-access'
       path: '/no-access'
@@ -722,6 +742,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   NoAccessRoute: NoAccessRoute,
+  UpdatePasswordRoute: UpdatePasswordRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

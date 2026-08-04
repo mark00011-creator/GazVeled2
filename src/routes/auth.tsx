@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
+import { getPasswordResetRedirectUrl } from "@/lib/app-url";
 import { defaultHomeForRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +16,7 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
-type AuthMode = "login" | "signup" | "forgot" | "reset";
+type AuthMode = "login" | "signup" | "forgot";
 
 function AuthPage() {
   const navigate = useNavigate();
@@ -23,39 +24,38 @@ function AuthPage() {
   const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     const hash = window.location.hash.slice(1);
-    if (hash) {
-      const params = new URLSearchParams(hash);
-      const errorCode = params.get("error_code");
-      const errorDesc = params.get("error_description");
-      if (params.get("error") || errorCode) {
-        const expired = errorCode === "otp_expired";
-        toast.error(
-          expired
-            ? "A visszaállító link lejárt vagy érvénytelen. Kérj egy újat az alábbi űrlapon."
-            : (errorDesc?.replace(/\+/g, " ") ?? "Bejelentkezési hiba"),
-        );
-        if (expired) setMode("forgot");
-        window.history.replaceState(null, "", window.location.pathname);
-      }
+    if (!hash) return;
+
+    const params = new URLSearchParams(hash);
+    if (params.get("type") === "recovery") {
+      window.location.replace(`/update-password${window.location.hash}`);
+      return;
     }
 
-    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") setMode("reset");
-    });
-    return () => sub.subscription.unsubscribe();
+    const errorCode = params.get("error_code");
+    const errorDesc = params.get("error_description");
+    if (params.get("error") || errorCode) {
+      const expired = errorCode === "otp_expired";
+      toast.error(
+        expired
+          ? "A visszaállító link lejárt vagy érvénytelen. Kérj egy újat az alábbi űrlapon."
+          : (errorDesc?.replace(/\+/g, " ") ?? "Bejelentkezési hiba"),
+      );
+      if (expired) setMode("forgot");
+      window.history.replaceState(null, "", window.location.pathname);
+    }
   }, []);
 
   useEffect(() => {
-    if (!loading && user && mode !== "reset") {
+    if (!loading && user) {
       navigate({ to: defaultHomeForRole(profile?.role), replace: true });
     }
-  }, [user, profile, loading, navigate, mode]);
+  }, [user, profile, loading, navigate]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -66,7 +66,7 @@ function AuthPage() {
           email,
           password,
           options: {
-            emailRedirectTo: window.location.origin,
+            emailRedirectTo: `${window.location.origin}/auth`,
             data: { full_name: fullName },
           },
         });
@@ -74,15 +74,10 @@ function AuthPage() {
         toast.success("Fiók létrehozva, bejelentkezés…");
       } else if (mode === "forgot") {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/auth`,
+          redirectTo: getPasswordResetRedirectUrl(),
         });
         if (error) throw error;
         toast.success("Ellenőrizd az email fiókodat a jelszó-visszaállító linkért.");
-        setMode("login");
-      } else if (mode === "reset") {
-        const { error } = await supabase.auth.updateUser({ password: newPassword });
-        if (error) throw error;
-        toast.success("Új jelszó mentve, bejelentkezés…");
         setMode("login");
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -110,9 +105,6 @@ function AuthPage() {
             Add meg az email címedet, és küldünk egy jelszó-visszaállító linket.
           </p>
         )}
-        {mode === "reset" && (
-          <p className="mb-4 text-sm text-muted-foreground">Állíts be egy új jelszót a fiókodhoz.</p>
-        )}
         <form onSubmit={submit} className="space-y-4">
           {mode === "signup" && (
             <div>
@@ -120,12 +112,10 @@ function AuthPage() {
               <Input id="name" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
             </div>
           )}
-          {mode !== "reset" && (
-            <div>
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            </div>
-          )}
+          <div>
+            <Label htmlFor="email">Email</Label>
+            <Input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          </div>
           {(mode === "login" || mode === "signup") && (
             <div>
               <Label htmlFor="password">Jelszó</Label>
@@ -140,20 +130,6 @@ function AuthPage() {
               />
             </div>
           )}
-          {mode === "reset" && (
-            <div>
-              <Label htmlFor="new-password">Új jelszó</Label>
-              <Input
-                id="new-password"
-                type="password"
-                autoComplete="new-password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                required
-                minLength={6}
-              />
-            </div>
-          )}
           <Button type="submit" className="w-full" disabled={busy}>
             {busy
               ? "…"
@@ -161,9 +137,7 @@ function AuthPage() {
                 ? "Bejelentkezés"
                 : mode === "signup"
                   ? "Regisztráció"
-                  : mode === "forgot"
-                    ? "Visszaállító link küldése"
-                    : "Új jelszó mentése"}
+                  : "Visszaállító link küldése"}
           </Button>
         </form>
         {mode === "login" && (
@@ -184,7 +158,7 @@ function AuthPage() {
             {mode === "login" ? "Nincs még fiókod? Regisztráció" : "Van fiókod? Bejelentkezés"}
           </button>
         )}
-        {(mode === "forgot" || mode === "reset") && (
+        {mode === "forgot" && (
           <button
             type="button"
             onClick={() => setMode("login")}
