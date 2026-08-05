@@ -1528,6 +1528,294 @@ export type Database = {
         }
         Relationships: []
       }
+      supply_billing_queue: {
+        Row: {
+          created_at: string
+          exported_at: string | null
+          external_invoice_ref: string | null
+          gross_amount: number
+          id: string
+          invoiced_at: string | null
+          net_amount: number
+          note: string | null
+          partner_id: string
+          product_id: string
+          quantity: number
+          sale_date: string
+          sale_id: string
+          status: string
+          unit_of_measure: string
+          unit_price: number
+          vat_amount: number
+          vat_rate: number
+        }
+        Insert: {
+          created_at?: string
+          exported_at?: string | null
+          external_invoice_ref?: string | null
+          gross_amount: number
+          id?: string
+          invoiced_at?: string | null
+          net_amount: number
+          note?: string | null
+          partner_id: string
+          product_id: string
+          quantity: number
+          sale_date: string
+          sale_id: string
+          status?: string
+          unit_of_measure: string
+          unit_price: number
+          vat_amount: number
+          vat_rate: number
+        }
+        Update: {
+          created_at?: string
+          exported_at?: string | null
+          external_invoice_ref?: string | null
+          gross_amount?: number
+          id?: string
+          invoiced_at?: string | null
+          net_amount?: number
+          note?: string | null
+          partner_id?: string
+          product_id?: string
+          quantity?: number
+          sale_date?: string
+          sale_id?: string
+          status?: string
+          unit_of_measure?: string
+          unit_price?: number
+          vat_amount?: number
+          vat_rate?: number
+        }
+        Relationships: []
+      }
+      supply_products: {
+        Row: {
+          brand: string | null
+          category: string | null
+          created_at: string
+          created_by: string | null
+          current_stock: number | null
+          id: string
+          is_active: boolean
+          is_rentable: boolean
+          is_sellable: boolean
+          minimum_stock: number
+          name: string
+          natural_key: string
+          note: string | null
+          packaging: string | null
+          photo_url: string | null
+          product_type: string | null
+          purchase_price: number | null
+          sale_price: number | null
+          specification: string | null
+          stock_kind: string
+          unit_of_measure: string
+          updated_at: string
+          vat_rate: number
+        }
+        Insert: {
+          brand?: string | null
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          current_stock?: number | null
+          id?: string
+          is_active?: boolean
+          is_rentable?: boolean
+          is_sellable?: boolean
+          minimum_stock?: number
+          name: string
+          natural_key: string
+          note?: string | null
+          packaging?: string | null
+          photo_url?: string | null
+          product_type?: string | null
+          purchase_price?: number | null
+          sale_price?: number | null
+          specification?: string | null
+          stock_kind: string
+          unit_of_measure: string
+          updated_at?: string
+          vat_rate?: number
+        }
+        Update: {
+          brand?: string | null
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          current_stock?: number | null
+          id?: string
+          is_active?: boolean
+          is_rentable?: boolean
+          is_sellable?: boolean
+          minimum_stock?: number
+          name?: string
+          natural_key?: string
+          note?: string | null
+          packaging?: string | null
+          photo_url?: string | null
+          product_type?: string | null
+          purchase_price?: number | null
+          sale_price?: number | null
+          specification?: string | null
+          stock_kind?: string
+          unit_of_measure?: string
+          updated_at?: string
+          vat_rate?: number
+        }
+        Relationships: []
+      }
+      supply_sale_items: {
+        Row: {
+          id: string
+          line_gross: number
+          line_net: number
+          line_vat: number
+          note: string | null
+          product_id: string
+          quantity: number
+          sale_id: string
+          unit_of_measure: string
+          unit_price: number
+          vat_rate: number
+        }
+        Insert: {
+          id?: string
+          line_gross: number
+          line_net: number
+          line_vat: number
+          note?: string | null
+          product_id: string
+          quantity: number
+          sale_id: string
+          unit_of_measure: string
+          unit_price: number
+          vat_rate: number
+        }
+        Update: {
+          id?: string
+          line_gross?: number
+          line_net?: number
+          line_vat?: number
+          note?: string | null
+          product_id?: string
+          quantity?: number
+          sale_id?: string
+          unit_of_measure?: string
+          unit_price?: number
+          vat_rate?: number
+        }
+        Relationships: []
+      }
+      supply_sales: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          idempotency_key: string | null
+          note: string | null
+          partner_id: string
+          sale_date: string
+          total_gross: number
+          total_net: number
+          total_vat: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idempotency_key?: string | null
+          note?: string | null
+          partner_id: string
+          sale_date?: string
+          total_gross?: number
+          total_net?: number
+          total_vat?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idempotency_key?: string | null
+          note?: string | null
+          partner_id?: string
+          sale_date?: string
+          total_gross?: number
+          total_net?: number
+          total_vat?: number
+        }
+        Relationships: []
+      }
+      supply_stock_movements: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          document_number: string | null
+          event_group_id: string
+          id: string
+          idempotency_key: string | null
+          movement_type: string
+          note: string | null
+          partner_id: string | null
+          product_id: string
+          purchase_date: string | null
+          quantity: number
+          related_rental_id: string | null
+          related_sale_id: string | null
+          stock_after: number
+          stock_before: number
+          supplier_id: string | null
+          total_amount: number | null
+          unit_price: number | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          document_number?: string | null
+          event_group_id?: string
+          id?: string
+          idempotency_key?: string | null
+          movement_type: string
+          note?: string | null
+          partner_id?: string | null
+          product_id: string
+          purchase_date?: string | null
+          quantity: number
+          related_rental_id?: string | null
+          related_sale_id?: string | null
+          stock_after: number
+          stock_before: number
+          supplier_id?: string | null
+          total_amount?: number | null
+          unit_price?: number | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          document_number?: string | null
+          event_group_id?: string
+          id?: string
+          idempotency_key?: string | null
+          movement_type?: string
+          note?: string | null
+          partner_id?: string | null
+          product_id?: string
+          purchase_date?: string | null
+          quantity?: number
+          related_rental_id?: string | null
+          related_sale_id?: string | null
+          stock_after?: number
+          stock_before?: number
+          supplier_id?: string | null
+          total_amount?: number | null
+          unit_price?: number | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           id: string
@@ -1591,6 +1879,16 @@ export type Database = {
         }
         Returns: string
       }
+      adjust_supply_stock: {
+        Args: {
+          p_movement_type: string
+          p_note?: string
+          p_partner_id?: string
+          p_product_id: string
+          p_quantity: number
+        }
+        Returns: string
+      }
       close_rental: {
         Args: {
           p_deposit_returned: boolean
@@ -1607,6 +1905,32 @@ export type Database = {
       }
       receive_gas_order: {
         Args: { p_order_id: string }
+        Returns: undefined
+      }
+      create_supply_product: {
+        Args: {
+          p_brand?: string
+          p_category?: string
+          p_initial_stock?: number
+          p_is_rentable?: boolean
+          p_is_sellable?: boolean
+          p_minimum_stock?: number
+          p_name: string
+          p_natural_key: string
+          p_note?: string
+          p_packaging?: string
+          p_product_type?: string
+          p_purchase_price?: number
+          p_sale_price?: number
+          p_specification?: string
+          p_stock_kind: string
+          p_unit_of_measure: string
+          p_vat_rate?: number
+        }
+        Returns: string
+      }
+      deactivate_supply_product: {
+        Args: { p_product_id: string }
         Returns: undefined
       }
       find_or_create_cylinder: {
@@ -1669,6 +1993,17 @@ export type Database = {
           blocking_reason: string
         }[]
       }
+      record_supply_sale: {
+        Args: {
+          p_idempotency_key?: string
+          p_note?: string
+          p_partner_id: string
+          p_product_id: string
+          p_quantity: number
+          p_unit_price?: number
+        }
+        Returns: string
+      }
       reassign_rental_cylinder: {
         Args: {
           p_new_cylinder_id: string
@@ -1676,6 +2011,18 @@ export type Database = {
           p_rental_id: string
         }
         Returns: undefined
+      }
+      receive_supply_stock: {
+        Args: {
+          p_document_number?: string
+          p_note?: string
+          p_product_id: string
+          p_purchase_date?: string
+          p_purchase_price?: number
+          p_quantity: number
+          p_supplier_id?: string
+        }
+        Returns: string
       }
       record_exchange: {
         Args: {
@@ -1744,6 +2091,15 @@ export type Database = {
           p_supplier_id: string
         }
         Returns: string
+      }
+      update_supply_product_prices: {
+        Args: {
+          p_product_id: string
+          p_purchase_price?: number
+          p_sale_price?: number
+          p_vat_rate?: number
+        }
+        Returns: undefined
       }
     }
     Enums: {
