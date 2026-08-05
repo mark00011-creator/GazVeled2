@@ -36,6 +36,7 @@ import { Route as AuthenticatedChineseStockRouteImport } from './routes/_authent
 import { Route as AuthenticatedAuditRouteImport } from './routes/_authenticated/audit'
 import { Route as AuthenticatedRentalsIndexRouteImport } from './routes/_authenticated/rentals.index'
 import { Route as AuthenticatedPartnersIndexRouteImport } from './routes/_authenticated/partners.index'
+import { Route as AuthenticatedToolRentalStockRouteImport } from './routes/_authenticated/tool-rental/stock'
 import { Route as AuthenticatedRentalsIdRouteImport } from './routes/_authenticated/rentals.$id'
 import { Route as AuthenticatedPartnersIdRouteImport } from './routes/_authenticated/partners.$id'
 import { Route as AuthenticatedCylindersIdRouteImport } from './routes/_authenticated/cylinders.$id'
@@ -185,6 +186,12 @@ const AuthenticatedPartnersIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedPartnersRoute,
   } as any)
+const AuthenticatedToolRentalStockRoute =
+  AuthenticatedToolRentalStockRouteImport.update({
+    id: '/tool-rental/stock',
+    path: '/tool-rental/stock',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedRentalsIdRoute = AuthenticatedRentalsIdRouteImport.update({
   id: '/$id',
   path: '/$id',
@@ -236,6 +243,7 @@ export interface FileRoutesByFullPath {
   '/cylinders/$id': typeof AuthenticatedCylindersIdRoute
   '/partners/$id': typeof AuthenticatedPartnersIdRouteWithChildren
   '/rentals/$id': typeof AuthenticatedRentalsIdRoute
+  '/tool-rental/stock': typeof AuthenticatedToolRentalStockRoute
   '/partners/': typeof AuthenticatedPartnersIndexRoute
   '/rentals/': typeof AuthenticatedRentalsIndexRoute
   '/partners/$id/rentals': typeof AuthenticatedPartnersIdRentalsRoute
@@ -266,6 +274,7 @@ export interface FileRoutesByTo {
   '/cylinders/$id': typeof AuthenticatedCylindersIdRoute
   '/partners/$id': typeof AuthenticatedPartnersIdRouteWithChildren
   '/rentals/$id': typeof AuthenticatedRentalsIdRoute
+  '/tool-rental/stock': typeof AuthenticatedToolRentalStockRoute
   '/partners': typeof AuthenticatedPartnersIndexRoute
   '/rentals': typeof AuthenticatedRentalsIndexRoute
   '/partners/$id/rentals': typeof AuthenticatedPartnersIdRentalsRoute
@@ -300,6 +309,7 @@ export interface FileRoutesById {
   '/_authenticated/cylinders/$id': typeof AuthenticatedCylindersIdRoute
   '/_authenticated/partners/$id': typeof AuthenticatedPartnersIdRouteWithChildren
   '/_authenticated/rentals/$id': typeof AuthenticatedRentalsIdRoute
+  '/_authenticated/tool-rental/stock': typeof AuthenticatedToolRentalStockRoute
   '/_authenticated/partners/': typeof AuthenticatedPartnersIndexRoute
   '/_authenticated/rentals/': typeof AuthenticatedRentalsIndexRoute
   '/_authenticated/partners/$id/rentals': typeof AuthenticatedPartnersIdRentalsRoute
@@ -334,6 +344,7 @@ export interface FileRouteTypes {
     | '/cylinders/$id'
     | '/partners/$id'
     | '/rentals/$id'
+    | '/tool-rental/stock'
     | '/partners/'
     | '/rentals/'
     | '/partners/$id/rentals'
@@ -364,6 +375,7 @@ export interface FileRouteTypes {
     | '/cylinders/$id'
     | '/partners/$id'
     | '/rentals/$id'
+    | '/tool-rental/stock'
     | '/partners'
     | '/rentals'
     | '/partners/$id/rentals'
@@ -397,6 +409,7 @@ export interface FileRouteTypes {
     | '/_authenticated/cylinders/$id'
     | '/_authenticated/partners/$id'
     | '/_authenticated/rentals/$id'
+    | '/_authenticated/tool-rental/stock'
     | '/_authenticated/partners/'
     | '/_authenticated/rentals/'
     | '/_authenticated/partners/$id/rentals'
@@ -601,6 +614,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPartnersIndexRouteImport
       parentRoute: typeof AuthenticatedPartnersRoute
     }
+    '/_authenticated/tool-rental/stock': {
+      id: '/_authenticated/tool-rental/stock'
+      path: '/tool-rental/stock'
+      fullPath: '/tool-rental/stock'
+      preLoaderRoute: typeof AuthenticatedToolRentalStockRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/rentals/$id': {
       id: '/_authenticated/rentals/$id'
       path: '/$id'
@@ -709,6 +729,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedRentalsRoute: typeof AuthenticatedRentalsRouteWithChildren
   AuthenticatedSuppliersRoute: typeof AuthenticatedSuppliersRoute
   AuthenticatedUsersRoute: typeof AuthenticatedUsersRoute
+  AuthenticatedToolRentalStockRoute: typeof AuthenticatedToolRentalStockRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -732,6 +753,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedRentalsRoute: AuthenticatedRentalsRouteWithChildren,
   AuthenticatedSuppliersRoute: AuthenticatedSuppliersRoute,
   AuthenticatedUsersRoute: AuthenticatedUsersRoute,
+  AuthenticatedToolRentalStockRoute: AuthenticatedToolRentalStockRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
