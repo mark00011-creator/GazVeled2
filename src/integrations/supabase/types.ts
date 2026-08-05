@@ -1536,10 +1536,13 @@ export type Database = {
           gross_amount: number
           id: string
           invoiced_at: string | null
+          line_profit: number | null
           net_amount: number
           note: string | null
           partner_id: string
           product_id: string
+          product_name: string | null
+          purchase_unit_price: number | null
           quantity: number
           sale_date: string
           sale_id: string
@@ -1674,11 +1677,19 @@ export type Database = {
           id: string
           line_gross: number
           line_net: number
+          line_profit: number | null
+          line_purchase_value: number | null
           line_vat: number
+          margin_percent: number | null
           note: string | null
+          packaging: string | null
           product_id: string
+          product_name: string | null
+          profit_per_unit: number | null
+          purchase_unit_price: number | null
           quantity: number
           sale_id: string
+          specification: string | null
           unit_of_measure: string
           unit_price: number
           vat_rate: number
@@ -1687,11 +1698,19 @@ export type Database = {
           id?: string
           line_gross: number
           line_net: number
+          line_profit?: number | null
+          line_purchase_value?: number | null
           line_vat: number
+          margin_percent?: number | null
           note?: string | null
+          packaging?: string | null
           product_id: string
+          product_name?: string | null
+          profit_per_unit?: number | null
+          purchase_unit_price?: number | null
           quantity: number
           sale_id: string
+          specification?: string | null
           unit_of_measure: string
           unit_price: number
           vat_rate: number
@@ -1700,11 +1719,19 @@ export type Database = {
           id?: string
           line_gross?: number
           line_net?: number
+          line_profit?: number | null
+          line_purchase_value?: number | null
           line_vat?: number
+          margin_percent?: number | null
           note?: string | null
+          packaging?: string | null
           product_id?: string
+          product_name?: string | null
+          profit_per_unit?: number | null
+          purchase_unit_price?: number | null
           quantity?: number
           sale_id?: string
+          specification?: string | null
           unit_of_measure?: string
           unit_price?: number
           vat_rate?: number
@@ -1715,6 +1742,7 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string | null
+          event_group_id: string | null
           id: string
           idempotency_key: string | null
           note: string | null
@@ -1722,11 +1750,14 @@ export type Database = {
           sale_date: string
           total_gross: number
           total_net: number
+          total_profit: number | null
+          total_purchase_value: number | null
           total_vat: number
         }
         Insert: {
           created_at?: string
           created_by?: string | null
+          event_group_id?: string | null
           id?: string
           idempotency_key?: string | null
           note?: string | null
@@ -1734,11 +1765,14 @@ export type Database = {
           sale_date?: string
           total_gross?: number
           total_net?: number
+          total_profit?: number | null
+          total_purchase_value?: number | null
           total_vat?: number
         }
         Update: {
           created_at?: string
           created_by?: string | null
+          event_group_id?: string | null
           id?: string
           idempotency_key?: string | null
           note?: string | null
@@ -1746,6 +1780,8 @@ export type Database = {
           sale_date?: string
           total_gross?: number
           total_net?: number
+          total_profit?: number | null
+          total_purchase_value?: number | null
           total_vat?: number
         }
         Relationships: []
@@ -1992,6 +2028,15 @@ export type Database = {
           deletable: boolean
           blocking_reason: string
         }[]
+      }
+      record_supply_sale_batch: {
+        Args: {
+          p_idempotency_key?: string
+          p_items: Json
+          p_note?: string
+          p_partner_id: string
+        }
+        Returns: string
       }
       record_supply_sale: {
         Args: {

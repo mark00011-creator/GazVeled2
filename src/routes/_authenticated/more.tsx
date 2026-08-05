@@ -13,6 +13,7 @@ import {
   FileSpreadsheet,
   Boxes,
   HandCoins,
+  Wrench,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/more")({
@@ -21,6 +22,12 @@ export const Route = createFileRoute("/_authenticated/more")({
 });
 
 const adminItems = [
+  {
+    to: "/tool-rental/stock",
+    icon: Wrench,
+    label: "Eszközök és fogyóanyagok",
+    desc: "Darabszámos készlet, árak, bevételezés, értékesítés",
+  },
   {
     to: "/users",
     icon: ScrollText,

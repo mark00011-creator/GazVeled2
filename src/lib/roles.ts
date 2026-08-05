@@ -29,6 +29,7 @@ export const ADMIN_ROUTE_PREFIXES = [
   "/users",
   "/gas-order-flaga",
   "/no-access",
+  "/tool-rental",
 ] as const;
 
 export function isAdminRole(role: AppRole | null | undefined): boolean {
