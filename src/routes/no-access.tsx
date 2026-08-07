@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAuth, signOut } from "@/lib/auth";
+import { authDiag } from "@/lib/auth-diag";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Flame } from "lucide-react";
@@ -10,7 +11,18 @@ export const Route = createFileRoute("/no-access")({
 });
 
 function NoAccessPage() {
-  const { user, profile } = useAuth();
+  const { user, profile, loading } = useAuth();
+
+  authDiag({
+    route: "no-access",
+    loading,
+    userId: user?.id ?? null,
+    email: user?.email ?? profile?.email ?? null,
+    profile: profile
+      ? { role: profile.role, is_active: profile.is_active, email: profile.email }
+      : null,
+    role: profile?.role ?? null,
+  });
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">

@@ -1,3 +1,5 @@
+import { authDiag } from "@/lib/auth-diag";
+
 /** Adatbázisban tárolt alkalmazás-szerepkör (profiles.role). */
 export type AppRole = "admin" | "exchange_operator" | "viewer";
 
@@ -41,13 +43,28 @@ export function isExchangeOperatorRole(role: AppRole | null | undefined): boolea
 }
 
 export function canAccessApp(role: AppRole | null | undefined): boolean {
-  return role === "admin" || role === "exchange_operator";
+  const result = role === "admin" || role === "exchange_operator";
+  authDiag({
+    fn: "canAccessApp",
+    inputRole: role ?? null,
+    result,
+  });
+  return result;
 }
 
 export function defaultHomeForRole(role: AppRole | null | undefined): string {
-  if (role === "exchange_operator") return "/quick-exchange";
-  if (role === "admin") return "/dashboard";
-  return "/no-access";
+  const out =
+    role === "exchange_operator"
+      ? "/quick-exchange"
+      : role === "admin"
+        ? "/dashboard"
+        : "/no-access";
+  authDiag({
+    fn: "defaultHomeForRole",
+    inputRole: role ?? null,
+    output: out,
+  });
+  return out;
 }
 
 export function isAdminOnlyPath(pathname: string): boolean {

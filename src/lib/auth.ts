@@ -3,6 +3,7 @@ import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import type { AppRole } from "@/lib/roles";
 import { canAccessApp, isAdminRole, isExchangeOperatorRole } from "@/lib/roles";
+import { authDiag } from "@/lib/auth-diag";
 
 export type UserProfile = {
   role: AppRole;
@@ -18,8 +19,38 @@ async function fetchProfile(userId: string): Promise<UserProfile | null> {
     .eq("id", userId)
     .single();
 
-  if (error || !data?.role) return null;
-  if (data.is_active === false) return null;
+  if (error || !data?.role) {
+    authDiag({
+      fn: "fetchProfile",
+      userId,
+      ok: false,
+      postgrestCode: error?.code ?? null,
+      status: (error as { status?: number } | null)?.status ?? null,
+      message: error?.message ?? (!data?.role ? "missing_role_or_row" : null),
+      hasData: Boolean(data),
+      role: data?.role ?? null,
+      is_active: data?.is_active ?? null,
+    });
+    return null;
+  }
+  if (data.is_active === false) {
+    authDiag({
+      fn: "fetchProfile",
+      userId,
+      ok: false,
+      role: data.role,
+      is_active: false,
+      message: "inactive_profile",
+    });
+    return null;
+  }
+  authDiag({
+    fn: "fetchProfile",
+    userId,
+    ok: true,
+    role: data.role,
+    is_active: data.is_active ?? true,
+  });
   return {
     role: data.role as AppRole,
     email: data.email,
@@ -57,7 +88,13 @@ export function useAuth() {
       void load(data.session?.user ?? null);
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      authDiag({
+        fn: "onAuthStateChange",
+        event,
+        userId: session?.user?.id ?? null,
+        email: session?.user?.email ?? null,
+      });
       setUser(session?.user ?? null);
       if (!session?.user) {
         setProfile(null);

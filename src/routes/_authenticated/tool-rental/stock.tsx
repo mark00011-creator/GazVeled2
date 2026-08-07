@@ -34,6 +34,7 @@ import { AlertTriangle, PackagePlus, ShoppingCart, TrendingUp } from "lucide-rea
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { isAdminRole } from "@/lib/roles";
+import { authDiag } from "@/lib/auth-diag";
 import { supabase } from "@/integrations/supabase/client";
 import {
   formatMarginPercent,
@@ -73,8 +74,19 @@ type PartnerRow = { id: string; name: string; company_name: string | null };
 type SupplierRow = { id: string; name: string };
 
 function SupplyStockPage() {
-  const { profile } = useAuth();
-  if (!isAdminRole(profile?.role)) {
+  const { profile, loading } = useAuth();
+  const admin = isAdminRole(profile?.role);
+  authDiag({
+    route: "tool-rental/stock",
+    loading,
+    profile: profile
+      ? { role: profile.role, is_active: profile.is_active, email: profile.email }
+      : null,
+    role: profile?.role ?? null,
+    isAdminRole: admin,
+    redirectReason: admin ? "ALLOW" : "ROLE_DENIED",
+  });
+  if (!admin) {
     return <Navigate to="/no-access" replace />;
   }
   return <SupplyStockAdmin />;
