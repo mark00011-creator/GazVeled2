@@ -123,5 +123,11 @@ export function useAuth() {
 }
 
 export async function signOut() {
+  const { data } = await supabase.auth.getSession();
+  const userId = data.session?.user?.id;
+  if (userId) {
+    const { clearUserWorkflowDrafts } = await import("@/lib/workflow-draft-storage");
+    clearUserWorkflowDrafts(userId);
+  }
   await supabase.auth.signOut();
 }

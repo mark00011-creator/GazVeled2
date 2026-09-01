@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
@@ -71,6 +71,7 @@ import { CirculationDifferenceWarnings } from "@/components/CirculationDifferenc
 import { getLoanOutgoingValidationError, recordCylinderLoan } from "@/lib/loan-ops";
 import { findActiveRentalIdForCylinder } from "@/lib/rental-ops";
 import { PhoneLink } from "@/components/PhoneLink";
+import { PartnerSelector } from "@/components/PartnerSelector";
 import { GAS_TYPES, getAvailableSizes } from "@/lib/gas-cylinder-form";
 import {
   FLAGA_PB_CATALOG,
@@ -78,6 +79,15 @@ import {
   flagaPbStockLabel,
 } from "@/lib/flaga-pb-stock";
 import { PRIMA_PB_CATALOG, primaPbProductKey } from "@/lib/prima-pb-stock";
+import { useWorkflowDraft } from "@/hooks/use-workflow-draft";
+import {
+  isQuickExchangeDraft,
+  isQuickExchangeDraftEmpty,
+  QUICK_EXCHANGE_DRAFT_KEY,
+  QUICK_EXCHANGE_DRAFT_VERSION,
+  quickExchangeWorkflowStep,
+  type QuickExchangeDraft,
+} from "@/lib/quick-exchange-draft";
 
 export const Route = createFileRoute("/_authenticated/quick-exchange")({
   head: () => ({ meta: [{ title: "Gyors csere – Gáz Veled" }] }),
@@ -104,7 +114,7 @@ const OP_LABELS: Record<PartnerOperationType, string> = {
 
 function QuickExchange() {
   const qc = useQueryClient();
-  const { isExchangeOperator } = useAuth();
+  const { isExchangeOperator, user } = useAuth();
   const Shell = isExchangeOperator ? OperatorShell : AppShell;
   const [operation, setOperation] = useState<PartnerOperationType>("exchange");
   const [exchangeMode, setExchangeMode] = useState<ExchangeMode>("barcode");
@@ -150,6 +160,158 @@ function QuickExchange() {
   const [reassign, setReassign] = useState<"yes" | "no" | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+
+  const applyDraft = useCallback((draft: QuickExchangeDraft) => {
+    setOperation(draft.operation);
+    setExchangeMode(draft.exchangeMode);
+    setSaleMode(draft.saleMode);
+    setPartnerId(draft.partnerId);
+    setIncomingBc(draft.incomingBc);
+    setOutgoingBc(draft.outgoingBc);
+    setIncoming(draft.incoming);
+    setIncomingCreated(draft.incomingCreated);
+    setOutgoing(draft.outgoing);
+    setOutgoingCreated(draft.outgoingCreated);
+    setChineseGas(draft.chineseGas);
+    setChineseSize(draft.chineseSize);
+    setChineseQty(draft.chineseQty);
+    setChineseBroughtOutKind(draft.chineseBroughtOutKind || "");
+    setChineseOutGas(draft.chineseOutGas);
+    setChineseOutSize(draft.chineseOutSize);
+    setChineseOutQty(draft.chineseOutQty);
+    setFlagaPbKey(draft.flagaPbKey);
+    setFlagaPbQty(draft.flagaPbQty);
+    setPrimaPbKey(draft.primaPbKey);
+    setPrimaPbQty(draft.primaPbQty);
+    setReassign(draft.reassign);
+    setNote(draft.note);
+  }, []);
+
+  const buildDraft = useCallback(
+    (): QuickExchangeDraft => ({
+      version: QUICK_EXCHANGE_DRAFT_VERSION,
+      draftId: "",
+      operation,
+      exchangeMode,
+      saleMode,
+      partnerId,
+      incomingBc,
+      outgoingBc,
+      incoming,
+      incomingCreated,
+      outgoing,
+      outgoingCreated,
+      chineseGas,
+      chineseSize,
+      chineseQty,
+      chineseBroughtOutKind,
+      chineseOutGas,
+      chineseOutSize,
+      chineseOutQty,
+      flagaPbKey,
+      flagaPbQty,
+      primaPbKey,
+      primaPbQty,
+      reassign,
+      note,
+      workflowStep: quickExchangeWorkflowStep({
+        partnerId,
+        operation,
+        exchangeMode,
+        saleMode,
+        hasIncoming: !!incoming,
+        hasOutgoing: !!outgoing,
+      }),
+    }),
+    [
+      operation,
+      exchangeMode,
+      saleMode,
+      partnerId,
+      incomingBc,
+      outgoingBc,
+      incoming,
+      incomingCreated,
+      outgoing,
+      outgoingCreated,
+      chineseGas,
+      chineseSize,
+      chineseQty,
+      chineseBroughtOutKind,
+      chineseOutGas,
+      chineseOutSize,
+      chineseOutQty,
+      flagaPbKey,
+      flagaPbQty,
+      primaPbKey,
+      primaPbQty,
+      reassign,
+      note,
+    ],
+  );
+
+  const { clearDraft, markCompleted, beginSubmit, endSubmit } = useWorkflowDraft(
+    buildDraft,
+    applyDraft,
+    [
+      operation,
+      exchangeMode,
+      saleMode,
+      partnerId,
+      incomingBc,
+      outgoingBc,
+      incoming,
+      incomingCreated,
+      outgoing,
+      outgoingCreated,
+      chineseGas,
+      chineseSize,
+      chineseQty,
+      chineseBroughtOutKind,
+      chineseOutGas,
+      chineseOutSize,
+      chineseOutQty,
+      flagaPbKey,
+      flagaPbQty,
+      primaPbKey,
+      primaPbQty,
+      reassign,
+      note,
+    ],
+    {
+      storageKey: QUICK_EXCHANGE_DRAFT_KEY,
+      userId: user?.id,
+      version: QUICK_EXCHANGE_DRAFT_VERSION,
+      validate: isQuickExchangeDraft,
+      isEmpty: isQuickExchangeDraftEmpty,
+      restoreMessage: "A korábban megkezdett csere visszaállítva.",
+    },
+  );
+
+  function resetWorkflow() {
+    setOperation("exchange");
+    setExchangeMode("barcode");
+    setSaleMode("barcode");
+    setPartnerId("");
+    resetCylinders();
+    setNote("");
+    setChineseGas("Széndioxid");
+    setChineseSize("10 kg");
+    setChineseQty("1");
+    setChineseOutGas("Széndioxid");
+    setChineseOutSize("10 kg");
+    setChineseOutQty("1");
+    setFlagaPbKey(flagaPbProductKey(FLAGA_PB_CATALOG[0].gas_type, FLAGA_PB_CATALOG[0].size));
+    setFlagaPbQty("1");
+    setPrimaPbKey(primaPbProductKey(PRIMA_PB_CATALOG[0].gas_type, PRIMA_PB_CATALOG[0].size));
+    setPrimaPbQty("1");
+  }
+
+  function discardDraft() {
+    clearDraft();
+    resetWorkflow();
+    toast.message("Piszkozat törölve.");
+  }
 
   const { data: partners } = useQuery({
     queryKey: ["partners-min"],
@@ -389,6 +551,7 @@ function QuickExchange() {
       toast.error("Válassz partnert");
       return;
     }
+    if (!beginSubmit()) return;
 
     setBusy(true);
     try {
@@ -575,12 +738,14 @@ function QuickExchange() {
         toast.success("Kölcsön rögzítve");
       }
 
+      markCompleted();
       resetCylinders();
       setNote("");
       invalidateQueries();
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
+      endSubmit();
       setBusy(false);
     }
   }
@@ -700,25 +865,14 @@ function QuickExchange() {
 
       <Card className="mb-3 p-4">
         <Label className="mb-2 block">Partner</Label>
-        <Select
+        <PartnerSelector
+          partners={partners ?? []}
           value={partnerId}
           onValueChange={(v) => {
             setPartnerId(v);
             setReassign(null);
           }}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Válassz partnert…" />
-          </SelectTrigger>
-          <SelectContent>
-            {(partners ?? []).map((p) => (
-              <SelectItem key={p.id} value={p.id}>
-                {p.name}
-                {p.company_name ? ` · ${p.company_name}` : ""}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        />
         {selectedPartner?.phone && (
           <div className="mt-2 text-sm text-muted-foreground">
             Telefon: <PhoneLink phone={selectedPartner.phone} />
@@ -1355,6 +1509,14 @@ function QuickExchange() {
             </Button>
           </div>
         </Card>
+      )}
+
+      {partnerId && (
+        <div className="mb-3 flex justify-end">
+          <Button type="button" variant="outline" size="sm" disabled={busy} onClick={discardDraft}>
+            Piszkozat törlése
+          </Button>
+        </div>
       )}
 
       {partnerId && canComplete && (

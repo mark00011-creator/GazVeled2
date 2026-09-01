@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
@@ -22,6 +22,16 @@ import {
 } from "@/lib/cylinder-ops";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { NewCylinderDialog } from "@/components/NewCylinderDialog";
+import { useAuth } from "@/lib/auth";
+import { useWorkflowDraft } from "@/hooks/use-workflow-draft";
+import {
+  isSupplierExchangeDraft,
+  isSupplierExchangeDraftEmpty,
+  SUPPLIER_EXCHANGE_DRAFT_KEY,
+  SUPPLIER_EXCHANGE_DRAFT_VERSION,
+  supplierExchangeWorkflowStep,
+  type SupplierExchangeDraft,
+} from "@/lib/supplier-exchange-draft";
 
 export const Route = createFileRoute("/_authenticated/suppliers")({
   head: () => ({ meta: [{ title: "Beszállítói csere – Gáz Veled" }] }),
@@ -33,6 +43,7 @@ type DialogPhase = "return" | "receive";
 
 function Suppliers() {
   const qc = useQueryClient();
+  const { user } = useAuth();
   const [supplierId, setSupplierId] = useState("");
   const [returnBc, setReturnBc] = useState("");
   const [receiveBc, setReceiveBc] = useState("");
@@ -46,6 +57,63 @@ function Suppliers() {
   const [pendingBc, setPendingBc] = useState("");
   const [newName, setNewName] = useState("");
   const [newKind, setNewKind] = useState<SupKind>("siad");
+
+  const applyDraft = useCallback((draft: SupplierExchangeDraft) => {
+    setSupplierId(draft.supplierId);
+    setReturnBc(draft.returnBc);
+    setReceiveBc(draft.receiveBc);
+    setReturned(draft.returned);
+    setReceived(draft.received);
+    setNote(draft.note);
+  }, []);
+
+  const buildDraft = useCallback(
+    (): SupplierExchangeDraft => ({
+      version: SUPPLIER_EXCHANGE_DRAFT_VERSION,
+      draftId: "",
+      supplierId,
+      returnBc,
+      receiveBc,
+      returned,
+      received,
+      note,
+      workflowStep: supplierExchangeWorkflowStep({
+        supplierId,
+        returnedCount: returned.length,
+        receivedCount: received.length,
+      }),
+    }),
+    [supplierId, returnBc, receiveBc, returned, received, note],
+  );
+
+  const { clearDraft, markCompleted, beginSubmit, endSubmit } = useWorkflowDraft(
+    buildDraft,
+    applyDraft,
+    [supplierId, returnBc, receiveBc, returned, received, note],
+    {
+      storageKey: SUPPLIER_EXCHANGE_DRAFT_KEY,
+      userId: user?.id,
+      version: SUPPLIER_EXCHANGE_DRAFT_VERSION,
+      validate: isSupplierExchangeDraft,
+      isEmpty: isSupplierExchangeDraftEmpty,
+      restoreMessage: "A korábban megkezdett beszállítói csere visszaállítva.",
+    },
+  );
+
+  function resetWorkflow() {
+    setSupplierId("");
+    setReturnBc("");
+    setReceiveBc("");
+    setReturned([]);
+    setReceived([]);
+    setNote("");
+  }
+
+  function discardDraft() {
+    clearDraft();
+    resetWorkflow();
+    toast.message("Piszkozat törölve.");
+  }
 
   const { data: suppliers } = useQuery({
     queryKey: ["suppliers"],
@@ -164,6 +232,7 @@ function Suppliers() {
       toast.error("Adj hozzá legalább egy palackot");
       return;
     }
+    if (!beginSubmit()) return;
     setBusy(true);
     try {
       await submitSupplierExchange({
@@ -173,16 +242,14 @@ function Suppliers() {
         note: note || null,
       });
       toast.success(`Rögzítve – ${returned.length} üres vissza, ${received.length} teli átvét`);
-      setReturned([]);
-      setReceived([]);
-      setNote("");
-      setReturnBc("");
-      setReceiveBc("");
+      markCompleted();
+      resetWorkflow();
       qc.invalidateQueries({ queryKey: ["supex"] });
       qc.invalidateQueries({ queryKey: ["cylinders"] });
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
+      endSubmit();
       setBusy(false);
     }
   }
@@ -374,10 +441,15 @@ function Suppliers() {
 
           <Input className="mb-3" placeholder="Megjegyzés (opcionális)" value={note} onChange={(e) => setNote(e.target.value)} />
 
-          <Button className="w-full" size="lg" disabled={busy} onClick={submit}>
-            <Check className="mr-2 h-5 w-5" />
-            Tranzakció rögzítése ({returned.length} vissza, {received.length} átvét)
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button className="flex-1" size="lg" disabled={busy} onClick={submit}>
+              <Check className="mr-2 h-5 w-5" />
+              Tranzakció rögzítése ({returned.length} vissza, {received.length} átvét)
+            </Button>
+            <Button className="flex-1" size="lg" variant="outline" disabled={busy} onClick={discardDraft}>
+              Piszkozat törlése
+            </Button>
+          </div>
         </>
       )}
 
