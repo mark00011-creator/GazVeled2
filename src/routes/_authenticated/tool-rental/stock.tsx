@@ -37,6 +37,10 @@ import { isAdminRole } from "@/lib/roles";
 import { authDiag } from "@/lib/auth-diag";
 import { supabase } from "@/integrations/supabase/client";
 import {
+  useRouteScrollRestoration,
+  useRouteStatePersistence,
+} from "@/hooks/use-route-state-persistence";
+import {
   formatMarginPercent,
   formatSupplyHuf,
   grossFromNet,
@@ -94,7 +98,9 @@ function SupplyStockPage() {
 
 function SupplyStockAdmin() {
   const qc = useQueryClient();
-  const [tab, setTab] = useState("stock");
+  const { state, patch, storageKey } = useRouteStatePersistence<{ tab: string }>({ tab: "stock" });
+  const tab = state.tab;
+  const setTab = (value: string) => patch({ tab: value });
   const [busy, setBusy] = useState(false);
   const [saleOpen, setSaleOpen] = useState(false);
   const [priceProduct, setPriceProduct] = useState<SupplyProduct | null>(null);
@@ -118,6 +124,13 @@ function SupplyStockAdmin() {
 
   const products = productsQuery.data ?? [];
   const sales = salesQuery.data ?? [];
+
+  useRouteScrollRestoration(
+    storageKey,
+    tab === "stock"
+      ? productsQuery.isFetched || productsQuery.isError
+      : salesQuery.isFetched || salesQuery.isError,
+  );
 
   async function refreshAll() {
     await Promise.all([

@@ -32,6 +32,7 @@ import {
   supplierExchangeWorkflowStep,
   type SupplierExchangeDraft,
 } from "@/lib/supplier-exchange-draft";
+import { useRouteScrollOnly } from "@/hooks/use-route-state-persistence";
 
 export const Route = createFileRoute("/_authenticated/suppliers")({
   head: () => ({ meta: [{ title: "Beszállítói csere – Gáz Veled" }] }),
@@ -120,12 +121,14 @@ function Suppliers() {
     queryFn: async () => (await supabase.from("suppliers").select("*").order("name")).data ?? [],
   });
 
-  const { data: history } = useQuery({
+  const { data: history, isFetched: historyFetched, isError: historyError } = useQuery({
     queryKey: ["supex"],
     queryFn: async () =>
       (await supabase.from("supplier_exchanges").select("*, suppliers(name,kind)").order("created_at", { ascending: false }).limit(20))
         .data ?? [],
   });
+
+  useRouteScrollOnly(historyFetched || historyError);
 
   const selectedSupplier = (suppliers ?? []).find((s) => s.id === supplierId);
   const supplierKind = (selectedSupplier?.kind ?? "siad") as SupKind;

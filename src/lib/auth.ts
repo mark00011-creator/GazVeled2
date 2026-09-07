@@ -129,5 +129,7 @@ export async function signOut() {
     const { clearUserWorkflowDrafts } = await import("@/lib/workflow-draft-storage");
     clearUserWorkflowDrafts(userId);
   }
+  const { clearAllRouteStates } = await import("@/lib/route-state-storage");
+  clearAllRouteStates();
   await supabase.auth.signOut();
 }

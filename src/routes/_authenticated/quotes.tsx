@@ -35,6 +35,7 @@ import {
   type QuoteItemDraft,
 } from "@/lib/quotes";
 import { fmtDate } from "@/lib/labels";
+import { useRouteScrollOnly } from "@/hooks/use-route-state-persistence";
 
 export const Route = createFileRoute("/_authenticated/quotes")({
   head: () => ({ meta: [{ title: "Árajánlat – Gáz Veled" }] }),
@@ -60,10 +61,12 @@ function QuotesPage() {
 
   const sizes = getAvailableSizes(gasType);
 
-  const { data: quotes = [], isLoading } = useQuery({
+  const { data: quotes = [], isLoading, isFetched, isError } = useQuery({
     queryKey: ["quotes"],
     queryFn: fetchQuotes,
   });
+
+  useRouteScrollOnly(view === "list" && (isFetched || isError));
 
   const { data: partners = [] } = useQuery({
     queryKey: ["partners-list"],

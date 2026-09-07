@@ -88,6 +88,7 @@ import {
   quickExchangeWorkflowStep,
   type QuickExchangeDraft,
 } from "@/lib/quick-exchange-draft";
+import { useRouteScrollOnly } from "@/hooks/use-route-state-persistence";
 
 export const Route = createFileRoute("/_authenticated/quick-exchange")({
   head: () => ({ meta: [{ title: "Gyors csere – Gáz Veled" }] }),
@@ -313,11 +314,13 @@ function QuickExchange() {
     toast.message("Piszkozat törölve.");
   }
 
-  const { data: partners } = useQuery({
+  const { data: partners, isFetched: partnersFetched } = useQuery({
     queryKey: ["partners-min"],
     queryFn: async () =>
       (await supabase.from("partners").select("id,name,company_name,phone").order("name")).data ?? [],
   });
+
+  useRouteScrollOnly(partnersFetched);
 
   const selectedPartner = useMemo(
     () => (partners ?? []).find((p) => p.id === partnerId),

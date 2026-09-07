@@ -27,15 +27,14 @@ import { toast } from "sonner";
 import { fetchPartnerRentalSummaries } from "@/lib/rental-ops";
 
 import { preparePhoneForSave } from "@/lib/phone";
-
-
+import {
+  useRouteScrollRestoration,
+  useRouteStatePersistence,
+} from "@/hooks/use-route-state-persistence";
 
 export const Route = createFileRoute("/_authenticated/partners/")({
-
   head: () => ({ meta: [{ title: "Partnerek – Gáz Veled" }] }),
-
   component: PartnersList,
-
 });
 
 
@@ -65,19 +64,13 @@ const empty = {
 
 
 function PartnersList() {
-
   const qc = useQueryClient();
-
-  const [q, setQ] = useState("");
-
+  const { state, patch, storageKey } = useRouteStatePersistence<{ q: string }>({ q: "" });
+  const q = state.q;
   const [open, setOpen] = useState(false);
-
   const [form, setForm] = useState(empty);
 
-
-
-  const { data, isLoading, isError } = useQuery({
-
+  const { data, isLoading, isError, isFetched } = useQuery({
     queryKey: ["partners", q],
 
     queryFn: async () => {
@@ -102,7 +95,7 @@ function PartnersList() {
 
   });
 
-
+  useRouteScrollRestoration(storageKey, isFetched || isError);
 
   const { data: rentalSummaries } = useQuery({
 
@@ -158,7 +151,7 @@ function PartnersList() {
 
       <div className="mb-3 flex gap-2">
 
-        <Input placeholder="Név, cég, telefon…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Input placeholder="Név, cég, telefon…" value={q} onChange={(e) => patch({ q: e.target.value })} />
 
         <Dialog open={open} onOpenChange={setOpen}>
 

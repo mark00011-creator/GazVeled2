@@ -48,6 +48,7 @@ import { fetchFlagaPbStock, sumFlagaPbCounts } from "@/lib/flaga-pb-stock";
 import { fetchPrimaPbStock, sumPrimaPbCounts } from "@/lib/prima-pb-stock";
 import { fetchActiveDeployedQuantitySummary } from "@/lib/rental-quantity-stock";
 import { UninvoicedExchangesCard } from "@/components/UninvoicedExchangesCard";
+import { useRouteScrollOnly } from "@/hooks/use-route-state-persistence";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({ meta: [{ title: "Áttekintés – Gáz Veled" }] }),
@@ -77,6 +78,7 @@ function Dashboard() {
     data: stats,
     isLoading,
     isError,
+    isFetched,
   } = useQuery({
     queryKey: ["dashboard-stats"],
 
@@ -317,6 +319,8 @@ function Dashboard() {
       };
     },
   });
+
+  useRouteScrollOnly(isFetched || isError);
 
   if (isLoading) {
     return (

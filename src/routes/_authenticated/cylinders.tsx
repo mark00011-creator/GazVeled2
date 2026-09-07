@@ -27,22 +27,37 @@ import {
 } from "@/lib/labels";
 import { NewCylinderDialog } from "@/components/NewCylinderDialog";
 import { EditCylinderDialog, type CylinderEditSource } from "@/components/EditCylinderDialog";
+import {
+  useRouteScrollRestoration,
+  useRouteStatePersistence,
+} from "@/hooks/use-route-state-persistence";
 
 export const Route = createFileRoute("/_authenticated/cylinders")({
   head: () => ({ meta: [{ title: "Palackok – Gáz Veled" }] }),
   component: Cylinders,
 });
 
+type CylindersUiState = {
+  q: string;
+  circ: string;
+  mfr: string;
+  loc: string;
+};
+
 function Cylinders() {
   const qc = useQueryClient();
-  const [q, setQ] = useState("");
-  const [circ, setCirc] = useState<string>("all");
-  const [mfr, setMfr] = useState<string>("all");
-  const [loc, setLoc] = useState<string>("all");
   const [openNew, setOpenNew] = useState(false);
   const [editingCylinder, setEditingCylinder] = useState<CylinderEditSource | null>(null);
 
-  const { data } = useQuery({
+  const { state, patch, storageKey } = useRouteStatePersistence<CylindersUiState>({
+    q: "",
+    circ: "all",
+    mfr: "all",
+    loc: "all",
+  });
+  const { q, circ, mfr, loc } = state;
+
+  const { data, isFetched, isError } = useQuery({
     queryKey: ["cylinders", q, circ, mfr, loc],
     queryFn: async () => {
       let qb = supabase
@@ -61,10 +76,12 @@ function Cylinders() {
           "location_type",
           loc as "warehouse_full" | "warehouse_empty" | "customer" | "siad" | "own_supplier",
         );
-      const { data } = await qb;
-      return data ?? [];
+      const { data: rows } = await qb;
+      return rows ?? [];
     },
   });
+
+  useRouteScrollRestoration(storageKey, isFetched || isError);
 
   function invalidate() {
     qc.invalidateQueries({ queryKey: ["cylinders"] });
@@ -76,7 +93,7 @@ function Cylinders() {
         <Input
           placeholder="Vonalkód keresése…"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => patch({ q: e.target.value })}
           className="font-mono"
         />
         <Button size="icon" onClick={() => setOpenNew(true)}>
@@ -102,7 +119,7 @@ function Cylinders() {
       />
 
       <div className="mb-3 grid grid-cols-2 gap-2">
-        <Select value={circ} onValueChange={setCirc}>
+        <Select value={circ} onValueChange={(v) => patch({ circ: v })}>
           <SelectTrigger>
             <SelectValue placeholder="Tulajdonos" />
           </SelectTrigger>
@@ -113,7 +130,7 @@ function Cylinders() {
             <SelectItem value="berpalack">Egyéb</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={mfr} onValueChange={setMfr}>
+        <Select value={mfr} onValueChange={(v) => patch({ mfr: v })}>
           <SelectTrigger>
             <SelectValue placeholder="Gyártó" />
           </SelectTrigger>
@@ -128,7 +145,7 @@ function Cylinders() {
         </Select>
       </div>
       <div className="mb-3">
-        <Select value={loc} onValueChange={setLoc}>
+        <Select value={loc} onValueChange={(v) => patch({ loc: v })}>
           <SelectTrigger>
             <SelectValue placeholder="Helyszín" />
           </SelectTrigger>

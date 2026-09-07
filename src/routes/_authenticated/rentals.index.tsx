@@ -68,6 +68,10 @@ import {
   rentalQuantityRowsToInputs,
   type RentalQuantityRowDraft,
 } from "@/components/RentalQuantityItemsEditor";
+import {
+  useRouteScrollRestoration,
+  useRouteStatePersistence,
+} from "@/hooks/use-route-state-persistence";
 
 function statusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
   if (status === "active") return "default";
@@ -131,8 +135,17 @@ function RentalsList() {
   const { status: searchStatus } = Route.useSearch();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<string>(searchStatus ?? "all");
-  const [q, setQ] = useState("");
+  const { state, patch, storageKey } = useRouteStatePersistence<{
+    q: string;
+    statusFilter: string;
+  }>({
+    q: "",
+    statusFilter: searchStatus ?? "all",
+  });
+  const q = state.q;
+  const statusFilter = state.statusFilter;
+  const setStatusFilter = (value: string) => patch({ statusFilter: value });
+  const setQ = (value: string) => patch({ q: value });
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(makeEmptyForm);
   const [busy, setBusy] = useState(false);
@@ -141,13 +154,14 @@ function RentalsList() {
   const [pdfBusy, setPdfBusy] = useState(false);
 
   useEffect(() => {
-    setStatusFilter(searchStatus ?? "all");
+    if (searchStatus) setStatusFilter(searchStatus);
   }, [searchStatus]);
 
   const {
     data: rentals,
     isLoading,
     isError,
+    isFetched,
   } = useQuery({
     queryKey: ["rentals", statusFilter],
     queryFn: async () => {
@@ -172,6 +186,8 @@ function RentalsList() {
       return (data ?? []) as RentalRow[];
     },
   });
+
+  useRouteScrollRestoration(storageKey, isFetched || isError);
 
   const rentalIds = useMemo(() => (rentals ?? []).map((r) => r.id), [rentals]);
 

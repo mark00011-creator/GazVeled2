@@ -19,6 +19,7 @@ import {
   type PartnerLoanSummary,
 } from "@/lib/loan-ops";
 import { findCylinderByBarcode, normalizeBarcode } from "@/lib/cylinder-ops";
+import { useRouteScrollOnly } from "@/hooks/use-route-state-persistence";
 
 export const Route = createFileRoute("/_authenticated/loaned-cylinders")({
   head: () => ({ meta: [{ title: "Kölcsönadott – Gáz Veled" }] }),
@@ -258,10 +259,12 @@ function PartnerCard({
 function LoanedCylinders() {
   const qc = useQueryClient();
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, isFetched, refetch } = useQuery({
     queryKey: ["loaned-cylinders"],
     queryFn: fetchActiveLoansByPartner,
   });
+
+  useRouteScrollOnly(isFetched || isError);
 
   function invalidate() {
     qc.invalidateQueries({ queryKey: ["loaned-cylinders"] });
