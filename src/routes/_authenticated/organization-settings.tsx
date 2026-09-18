@@ -8,6 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -160,6 +167,58 @@ function OrganizationSettingsPage() {
           onChange={(e) => setBinsText(e.target.value)}
           placeholder={"Kaloda 1\nKaloda 2\nStargon sor"}
         />
+      </Card>
+
+      <Card className="mb-3 space-y-3 p-4">
+        <div className="text-sm font-semibold">ÁFA / adózás</div>
+        <p className="text-xs text-muted-foreground">
+          Alanyi adómentes: az árak bruttó egységárak, nincs ÁFA bontás. Áfakörös: az árak nettóban
+          tárolódnak, a UI mutatja az ÁFÁ-t és a bruttót (alap: 27%).
+        </p>
+        <div>
+          <Label className="mb-1 block">Adózási mód</Label>
+          <Select
+            value={settings.tax.regime}
+            onValueChange={(v) =>
+              setSettings((prev) => ({
+                ...prev,
+                tax: {
+                  ...prev.tax,
+                  regime: v as "vat_exempt" | "vat_registered",
+                },
+              }))
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="vat_exempt">Alanyi adómentes (nincs ÁFA)</SelectItem>
+              <SelectItem value="vat_registered">Áfakörös</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {settings.tax.regime === "vat_registered" && (
+          <div>
+            <Label className="mb-1 block">Alap ÁFA kulcs (%)</Label>
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              value={settings.tax.default_rate}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                setSettings((prev) => ({
+                  ...prev,
+                  tax: {
+                    ...prev.tax,
+                    default_rate: Number.isFinite(n) ? n : 27,
+                  },
+                }));
+              }}
+            />
+          </div>
+        )}
       </Card>
 
       <Card className="mb-3 space-y-3 p-4">

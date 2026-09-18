@@ -30,11 +30,19 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { AlertTriangle, PackagePlus, ShoppingCart, TrendingUp } from "lucide-react";
+import { AlertTriangle, PackagePlus, Pencil, Plus, ShoppingCart, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { isAdminRole } from "@/lib/roles";
 import { isModuleEnabled } from "@/lib/organization";
+import {
+  displayGrossFromNet,
+  effectiveVatRate,
+  getTaxSettings,
+  isVatRegistered,
+  priceBasisHint,
+  priceFieldLabel,
+} from "@/lib/org-tax";
 import { authDiag } from "@/lib/auth-diag";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -56,6 +64,8 @@ import {
 import {
   BILLING_STATUS_LABELS,
   billingSummaryStatus,
+  createSupplyProduct,
+  deactivateSupplyProduct,
   fetchSupplyMovements,
   fetchSupplyProducts,
   fetchSupplySales,
@@ -63,12 +73,15 @@ import {
   parsePositiveInt,
   receiveSupplyStock,
   recordSupplySaleBatch,
+  suggestSupplyNaturalKey,
   SUPPLY_MOVEMENT_LABELS,
+  updateSupplyProduct,
   updateSupplyProductPrices,
   type SupplyProduct,
   type SupplySale,
   type SupplySaleLineInput,
 } from "@/lib/supply-stock";
+import { Switch } from "@/components/ui/switch";
 
 export const Route = createFileRoute("/_authenticated/tool-rental/stock")({
   head: () => ({ meta: [{ title: "Eszközök és fogyóanyagok – Gáz Veled" }] }),
@@ -123,6 +136,7 @@ function SupplyStockPage() {
 
 function SupplyStockAdmin() {
   const qc = useQueryClient();
+  const { organization } = useAuth();
   const { state, patch, storageKey } = useRouteStatePersistence<{ tab: string }>({ tab: "stock" });
   const tab = state.tab;
   const setTab = (value: string) => patch({ tab: value });
@@ -132,6 +146,8 @@ function SupplyStockAdmin() {
   const [receiveProduct, setReceiveProduct] = useState<SupplyProduct | null>(null);
   const [detailProduct, setDetailProduct] = useState<SupplyProduct | null>(null);
   const [saleDetail, setSaleDetail] = useState<SupplySale | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editProduct, setEditProduct] = useState<SupplyProduct | null>(null);
 
   const productsQuery = useQuery({ queryKey: ["supply-products"], queryFn: fetchSupplyProducts });
   const salesQuery = useQuery({ queryKey: ["supply-sales"], queryFn: fetchSupplySales });
@@ -166,7 +182,19 @@ function SupplyStockAdmin() {
 
   return (
     <AppShell title="Eszközök és fogyóanyagok">
+      <p className="mb-3 text-xs text-muted-foreground">{priceBasisHint(organization?.settings)}</p>
       <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Button
+          className="gap-2"
+          variant="outline"
+          onClick={() => {
+            setEditProduct(null);
+            setEditorOpen(true);
+          }}
+        >
+          <Plus className="h-4 w-4" />
+          Új tétel
+        </Button>
         <Button className="gap-2" onClick={() => setSaleOpen(true)}>
           <ShoppingCart className="h-4 w-4" />
           Gyors értékesítés
@@ -190,6 +218,10 @@ function SupplyStockAdmin() {
             <ProductCard
               key={p.id}
               product={p}
+              onEdit={() => {
+                setEditProduct(p);
+                setEditorOpen(true);
+              }}
               onPrice={() => setPriceProduct(p)}
               onReceive={() => setReceiveProduct(p)}
               onDetail={() => setDetailProduct(p)}
@@ -226,8 +258,14 @@ function SupplyStockAdmin() {
                 </Badge>
               </div>
               <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                <span>Nettó: {formatSupplyHuf(s.total_net)}</span>
-                <span>Bruttó: {formatSupplyHuf(s.total_gross)}</span>
+                {isVatRegistered(organization?.settings) ? (
+                  <>
+                    <span>Nettó: {formatSupplyHuf(s.total_net)}</span>
+                    <span>Bruttó: {formatSupplyHuf(s.total_gross)}</span>
+                  </>
+                ) : (
+                  <span>Összeg: {formatSupplyHuf(s.total_net)}</span>
+                )}
                 <span>Beszerzés: {formatSupplyHuf(s.total_purchase_value)}</span>
                 <span>Haszon: {formatSupplyHuf(s.total_profit)}</span>
               </div>
@@ -275,21 +313,43 @@ function SupplyStockAdmin() {
       <ProductDetailSheet product={detailProduct} onClose={() => setDetailProduct(null)} />
 
       <SaleDetailDialog sale={saleDetail} onClose={() => setSaleDetail(null)} />
+
+      <ProductEditorDialog
+        open={editorOpen}
+        product={editProduct}
+        busy={busy}
+        setBusy={setBusy}
+        onClose={() => {
+          setEditorOpen(false);
+          setEditProduct(null);
+        }}
+        onSuccess={async () => {
+          await refreshAll();
+          setEditorOpen(false);
+          setEditProduct(null);
+        }}
+      />
     </AppShell>
   );
 }
 
 function ProductCard({
   product: p,
+  onEdit,
   onPrice,
   onReceive,
   onDetail,
 }: {
   product: SupplyProduct;
+  onEdit: () => void;
   onPrice: () => void;
   onReceive: () => void;
   onDetail: () => void;
 }) {
+  const { organization } = useAuth();
+  const vatOn = isVatRegistered(organization?.settings);
+  const rate = effectiveVatRate(organization?.settings, p.vat_rate);
+  const saleGross = displayGrossFromNet(p.sale_price, organization?.settings, p.vat_rate);
   const profit = profitPerUnit(p.purchase_price, p.sale_price);
   const margin = marginPercent(p.purchase_price, p.sale_price);
   const lowStock =
@@ -318,11 +378,19 @@ function ProductCard({
 
       <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs sm:grid-cols-3">
         <span>Beszerzés: {formatSupplyHuf(p.purchase_price)}</span>
-        <span>Eladás: {p.sale_price != null ? formatSupplyHuf(p.sale_price) : "—"}</span>
+        <span>
+          Eladás{vatOn ? " nettó" : ""}:{" "}
+          {p.sale_price != null ? formatSupplyHuf(p.sale_price) : "—"}
+        </span>
+        {vatOn && (
+          <span>Eladás bruttó: {saleGross != null ? formatSupplyHuf(saleGross) : "—"}</span>
+        )}
         <span>Haszon: {formatSupplyHuf(profit)}</span>
         <span>Árrés: {formatMarginPercent(margin)}</span>
-        <span>ÁFA: {p.vat_rate}%</span>
-        <span>Min: {p.minimum_stock} {p.unit_of_measure}</span>
+        {vatOn && <span>ÁFA: {rate}%</span>}
+        <span>
+          Min: {p.minimum_stock} {p.unit_of_measure}
+        </span>
       </div>
 
       <div className="mt-2 flex flex-wrap gap-1">
@@ -341,6 +409,10 @@ function ProductCard({
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" onClick={onEdit}>
+          <Pencil className="mr-1 h-3 w-3" />
+          Szerkesztés
+        </Button>
         <Button size="sm" variant="outline" onClick={onPrice}>
           <TrendingUp className="mr-1 h-3 w-3" />
           Ár
@@ -360,6 +432,288 @@ function ProductCard({
   );
 }
 
+function ProductEditorDialog({
+  open,
+  product,
+  busy,
+  setBusy,
+  onClose,
+  onSuccess,
+}: {
+  open: boolean;
+  product: SupplyProduct | null;
+  busy: boolean;
+  setBusy: (v: boolean) => void;
+  onClose: () => void;
+  onSuccess: () => Promise<void>;
+}) {
+  const isEdit = product != null;
+  const [name, setName] = useState("");
+  const [naturalKey, setNaturalKey] = useState("");
+  const [category, setCategory] = useState("");
+  const [specification, setSpecification] = useState("");
+  const [packaging, setPackaging] = useState("");
+  const [unit, setUnit] = useState("db");
+  const [minStock, setMinStock] = useState("0");
+  const [initialStock, setInitialStock] = useState("0");
+  const [isSellable, setIsSellable] = useState(true);
+  const [isRentable, setIsRentable] = useState(false);
+  const [isActive, setIsActive] = useState(true);
+  const [note, setNote] = useState("");
+  const [keyTouched, setKeyTouched] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    if (product) {
+      setName(product.name);
+      setNaturalKey(product.natural_key);
+      setCategory(product.category ?? "");
+      setSpecification(product.specification ?? "");
+      setPackaging(product.packaging ?? "");
+      setUnit(product.unit_of_measure);
+      setMinStock(String(product.minimum_stock));
+      setInitialStock("0");
+      setIsSellable(product.is_sellable);
+      setIsRentable(product.is_rentable);
+      setIsActive(product.is_active);
+      setNote(product.note ?? "");
+      setKeyTouched(true);
+    } else {
+      setName("");
+      setNaturalKey("");
+      setCategory("");
+      setSpecification("");
+      setPackaging("");
+      setUnit("db");
+      setMinStock("0");
+      setInitialStock("0");
+      setIsSellable(true);
+      setIsRentable(false);
+      setIsActive(true);
+      setNote("");
+      setKeyTouched(false);
+    }
+  }, [open, product?.id]);
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
+      <DialogContent className="max-h-[92vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? "Tétel szerkesztése" : "Új tétel"}</DialogTitle>
+          <DialogDescription>
+            {isEdit
+              ? "Név, kategória, mértékegység, eladhatóság. Készletszám: Bevételezés."
+              : "Új anyag / eszköz a darabszámos készlethez."}
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="space-y-3"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const trimmedName = name.trim();
+            if (!trimmedName) {
+              toast.error("A név kötelező");
+              return;
+            }
+            const unitTrim = unit.trim() || "db";
+            let min = 0;
+            try {
+              min = Number(minStock.replace(/\s/g, ""));
+              if (!Number.isFinite(min) || min < 0 || !Number.isInteger(min)) {
+                throw new Error("A minimum készletnek nemnegatív egésznek kell lennie");
+              }
+            } catch (err) {
+              toast.error((err as Error).message);
+              return;
+            }
+
+            setBusy(true);
+            try {
+              if (isEdit && product) {
+                await updateSupplyProduct({
+                  productId: product.id,
+                  name: trimmedName,
+                  category,
+                  specification,
+                  packaging,
+                  unitOfMeasure: unitTrim,
+                  minimumStock: min,
+                  isSellable,
+                  isRentable,
+                  isActive,
+                  note,
+                });
+                toast.success("Tétel mentve");
+              } else {
+                let init = 0;
+                try {
+                  init = Number(initialStock.replace(/\s/g, ""));
+                  if (!Number.isFinite(init) || init < 0 || !Number.isInteger(init)) {
+                    throw new Error("Az induló készletnek nemnegatív egésznek kell lennie");
+                  }
+                } catch (err) {
+                  toast.error((err as Error).message);
+                  setBusy(false);
+                  return;
+                }
+                const key = (naturalKey.trim() || suggestSupplyNaturalKey(trimmedName)).slice(0, 80);
+                await createSupplyProduct({
+                  name: trimmedName,
+                  naturalKey: key,
+                  unitOfMeasure: unitTrim,
+                  category: category || undefined,
+                  specification: specification || undefined,
+                  packaging: packaging || undefined,
+                  minimumStock: min,
+                  initialStock: init,
+                  isSellable,
+                  isRentable,
+                  note: note || undefined,
+                });
+                toast.success("Új tétel létrehozva");
+              }
+              await onSuccess();
+            } catch (err) {
+              toast.error((err as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <div>
+            <Label>Név *</Label>
+            <Input
+              value={name}
+              onChange={(e) => {
+                const v = e.target.value;
+                setName(v);
+                if (!isEdit && !keyTouched) setNaturalKey(suggestSupplyNaturalKey(v));
+              }}
+              required
+            />
+          </div>
+          {!isEdit && (
+            <div>
+              <Label>Belső kulcs</Label>
+              <Input
+                value={naturalKey}
+                onChange={(e) => {
+                  setKeyTouched(true);
+                  setNaturalKey(e.target.value);
+                }}
+                placeholder="supply:..."
+              />
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                Egyedi azonosító. Üresen hagyva a névből képződik.
+              </p>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label>Kategória</Label>
+              <Input value={category} onChange={(e) => setCategory(e.target.value)} />
+            </div>
+            <div>
+              <Label>Mértékegység *</Label>
+              <Input value={unit} onChange={(e) => setUnit(e.target.value)} required />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label>Specifikáció</Label>
+              <Input
+                value={specification}
+                onChange={(e) => setSpecification(e.target.value)}
+                placeholder="pl. 1,0 mm"
+              />
+            </div>
+            <div>
+              <Label>Kiszerelés</Label>
+              <Input
+                value={packaging}
+                onChange={(e) => setPackaging(e.target.value)}
+                placeholder="pl. 15 kg-os tekercs"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label>Minimum készlet</Label>
+              <Input value={minStock} onChange={(e) => setMinStock(e.target.value)} inputMode="numeric" />
+            </div>
+            {!isEdit && (
+              <div>
+                <Label>Induló készlet</Label>
+                <Input
+                  value={initialStock}
+                  onChange={(e) => setInitialStock(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+            )}
+          </div>
+          <div className="space-y-2 rounded-md border p-3">
+            <div className="flex items-center justify-between gap-3">
+              <Label>Eladható</Label>
+              <Switch checked={isSellable} onCheckedChange={setIsSellable} />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <Label>Bérbe adható</Label>
+              <Switch checked={isRentable} onCheckedChange={setIsRentable} />
+            </div>
+            {isEdit && (
+              <div className="flex items-center justify-between gap-3">
+                <Label>Aktív</Label>
+                <Switch checked={isActive} onCheckedChange={setIsActive} />
+              </div>
+            )}
+          </div>
+          <div>
+            <Label>Megjegyzés</Label>
+            <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
+          </div>
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            {isEdit && product?.is_active && (
+              <Button
+                type="button"
+                variant="destructive"
+                className="sm:mr-auto"
+                disabled={busy}
+                onClick={async () => {
+                  if (!confirm(`Inaktiválod: ${product.name}?`)) return;
+                  setBusy(true);
+                  try {
+                    await deactivateSupplyProduct(product.id);
+                    toast.success("Tétel inaktiválva");
+                    await onSuccess();
+                  } catch (err) {
+                    toast.error((err as Error).message);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Inaktiválás
+              </Button>
+            )}
+            <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+              Mégse
+            </Button>
+            <Button type="submit" disabled={busy}>
+              {busy ? "Mentés…" : isEdit ? "Mentés" : "Létrehozás"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function PriceDialog({
   product,
   onClose,
@@ -373,6 +727,8 @@ function PriceDialog({
   setBusy: (v: boolean) => void;
   onSuccess: () => Promise<void>;
 }) {
+  const { organization } = useAuth();
+  const vatOn = isVatRegistered(organization?.settings);
   const [mode, setMode] = useState<"profit" | "margin" | "manual">("profit");
   const [purchase, setPurchase] = useState("");
   const [profitFt, setProfitFt] = useState("");
@@ -382,7 +738,9 @@ function PriceDialog({
 
   const purchaseNum = parseSupplyPriceInput(purchase);
   const saleNum = parseSupplyPriceInput(sale);
-  const vatNum = parseSupplyPriceInput(vat) ?? 27;
+  const vatNum = vatOn
+    ? (parseSupplyPriceInput(vat) ?? getTaxSettings(organization?.settings).default_rate)
+    : 0;
 
   const computedSale = useMemo(() => {
     if (mode === "profit" && purchaseNum != null && parseSupplyPriceInput(profitFt) != null) {
@@ -406,7 +764,7 @@ function PriceDialog({
   function resetFromProduct(p: SupplyProduct) {
     setPurchase(p.purchase_price != null ? String(p.purchase_price) : "");
     setSale(p.sale_price != null ? String(p.sale_price) : "");
-    setVat(String(p.vat_rate));
+    setVat(String(vatOn ? p.vat_rate || getTaxSettings(organization?.settings).default_rate : 0));
     setProfitFt("");
     setMarginPct("");
     setMode("manual");
@@ -414,7 +772,7 @@ function PriceDialog({
 
   useEffect(() => {
     if (product) resetFromProduct(product);
-  }, [product?.id]);
+  }, [product?.id, vatOn]);
 
   return (
     <Dialog
@@ -426,7 +784,10 @@ function PriceDialog({
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Ár beállítása</DialogTitle>
-          <DialogDescription>{product?.name}</DialogDescription>
+          <DialogDescription>
+            {product?.name}
+            <span className="mt-1 block text-xs">{priceBasisHint(organization?.settings)}</span>
+          </DialogDescription>
         </DialogHeader>
         {product && (
           <form
@@ -438,7 +799,11 @@ function PriceDialog({
                 return;
               }
               if (computedSale == null || computedSale <= 0) {
-                toast.error("Érvényes eladási nettó árat adj meg");
+                toast.error(
+                  isVatRegistered(organization?.settings)
+                    ? "Érvényes eladási nettó árat adj meg"
+                    : "Érvényes eladási árat adj meg",
+                );
                 return;
               }
               setBusy(true);
@@ -459,7 +824,7 @@ function PriceDialog({
             }}
           >
             <div>
-              <Label>Beszerzési nettó ár (Ft)</Label>
+              <Label>{priceFieldLabel(organization?.settings, "purchase")}</Label>
               <Input value={purchase} onChange={(e) => setPurchase(e.target.value)} inputMode="numeric" />
             </div>
             <div>
@@ -489,22 +854,28 @@ function PriceDialog({
             )}
             {mode === "manual" && (
               <div>
-                <Label>Eladási nettó ár (Ft)</Label>
+                <Label>{priceFieldLabel(organization?.settings, "sale")}</Label>
                 <Input value={sale} onChange={(e) => setSale(e.target.value)} inputMode="numeric" />
               </div>
             )}
-            <div>
-              <Label>ÁFA (%)</Label>
-              <Input value={vat} onChange={(e) => setVat(e.target.value)} inputMode="numeric" />
-            </div>
+            {vatOn && (
+              <div>
+                <Label>ÁFA (%)</Label>
+                <Input value={vat} onChange={(e) => setVat(e.target.value)} inputMode="numeric" />
+              </div>
+            )}
             {computedSale != null && (
               <Card className="bg-muted/40 p-3 text-sm">
                 <div className="font-medium">Összefoglaló</div>
                 <div className="mt-1 grid gap-1 text-xs">
-                  <span>Beszerzési nettó: {formatSupplyHuf(purchaseNum)}</span>
-                  <span>Eladási nettó: {formatSupplyHuf(computedSale)}</span>
-                  <span>ÁFA: {vatNum}%</span>
-                  <span>Eladási bruttó: {formatSupplyHuf(summary?.gross ?? null)}</span>
+                  <span>Beszerzés: {formatSupplyHuf(purchaseNum)}</span>
+                  <span>Eladás{vatOn ? " nettó" : ""}: {formatSupplyHuf(computedSale)}</span>
+                  {vatOn && (
+                    <>
+                      <span>ÁFA: {vatNum}%</span>
+                      <span>Eladási bruttó: {formatSupplyHuf(summary?.gross ?? null)}</span>
+                    </>
+                  )}
                   <span>Haszon: {formatSupplyHuf(summary?.prof ?? null)}</span>
                   <span>Árrés: {formatMarginPercent(summary?.m ?? null)}</span>
                 </div>
@@ -678,6 +1049,8 @@ function QuickSaleDialog({
   setBusy: (v: boolean) => void;
   onSuccess: () => Promise<void>;
 }) {
+  const { organization } = useAuth();
+  const vatOn = isVatRegistered(organization?.settings);
   const [partnerId, setPartnerId] = useState("");
   const [lines, setLines] = useState<SupplySaleLineInput[]>([]);
   const [note, setNote] = useState("");
@@ -704,7 +1077,7 @@ function QuickSaleDialog({
       if (!p) continue;
       const unit = line.unit_price ?? p.sale_price;
       if (unit == null) continue;
-      const t = lineTotals(unit, line.quantity, p.vat_rate);
+      const t = lineTotals(unit, line.quantity, effectiveVatRate(organization?.settings, p.vat_rate));
       const lp = lineProfit(p.purchase_price, unit, line.quantity);
       net += t.net;
       vat += t.vat;
@@ -713,7 +1086,7 @@ function QuickSaleDialog({
       if (lp.lineProfit != null) profit += lp.lineProfit;
     }
     return { net, vat, gross, purchase, profit };
-  }, [lines, products]);
+  }, [lines, products, organization?.settings]);
 
   function addLine(productId: string) {
     if (lines.some((l) => l.product_id === productId)) return;
@@ -832,7 +1205,10 @@ function QuickSaleDialog({
           {lines.map((line) => {
             const p = products.find((x) => x.id === line.product_id)!;
             const unit = line.unit_price ?? p.sale_price ?? 0;
-            const t = p.sale_price != null ? lineTotals(unit, line.quantity, p.vat_rate) : null;
+            const t =
+              p.sale_price != null
+                ? lineTotals(unit, line.quantity, effectiveVatRate(organization?.settings, p.vat_rate))
+                : null;
             const lp = lineProfit(p.purchase_price, unit, line.quantity);
             return (
               <Card key={line.product_id} className="p-3">
@@ -858,7 +1234,7 @@ function QuickSaleDialog({
                     />
                   </div>
                   <div>
-                    <Label className="text-xs">Egységár (nettó)</Label>
+                    <Label className="text-xs">{priceFieldLabel(organization?.settings, "unit")}</Label>
                     <Input
                       value={line.unit_price != null ? String(line.unit_price) : p.sale_price != null ? String(p.sale_price) : ""}
                       onChange={(e) => {
@@ -881,8 +1257,14 @@ function QuickSaleDialog({
                 )}
                 {t && (
                   <div className="mt-2 text-xs text-muted-foreground">
-                    Nettó: {formatSupplyHuf(t.net)} · Bruttó: {formatSupplyHuf(t.gross)} · Haszon:{" "}
-                    {formatSupplyHuf(lp.lineProfit)}
+                    {vatOn ? (
+                      <>
+                        Nettó: {formatSupplyHuf(t.net)} · Bruttó: {formatSupplyHuf(t.gross)}
+                      </>
+                    ) : (
+                      <>Összeg: {formatSupplyHuf(t.net)}</>
+                    )}
+                    {" · "}Haszon: {formatSupplyHuf(lp.lineProfit)}
                   </div>
                 )}
               </Card>
@@ -907,9 +1289,15 @@ function QuickSaleDialog({
             <Card className="bg-muted/40 p-3 text-sm">
               <div className="font-medium">Összesen</div>
               <div className="mt-1 grid gap-1 text-xs">
-                <span>Nettó: {formatSupplyHuf(totals.net)}</span>
-                <span>ÁFA: {formatSupplyHuf(totals.vat)}</span>
-                <span>Bruttó: {formatSupplyHuf(totals.gross)}</span>
+                {vatOn ? (
+                  <>
+                    <span>Nettó: {formatSupplyHuf(totals.net)}</span>
+                    <span>ÁFA: {formatSupplyHuf(totals.vat)}</span>
+                    <span>Bruttó: {formatSupplyHuf(totals.gross)}</span>
+                  </>
+                ) : (
+                  <span>Összeg: {formatSupplyHuf(totals.net)}</span>
+                )}
                 <span>Beszerzési érték: {formatSupplyHuf(totals.purchase || null)}</span>
                 <span>Teljes haszon: {formatSupplyHuf(totals.profit || null)}</span>
               </div>
@@ -983,6 +1371,8 @@ function ProductDetailSheet({
 }
 
 function SaleDetailDialog({ sale, onClose }: { sale: SupplySale | null; onClose: () => void }) {
+  const { organization } = useAuth();
+  const vatOn = isVatRegistered(organization?.settings);
   return (
     <Dialog open={sale != null} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
@@ -1009,13 +1399,19 @@ function SaleDetailDialog({ sale, onClose }: { sale: SupplySale | null; onClose:
                   <span>Beszerzés: {formatSupplyHuf(item.purchase_unit_price)}</span>
                   <span>Haszon: {formatSupplyHuf(item.line_profit)}</span>
                   <span>Árrés: {formatMarginPercent(item.margin_percent)}</span>
-                  <span>Bruttó: {formatSupplyHuf(item.line_gross)}</span>
+                  {vatOn && <span>Bruttó: {formatSupplyHuf(item.line_gross)}</span>}
                 </div>
               </Card>
             ))}
             <Card className="bg-muted/40 p-3 text-xs">
-              <div>Nettó összesen: {formatSupplyHuf(sale.total_net)}</div>
-              <div>Bruttó összesen: {formatSupplyHuf(sale.total_gross)}</div>
+              {vatOn ? (
+                <>
+                  <div>Nettó összesen: {formatSupplyHuf(sale.total_net)}</div>
+                  <div>Bruttó összesen: {formatSupplyHuf(sale.total_gross)}</div>
+                </>
+              ) : (
+                <div>Összeg: {formatSupplyHuf(sale.total_net)}</div>
+              )}
               <div>Beszerzési érték: {formatSupplyHuf(sale.total_purchase_value)}</div>
               <div>Teljes haszon: {formatSupplyHuf(sale.total_profit)}</div>
               {sale.note && <div className="mt-1 italic">{sale.note}</div>}

@@ -32,6 +32,8 @@ import {
   type ProductPrice,
 } from "@/lib/product-prices";
 import { formatHuf } from "@/lib/gas-order-prices";
+import { useAuth } from "@/lib/auth";
+import { isVatRegistered, priceBasisHint } from "@/lib/org-tax";
 
 export const Route = createFileRoute("/_authenticated/price-list")({
   head: () => ({ meta: [{ title: "Árlista – Gáz Veled" }] }),
@@ -44,6 +46,8 @@ function parseFt(value: string): number {
 
 function PriceListPage() {
   const qc = useQueryClient();
+  const { organization } = useAuth();
+  const vatOn = isVatRegistered(organization?.settings);
   const [gasType, setGasType] = useState("Argon");
   const [size, setSize] = useState("20 L");
   const [beszerzesiAr, setBeszerzesiAr] = useState("");
@@ -184,10 +188,11 @@ function PriceListPage() {
 
   return (
     <AppShell title="Árlista">
-      <p className="mb-4 text-sm text-muted-foreground">
-        Beszerzési ár, árrés és eladási ár (Ft/db, bruttó). A gáz rendelés a beszerzési árat
-        használja.
+      <p className="mb-2 text-sm text-muted-foreground">
+        Beszerzési ár, árrés és eladási ár (Ft/db
+        {vatOn ? ", nettó" : ", bruttó"}). A gáz rendelés a beszerzési árat használja.
       </p>
+      <p className="mb-4 text-xs text-muted-foreground">{priceBasisHint(organization?.settings)}</p>
 
       <Card className="mb-4 p-4">
         <h2 className="mb-3 text-sm font-semibold">Új ár</h2>

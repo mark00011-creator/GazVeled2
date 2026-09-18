@@ -161,6 +161,100 @@ export async function updateSupplyProductPrices(input: {
   if (error) throw new Error(formatSupabaseError(error, "Ár mentése"));
 }
 
+export async function createSupplyProduct(input: {
+  name: string;
+  naturalKey: string;
+  unitOfMeasure: string;
+  stockKind?: "quantity" | "unit";
+  category?: string;
+  brand?: string;
+  productType?: string;
+  specification?: string;
+  packaging?: string;
+  minimumStock?: number;
+  purchasePrice?: number | null;
+  salePrice?: number | null;
+  vatRate?: number | null;
+  isSellable?: boolean;
+  isRentable?: boolean;
+  note?: string;
+  initialStock?: number;
+}): Promise<string> {
+  const { data, error } = await supabase.rpc("create_supply_product", {
+    p_stock_kind: input.stockKind ?? "quantity",
+    p_natural_key: input.naturalKey,
+    p_name: input.name,
+    p_unit_of_measure: input.unitOfMeasure,
+    p_category: input.category ?? undefined,
+    p_brand: input.brand ?? undefined,
+    p_product_type: input.productType ?? undefined,
+    p_specification: input.specification ?? undefined,
+    p_packaging: input.packaging ?? undefined,
+    p_minimum_stock: input.minimumStock ?? 0,
+    p_purchase_price: input.purchasePrice ?? undefined,
+    p_sale_price: input.salePrice ?? undefined,
+    p_vat_rate: input.vatRate ?? undefined,
+    p_is_sellable: input.isSellable ?? true,
+    p_is_rentable: input.isRentable ?? false,
+    p_note: input.note ?? undefined,
+    p_initial_stock: input.initialStock ?? 0,
+  });
+  if (error) throw new Error(formatSupabaseError(error, "Termék létrehozása"));
+  return data as string;
+}
+
+export async function updateSupplyProduct(input: {
+  productId: string;
+  name?: string;
+  category?: string | null;
+  brand?: string | null;
+  productType?: string | null;
+  specification?: string | null;
+  packaging?: string | null;
+  unitOfMeasure?: string;
+  minimumStock?: number;
+  isSellable?: boolean;
+  isRentable?: boolean;
+  isActive?: boolean;
+  note?: string | null;
+}): Promise<void> {
+  const { error } = await supabase.rpc("update_supply_product", {
+    p_product_id: input.productId,
+    p_name: input.name ?? undefined,
+    p_category: input.category === undefined ? undefined : (input.category ?? ""),
+    p_brand: input.brand === undefined ? undefined : (input.brand ?? ""),
+    p_product_type: input.productType === undefined ? undefined : (input.productType ?? ""),
+    p_specification: input.specification === undefined ? undefined : (input.specification ?? ""),
+    p_packaging: input.packaging === undefined ? undefined : (input.packaging ?? ""),
+    p_unit_of_measure: input.unitOfMeasure ?? undefined,
+    p_minimum_stock: input.minimumStock ?? undefined,
+    p_is_sellable: input.isSellable ?? undefined,
+    p_is_rentable: input.isRentable ?? undefined,
+    p_is_active: input.isActive ?? undefined,
+    p_note: input.note === undefined ? undefined : (input.note ?? ""),
+  });
+  if (error) throw new Error(formatSupabaseError(error, "Termék mentése"));
+}
+
+export async function deactivateSupplyProduct(productId: string): Promise<void> {
+  const { error } = await supabase.rpc("deactivate_supply_product", {
+    p_product_id: productId,
+  });
+  if (error) throw new Error(formatSupabaseError(error, "Termék inaktiválása"));
+}
+
+/** Egyszerű natural_key: supply:slug */
+export function suggestSupplyNaturalKey(name: string): string {
+  const slug = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  return `supply:${slug || "termek"}`;
+}
+
 export async function receiveSupplyStock(input: {
   productId: string;
   quantity: number;

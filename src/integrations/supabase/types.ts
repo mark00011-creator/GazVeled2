@@ -2010,6 +2010,24 @@ export type Database = {
         }
         Returns: string
       }
+      update_supply_product: {
+        Args: {
+          p_product_id: string
+          p_name?: string
+          p_category?: string
+          p_brand?: string
+          p_product_type?: string
+          p_specification?: string
+          p_packaging?: string
+          p_unit_of_measure?: string
+          p_minimum_stock?: number
+          p_is_sellable?: boolean
+          p_is_rentable?: boolean
+          p_is_active?: boolean
+          p_note?: string
+        }
+        Returns: undefined
+      }
       deactivate_supply_product: {
         Args: { p_product_id: string }
         Returns: undefined

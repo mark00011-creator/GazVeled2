@@ -48,13 +48,6 @@ const adminItems: MoreItem[] = [
     desc: "Név, logó, modulok, kalodák, számlázási irányelvek",
   },
   {
-    to: "/tool-rental/stock",
-    icon: Wrench,
-    label: "Eszközök és fogyóanyagok",
-    desc: "Darabszámos készlet, árak, bevételezés, értékesítés",
-    module: "tool_rental",
-  },
-  {
     to: "/users",
     icon: ScrollText,
     label: "Jogosultságok",
@@ -70,6 +63,13 @@ const adminItems: MoreItem[] = [
 ];
 
 const items: MoreItem[] = [
+  {
+    to: "/tool-rental/stock",
+    icon: Wrench,
+    label: "Eszközök és fogyóanyagok",
+    desc: "Darabszámos készlet, árak, bevételezés, értékesítés",
+    module: "tool_rental",
+  },
   {
     to: "/gas-order",
     icon: Package,

@@ -20,11 +20,24 @@ export type OrganizationInvoicingSettings = {
   bill_foreign_circulation: boolean;
 };
 
+export type TaxRegime = "vat_exempt" | "vat_registered";
+export type PriceEntryMode = "net" | "gross";
+
+export type OrganizationTaxSettings = {
+  /** Alanyi adómentes vs áfakörös. */
+  regime: TaxRegime;
+  /** Alap ÁFA % áfakörösnél (pl. 27). */
+  default_rate: number;
+  /** Bevitel: nettó (ajánlott) vagy bruttó (átszámolás nettóra mentéskor). */
+  price_entry: PriceEntryMode;
+};
+
 export type OrganizationSettings = {
   modules: OrganizationModules;
   circulations: string[];
   warehouse_bins: string[];
   invoicing: OrganizationInvoicingSettings;
+  tax: OrganizationTaxSettings;
 };
 
 export type Organization = {
@@ -55,6 +68,11 @@ export const DEFAULT_ORGANIZATION_SETTINGS: OrganizationSettings = {
     bill_siad_circulation: true,
     bill_foreign_circulation: true,
   },
+  tax: {
+    regime: "vat_exempt",
+    default_rate: 27,
+    price_entry: "net",
+  },
 };
 
 export function parseOrganizationSettings(raw: unknown): OrganizationSettings {
@@ -67,6 +85,8 @@ export function parseOrganizationSettings(raw: unknown): OrganizationSettings {
     src.invoicing && typeof src.invoicing === "object"
       ? (src.invoicing as Record<string, unknown>)
       : {};
+  const taxSrc =
+    src.tax && typeof src.tax === "object" ? (src.tax as Record<string, unknown>) : {};
 
   const modules: OrganizationModules = {
     flaga_pb: modulesSrc.flaga_pb !== false,
@@ -91,6 +111,15 @@ export function parseOrganizationSettings(raw: unknown): OrganizationSettings {
   const provider =
     providerRaw === "billingo" || providerRaw === "szamlazz" ? providerRaw : null;
 
+  const regime: TaxRegime =
+    taxSrc.regime === "vat_registered" ? "vat_registered" : "vat_exempt";
+  const defaultRateRaw = Number(taxSrc.default_rate);
+  const default_rate =
+    Number.isFinite(defaultRateRaw) && defaultRateRaw >= 0 && defaultRateRaw <= 100
+      ? defaultRateRaw
+      : 27;
+  const price_entry: PriceEntryMode = taxSrc.price_entry === "gross" ? "gross" : "net";
+
   return {
     modules,
     circulations,
@@ -100,6 +129,11 @@ export function parseOrganizationSettings(raw: unknown): OrganizationSettings {
       bill_own_circulation: invoicingSrc.bill_own_circulation === true,
       bill_siad_circulation: invoicingSrc.bill_siad_circulation !== false,
       bill_foreign_circulation: invoicingSrc.bill_foreign_circulation !== false,
+    },
+    tax: {
+      regime,
+      default_rate,
+      price_entry,
     },
   };
 }

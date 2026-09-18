@@ -20,6 +20,14 @@ test("more menu links supply stock", () => {
   const src = fs.readFileSync(path.join(root, "src/routes/_authenticated/more.tsx"), "utf8");
   assert.match(src, /\/tool-rental\/stock/);
   assert.match(src, /Eszközök és fogyóanyagok/);
+  const adminBlock = src.slice(src.indexOf("const adminItems"), src.indexOf("const items:"));
+  const itemsBlock = src.slice(src.indexOf("const items:"), src.indexOf("function MoreLink"));
+  assert.equal(adminBlock.includes("/tool-rental/stock"), false);
+  assert.ok(itemsBlock.includes("/tool-rental/stock"));
+  assert.ok(
+    itemsBlock.indexOf("/tool-rental/stock") < itemsBlock.indexOf("/gas-order"),
+    "tool-rental first in Műveletek",
+  );
 });
 
 test("stock page admin guard", () => {
@@ -32,14 +40,22 @@ test("stock page admin guard", () => {
   assert.match(src, /tool_rental/);
   assert.match(src, /if \(loading\)/);
   assert.match(src, /Gyors értékesítés/);
+  assert.match(src, /Új tétel/);
+  assert.match(src, /Szerkesztés/);
+  assert.match(src, /createSupplyProduct/);
+  assert.match(src, /updateSupplyProduct/);
   assert.match(src, /recordSupplySaleBatch/);
   assert.match(src, /updateSupplyProductPrices/);
   assert.match(src, /receiveSupplyStock/);
+  assert.match(src, /priceFieldLabel/);
 });
 
 test("supply lib uses batch sale RPC", () => {
   const src = fs.readFileSync(path.join(root, "src/lib/supply-stock.ts"), "utf8");
   assert.match(src, /record_supply_sale_batch/);
+  assert.match(src, /create_supply_product/);
+  assert.match(src, /update_supply_product/);
+  assert.match(src, /suggestSupplyNaturalKey/);
 });
 
 test("snapshot migration adds sale item columns", () => {
