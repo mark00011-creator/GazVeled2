@@ -7,7 +7,7 @@ import {
   Users,
   MoreHorizontal,
 } from "lucide-react";
-import { signOut } from "@/lib/auth";
+import { signOut, useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 
 const tabs = [
@@ -18,6 +18,33 @@ const tabs = [
   { to: "/partners", icon: Users, label: "Partnerek" },
   { to: "/more", icon: MoreHorizontal, label: "Több" },
 ] as const;
+
+function BrandMark() {
+  const { organization } = useAuth();
+  const name = organization?.name?.trim() || "Gáz Veled";
+  const logo = organization?.logo_url;
+
+  if (logo) {
+    return (
+      <span className="flex items-center gap-2">
+        <img src={logo} alt="" className="h-7 w-7 rounded object-contain" />
+        <span className="max-w-[9rem] truncate text-sm font-bold tracking-wide text-foreground">
+          {name}
+        </span>
+      </span>
+    );
+  }
+
+  if (organization && organization.slug !== "gaz-veeled") {
+    return <span className="text-sm font-bold tracking-wide text-foreground">{name}</span>;
+  }
+
+  return (
+    <>
+      <span className="text-primary">GÁZ</span> VELED
+    </>
+  );
+}
 
 export function AppShell({
   children,
@@ -37,10 +64,12 @@ export function AppShell({
       <header className="sticky top-0 z-30 border-b border-border bg-card/90 backdrop-blur">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
           <Link to={homeTo} className="text-sm font-bold tracking-wide text-foreground">
-            <span className="text-primary">GÁZ</span> VELED
+            <BrandMark />
           </Link>
           {title && <h1 className="text-sm font-medium text-muted-foreground">{title}</h1>}
-          <Button variant="ghost" size="sm" onClick={() => signOut()}>Kilépés</Button>
+          <Button variant="ghost" size="sm" onClick={() => signOut()}>
+            Kilépés
+          </Button>
         </div>
       </header>
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-4">{children}</main>

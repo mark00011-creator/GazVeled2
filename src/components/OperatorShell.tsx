@@ -1,15 +1,30 @@
 import { Link } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
-import { signOut } from "@/lib/auth";
+import { signOut, useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 
 export function OperatorShell({ children }: { children: React.ReactNode }) {
+  const { organization } = useAuth();
+  const name = organization?.name?.trim() || "Gáz Veled";
+  const logo = organization?.logo_url;
+
   return (
     <div className="flex min-h-screen flex-col bg-background pb-20">
       <header className="sticky top-0 z-30 border-b border-border bg-card/90 backdrop-blur">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
           <Link to="/quick-exchange" className="text-sm font-bold tracking-wide text-foreground">
-            <span className="text-primary">GÁZ</span> VELED
+            {logo ? (
+              <span className="flex items-center gap-2">
+                <img src={logo} alt="" className="h-7 w-7 rounded object-contain" />
+                <span className="max-w-[9rem] truncate">{name}</span>
+              </span>
+            ) : organization && organization.slug !== "gaz-veeled" ? (
+              name
+            ) : (
+              <>
+                <span className="text-primary">GÁZ</span> VELED
+              </>
+            )}
           </Link>
           <span className="text-xs text-muted-foreground">Gyors csere</span>
           <Button variant="ghost" size="sm" onClick={() => signOut()}>

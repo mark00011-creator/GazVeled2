@@ -93,6 +93,7 @@ import {
   type QuickExchangeListItem,
 } from "@/lib/quick-exchange-draft";
 import { useRouteScrollOnly } from "@/hooks/use-route-state-persistence";
+import { isModuleEnabled } from "@/lib/organization";
 
 export const Route = createFileRoute("/_authenticated/quick-exchange")({
   head: () => ({ meta: [{ title: "Gyors csere – Gáz Veled" }] }),
@@ -119,7 +120,7 @@ const OP_LABELS: Record<PartnerOperationType, string> = {
 
 function QuickExchange() {
   const qc = useQueryClient();
-  const { isExchangeOperator, user } = useAuth();
+  const { isExchangeOperator, user, orgSettings } = useAuth();
   const Shell = isExchangeOperator ? OperatorShell : AppShell;
   const [operation, setOperation] = useState<PartnerOperationType>("exchange");
   const [exchangeMode, setExchangeMode] = useState<ExchangeMode>("barcode");
@@ -1120,31 +1121,35 @@ function QuickExchange() {
             >
               Vonalkódos csere
             </Button>
-            <Button
-              type="button"
-              variant={exchangeMode === "chinese_brought" ? "default" : "outline"}
-              className="flex-1"
-              onClick={() => {
-                setExchangeMode("chinese_brought");
-                resetCylinders();
-                clearLists();
-              }}
-            >
-              Hozott kínai
-            </Button>
-            <Button
-              type="button"
-              variant={exchangeMode === "chinese_take" ? "default" : "outline"}
-              className="flex-1"
-              onClick={() => {
-                setExchangeMode("chinese_take");
-                setOutgoing(null);
-                setOutgoingBc("");
-                clearLists();
-              }}
-            >
-              Kínait visz
-            </Button>
+            {isModuleEnabled(orgSettings, "chinese_stock") && (
+              <>
+                <Button
+                  type="button"
+                  variant={exchangeMode === "chinese_brought" ? "default" : "outline"}
+                  className="flex-1"
+                  onClick={() => {
+                    setExchangeMode("chinese_brought");
+                    resetCylinders();
+                    clearLists();
+                  }}
+                >
+                  Hozott kínai
+                </Button>
+                <Button
+                  type="button"
+                  variant={exchangeMode === "chinese_take" ? "default" : "outline"}
+                  className="flex-1"
+                  onClick={() => {
+                    setExchangeMode("chinese_take");
+                    setOutgoing(null);
+                    setOutgoingBc("");
+                    clearLists();
+                  }}
+                >
+                  Kínait visz
+                </Button>
+              </>
+            )}
           </div>
         </Card>
       )}
@@ -1277,39 +1282,45 @@ function QuickExchange() {
             >
               Vonalkódos palack
             </Button>
-            <Button
-              type="button"
-              variant={saleMode === "chinese" ? "default" : "outline"}
-              className="flex-1"
-              onClick={() => {
-                setSaleMode("chinese");
-                setOutgoing(null);
-              }}
-            >
-              Kínai készlet
-            </Button>
-            <Button
-              type="button"
-              variant={saleMode === "flaga_pb" ? "default" : "outline"}
-              className="flex-1"
-              onClick={() => {
-                setSaleMode("flaga_pb");
-                setOutgoing(null);
-              }}
-            >
-              FLAGA PB
-            </Button>
-            <Button
-              type="button"
-              variant={saleMode === "prima_pb" ? "default" : "outline"}
-              className="flex-1"
-              onClick={() => {
-                setSaleMode("prima_pb");
-                setOutgoing(null);
-              }}
-            >
-              PRÍMA PB
-            </Button>
+            {isModuleEnabled(orgSettings, "chinese_stock") && (
+              <Button
+                type="button"
+                variant={saleMode === "chinese" ? "default" : "outline"}
+                className="flex-1"
+                onClick={() => {
+                  setSaleMode("chinese");
+                  setOutgoing(null);
+                }}
+              >
+                Kínai készlet
+              </Button>
+            )}
+            {isModuleEnabled(orgSettings, "flaga_pb") && (
+              <Button
+                type="button"
+                variant={saleMode === "flaga_pb" ? "default" : "outline"}
+                className="flex-1"
+                onClick={() => {
+                  setSaleMode("flaga_pb");
+                  setOutgoing(null);
+                }}
+              >
+                FLAGA PB
+              </Button>
+            )}
+            {isModuleEnabled(orgSettings, "prima_pb") && (
+              <Button
+                type="button"
+                variant={saleMode === "prima_pb" ? "default" : "outline"}
+                className="flex-1"
+                onClick={() => {
+                  setSaleMode("prima_pb");
+                  setOutgoing(null);
+                }}
+              >
+                PRÍMA PB
+              </Button>
+            )}
           </div>
         </Card>
       )}

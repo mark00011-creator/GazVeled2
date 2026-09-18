@@ -24,6 +24,7 @@ import { Route as AuthenticatedQuickExchangeRouteImport } from './routes/_authen
 import { Route as AuthenticatedPrimaPbStockRouteImport } from './routes/_authenticated/prima-pb-stock'
 import { Route as AuthenticatedPriceListRouteImport } from './routes/_authenticated/price-list'
 import { Route as AuthenticatedPartnersRouteImport } from './routes/_authenticated/partners'
+import { Route as AuthenticatedOrganizationSettingsRouteImport } from './routes/_authenticated/organization-settings'
 import { Route as AuthenticatedMoreRouteImport } from './routes/_authenticated/more'
 import { Route as AuthenticatedLoanedCylindersRouteImport } from './routes/_authenticated/loaned-cylinders'
 import { Route as AuthenticatedInventoryRouteImport } from './routes/_authenticated/inventory'
@@ -120,6 +121,12 @@ const AuthenticatedPartnersRoute = AuthenticatedPartnersRouteImport.update({
   path: '/partners',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedOrganizationSettingsRoute =
+  AuthenticatedOrganizationSettingsRouteImport.update({
+    id: '/organization-settings',
+    path: '/organization-settings',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedMoreRoute = AuthenticatedMoreRouteImport.update({
   id: '/more',
   path: '/more',
@@ -230,6 +237,7 @@ export interface FileRoutesByFullPath {
   '/inventory': typeof AuthenticatedInventoryRoute
   '/loaned-cylinders': typeof AuthenticatedLoanedCylindersRoute
   '/more': typeof AuthenticatedMoreRoute
+  '/organization-settings': typeof AuthenticatedOrganizationSettingsRoute
   '/partners': typeof AuthenticatedPartnersRouteWithChildren
   '/price-list': typeof AuthenticatedPriceListRoute
   '/prima-pb-stock': typeof AuthenticatedPrimaPbStockRoute
@@ -263,6 +271,7 @@ export interface FileRoutesByTo {
   '/inventory': typeof AuthenticatedInventoryRoute
   '/loaned-cylinders': typeof AuthenticatedLoanedCylindersRoute
   '/more': typeof AuthenticatedMoreRoute
+  '/organization-settings': typeof AuthenticatedOrganizationSettingsRoute
   '/price-list': typeof AuthenticatedPriceListRoute
   '/prima-pb-stock': typeof AuthenticatedPrimaPbStockRoute
   '/quick-exchange': typeof AuthenticatedQuickExchangeRoute
@@ -296,6 +305,7 @@ export interface FileRoutesById {
   '/_authenticated/inventory': typeof AuthenticatedInventoryRoute
   '/_authenticated/loaned-cylinders': typeof AuthenticatedLoanedCylindersRoute
   '/_authenticated/more': typeof AuthenticatedMoreRoute
+  '/_authenticated/organization-settings': typeof AuthenticatedOrganizationSettingsRoute
   '/_authenticated/partners': typeof AuthenticatedPartnersRouteWithChildren
   '/_authenticated/price-list': typeof AuthenticatedPriceListRoute
   '/_authenticated/prima-pb-stock': typeof AuthenticatedPrimaPbStockRoute
@@ -331,6 +341,7 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/loaned-cylinders'
     | '/more'
+    | '/organization-settings'
     | '/partners'
     | '/price-list'
     | '/prima-pb-stock'
@@ -364,6 +375,7 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/loaned-cylinders'
     | '/more'
+    | '/organization-settings'
     | '/price-list'
     | '/prima-pb-stock'
     | '/quick-exchange'
@@ -396,6 +408,7 @@ export interface FileRouteTypes {
     | '/_authenticated/inventory'
     | '/_authenticated/loaned-cylinders'
     | '/_authenticated/more'
+    | '/_authenticated/organization-settings'
     | '/_authenticated/partners'
     | '/_authenticated/price-list'
     | '/_authenticated/prima-pb-stock'
@@ -528,6 +541,13 @@ declare module '@tanstack/react-router' {
       path: '/partners'
       fullPath: '/partners'
       preLoaderRoute: typeof AuthenticatedPartnersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/organization-settings': {
+      id: '/_authenticated/organization-settings'
+      path: '/organization-settings'
+      fullPath: '/organization-settings'
+      preLoaderRoute: typeof AuthenticatedOrganizationSettingsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/more': {
@@ -719,6 +739,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedInventoryRoute: typeof AuthenticatedInventoryRoute
   AuthenticatedLoanedCylindersRoute: typeof AuthenticatedLoanedCylindersRoute
   AuthenticatedMoreRoute: typeof AuthenticatedMoreRoute
+  AuthenticatedOrganizationSettingsRoute: typeof AuthenticatedOrganizationSettingsRoute
   AuthenticatedPartnersRoute: typeof AuthenticatedPartnersRouteWithChildren
   AuthenticatedPriceListRoute: typeof AuthenticatedPriceListRoute
   AuthenticatedPrimaPbStockRoute: typeof AuthenticatedPrimaPbStockRoute
@@ -743,6 +764,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedInventoryRoute: AuthenticatedInventoryRoute,
   AuthenticatedLoanedCylindersRoute: AuthenticatedLoanedCylindersRoute,
   AuthenticatedMoreRoute: AuthenticatedMoreRoute,
+  AuthenticatedOrganizationSettingsRoute:
+    AuthenticatedOrganizationSettingsRoute,
   AuthenticatedPartnersRoute: AuthenticatedPartnersRouteWithChildren,
   AuthenticatedPriceListRoute: AuthenticatedPriceListRoute,
   AuthenticatedPrimaPbStockRoute: AuthenticatedPrimaPbStockRoute,

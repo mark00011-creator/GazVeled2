@@ -1,6 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
+import { useAuth } from "@/lib/auth";
+import { isModuleEnabled } from "@/lib/organization";
 import {
   Truck,
   FileText,
@@ -14,6 +16,7 @@ import {
   Boxes,
   HandCoins,
   Wrench,
+  Building2,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/more")({
@@ -21,12 +24,35 @@ export const Route = createFileRoute("/_authenticated/more")({
   component: More,
 });
 
-const adminItems = [
+type MoreItem = {
+  to: string;
+  icon: typeof Package;
+  label: string;
+  desc: string;
+  module?:
+    | "flaga_pb"
+    | "prima_pb"
+    | "chinese_stock"
+    | "rentals"
+    | "tool_rental"
+    | "quotes"
+    | "gas_orders"
+    | "suppliers";
+};
+
+const adminItems: MoreItem[] = [
+  {
+    to: "/organization-settings",
+    icon: Building2,
+    label: "Cég beállítások",
+    desc: "Név, logó, modulok, kalodák, számlázási irányelvek",
+  },
   {
     to: "/tool-rental/stock",
     icon: Wrench,
     label: "Eszközök és fogyóanyagok",
     desc: "Darabszámos készlet, árak, bevételezés, értékesítés",
+    module: "tool_rental",
   },
   {
     to: "/users",
@@ -39,21 +65,24 @@ const adminItems = [
     icon: FileSpreadsheet,
     label: "Bérlet import",
     desc: "Excel bérlések migrálása (egyszeri admin)",
+    module: "rentals",
   },
-] as const;
+];
 
-const items = [
+const items: MoreItem[] = [
   {
     to: "/gas-order",
     icon: Package,
     label: "Gáz rendelés",
     desc: "Üres telephelyi palackok rendelése",
+    module: "gas_orders",
   },
   {
     to: "/gas-order-flaga",
     icon: Package,
     label: "Gáz rendelés FLAGA",
     desc: "FLAGA PB üres palackok rendelése",
+    module: "flaga_pb",
   },
   { to: "/price-list", icon: Tags, label: "Árlista", desc: "Beszerzési ár, árrés, eladási ár" },
   {
@@ -61,24 +90,28 @@ const items = [
     icon: Boxes,
     label: "Kínai készlet",
     desc: "Darabszám alapú kínai palack készlet",
+    module: "chinese_stock",
   },
   {
     to: "/flaga-pb-stock",
     icon: Boxes,
     label: "FLAGA PB készlet",
     desc: "Körforgásos FLAGA PB palack készlet",
+    module: "flaga_pb",
   },
   {
     to: "/prima-pb-stock",
     icon: Boxes,
     label: "PRÍMA PB készlet",
     desc: "Körforgásos PRÍMA PB palack készlet",
+    module: "prima_pb",
   },
   {
     to: "/quotes",
     icon: FileSpreadsheet,
     label: "Árajánlat",
     desc: "Partner ajánlatok készítése, PDF",
+    module: "quotes",
   },
   {
     to: "/inventory",
@@ -86,12 +119,19 @@ const items = [
     label: "Leltár",
     desc: "Meglévő palackállomány feltöltése",
   },
-  { to: "/suppliers", icon: Truck, label: "Beszállítói cserék", desc: "SIAD / Saját szolgáltató" },
+  {
+    to: "/suppliers",
+    icon: Truck,
+    label: "Beszállítói cserék",
+    desc: "SIAD / Saját szolgáltató",
+    module: "suppliers",
+  },
   {
     to: "/rental-return",
     icon: RotateCcw,
     label: "Bérlet visszavétel",
     desc: "Aktív bérlet zárása",
+    module: "rentals",
   },
   {
     to: "/loaned-cylinders",
@@ -99,9 +139,15 @@ const items = [
     label: "Kölcsönadott",
     desc: "Aktív kölcsön palackok és visszavétel",
   },
-  { to: "/rentals", icon: FileText, label: "Bérletek", desc: "Aktív és lezárt bérletek" },
+  {
+    to: "/rentals",
+    icon: FileText,
+    label: "Bérletek",
+    desc: "Aktív és lezárt bérletek",
+    module: "rentals",
+  },
   { to: "/audit", icon: ScrollText, label: "Audit napló", desc: "Műveleti előzmények" },
-] as const;
+];
 
 function MoreLink({
   to,
@@ -141,6 +187,13 @@ function MoreLink({
 }
 
 function More() {
+  const { orgSettings } = useAuth();
+
+  const visibleAdmin = adminItems.filter(
+    (it) => !it.module || isModuleEnabled(orgSettings, it.module),
+  );
+  const visibleItems = items.filter((it) => !it.module || isModuleEnabled(orgSettings, it.module));
+
   return (
     <AppShell title="Több">
       <div className="space-y-4">
@@ -149,7 +202,7 @@ function More() {
             Admin / migráció
           </h2>
           <div className="space-y-2">
-            {adminItems.map((it) => (
+            {visibleAdmin.map((it) => (
               <MoreLink key={it.to} {...it} highlight />
             ))}
           </div>
@@ -160,7 +213,7 @@ function More() {
             Műveletek
           </h2>
           <div className="space-y-2">
-            {items.map((it) => (
+            {visibleItems.map((it) => (
               <MoreLink key={it.to} {...it} />
             ))}
           </div>

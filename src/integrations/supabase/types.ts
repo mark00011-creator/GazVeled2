@@ -997,6 +997,39 @@ export type Database = {
           },
         ]
       }
+      organizations: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          logo_url: string | null
+          name: string
+          settings: Json
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          logo_url?: string | null
+          name: string
+          settings?: Json
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          logo_url?: string | null
+          name?: string
+          settings?: Json
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       partners: {
         Row: {
           address: string | null
@@ -1200,6 +1233,7 @@ export type Database = {
           full_name: string | null
           id: string
           is_active: boolean
+          organization_id: string | null
           role: string
           updated_at: string
         }
@@ -1209,6 +1243,7 @@ export type Database = {
           full_name?: string | null
           id: string
           is_active?: boolean
+          organization_id?: string | null
           role?: string
           updated_at?: string
         }
@@ -1218,6 +1253,7 @@ export type Database = {
           full_name?: string | null
           id?: string
           is_active?: boolean
+          organization_id?: string | null
           role?: string
           updated_at?: string
         }

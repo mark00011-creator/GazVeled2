@@ -29,6 +29,7 @@ export const ADMIN_ROUTE_PREFIXES = [
   "/rental-return",
   "/rental-import",
   "/users",
+  "/organization-settings",
   "/gas-order-flaga",
   "/no-access",
   "/tool-rental",
