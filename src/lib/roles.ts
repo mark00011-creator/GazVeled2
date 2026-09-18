@@ -6,7 +6,7 @@ export type AppRole = "admin" | "exchange_operator" | "viewer";
 export const ROLE_LABELS: Record<AppRole, string> = {
   admin: "Admin",
   exchange_operator: "Gyors csere kezelő",
-  viewer: "Megtekintő (nincs hozzáférés)",
+  viewer: "Nincs hozzáférés",
 };
 
 /** Admin-only útvonalak – exchange_operator közvetlen URL-ről tiltva. */

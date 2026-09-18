@@ -10,18 +10,40 @@ export const Route = createFileRoute("/no-access")({
   component: NoAccessPage,
 });
 
+function denialMessage(
+  reason: ReturnType<typeof useAuth>["denialReason"],
+  email: string,
+): string {
+  switch (reason) {
+    case "missing_organization":
+      return `A fiókod (${email}) még nincs egy céghez rendelve. Kérd meg a cég adminját, hogy a Jogosultságok menüben adjon hozzá (email: ${email}).`;
+    case "viewer":
+      return `A fiókod (${email}) megtekintő szerepkörű – nincs app-hozzáférés. Kérj Admin vagy Gyors csere kezelő jogot.`;
+    case "inactive":
+      return `A fiókod (${email}) le van tiltva. Kérd meg a cég adminját a feloldáshoz.`;
+    case "organization_unavailable":
+      return `A céged jelenleg nem elérhető. Vedd fel a kapcsolatot a supporttal.`;
+    case "missing_profile":
+      return `A fiókod (${email}) nincs teljesen beállítva. Jelentkezz ki, majd be, vagy kérj segítséget a supporttól.`;
+    default:
+      return `A fiókod (${email}) nem rendelkezik alkalmazás-jogosultsággal. Kérj hozzáférést a cég adminjától.`;
+  }
+}
+
 function NoAccessPage() {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, denialReason } = useAuth();
+  const email = profile?.email ?? user?.email ?? "—";
 
   authDiag({
     route: "no-access",
     loading,
     userId: user?.id ?? null,
-    email: user?.email ?? profile?.email ?? null,
+    email,
     profile: profile
       ? { role: profile.role, is_active: profile.is_active, email: profile.email }
       : null,
     role: profile?.role ?? null,
+    denialReason,
   });
 
   return (
@@ -34,9 +56,11 @@ function NoAccessPage() {
         </div>
         <h1 className="text-lg font-bold">Nincs hozzáférés</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          {user
-            ? `A fiókod (${profile?.email ?? user.email ?? "—"}) nem rendelkezik alkalmazás-jogosultsággal. Kérj hozzáférést az admintól.`
-            : "Be kell jelentkezned a folytatáshoz."}
+          {loading
+            ? "Betöltés…"
+            : user
+              ? denialMessage(denialReason, email)
+              : "Be kell jelentkezned a folytatáshoz."}
         </p>
         <div className="mt-6 flex flex-col gap-2">
           {user ? (

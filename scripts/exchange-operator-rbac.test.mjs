@@ -47,4 +47,6 @@ test("users admin page manages roles", () => {
   const src = fs.readFileSync(path.join(root, "src/routes/_authenticated/users.tsx"), "utf8");
   assert.match(src, /exchange_operator/);
   assert.match(src, /is_active/);
+  assert.match(src, /assign_organization_member/);
+  assert.match(src, /Jogosultságok/);
 });

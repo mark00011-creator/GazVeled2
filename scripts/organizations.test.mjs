@@ -26,12 +26,18 @@ test("organization settings helpers and UI wiring", () => {
     path.join(root, "src/routes/_authenticated/organization-settings.tsx"),
     "utf8",
   );
+  const assignSql = fs.readFileSync(
+    path.join(root, "supabase/migrations/20260918110000_assign_organization_member.sql"),
+    "utf8",
+  );
   assert.match(orgLib, /isModuleEnabled/);
   assert.match(orgLib, /parseOrganizationSettings/);
   assert.match(auth, /organization_id/);
   assert.match(auth, /fetchOrganization/);
+  assert.match(auth, /denialReason/);
   assert.match(more, /organization-settings/);
   assert.match(more, /isModuleEnabled/);
   assert.match(settings, /Cég beállítások/);
   assert.match(settings, /warehouse_bins/);
+  assert.match(assignSql, /assign_organization_member/);
 });

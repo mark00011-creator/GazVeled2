@@ -57,8 +57,8 @@ const adminItems: MoreItem[] = [
   {
     to: "/users",
     icon: ScrollText,
-    label: "Felhasználók",
-    desc: "Szerepkörök: admin, Gyors csere kezelő",
+    label: "Jogosultságok",
+    desc: "Dolgozók, szerepkörök, céghez rendelés",
   },
   {
     to: "/rental-import",

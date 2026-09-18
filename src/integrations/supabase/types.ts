@@ -1911,6 +1911,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      assign_organization_member: {
+        Args: {
+          p_email: string
+          p_full_name?: string | null
+          p_is_active?: boolean
+          p_role?: string
+        }
+        Returns: string
+      }
       adjust_chinese_stock: {
         Args: {
           p_gas_type: string

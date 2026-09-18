@@ -28,6 +28,9 @@ test("stock page admin guard", () => {
     "utf8",
   );
   assert.match(src, /isAdminRole/);
+  assert.match(src, /isModuleEnabled/);
+  assert.match(src, /tool_rental/);
+  assert.match(src, /if \(loading\)/);
   assert.match(src, /Gyors értékesítés/);
   assert.match(src, /recordSupplySaleBatch/);
   assert.match(src, /updateSupplyProductPrices/);

@@ -34,6 +34,7 @@ import { AlertTriangle, PackagePlus, ShoppingCart, TrendingUp } from "lucide-rea
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { isAdminRole } from "@/lib/roles";
+import { isModuleEnabled } from "@/lib/organization";
 import { authDiag } from "@/lib/auth-diag";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -78,8 +79,10 @@ type PartnerRow = { id: string; name: string; company_name: string | null };
 type SupplierRow = { id: string; name: string };
 
 function SupplyStockPage() {
-  const { profile, loading } = useAuth();
+  const { profile, loading, orgSettings } = useAuth();
   const admin = isAdminRole(profile?.role);
+  const moduleOn = isModuleEnabled(orgSettings, "tool_rental");
+
   authDiag({
     route: "tool-rental/stock",
     loading,
@@ -88,11 +91,33 @@ function SupplyStockPage() {
       : null,
     role: profile?.role ?? null,
     isAdminRole: admin,
-    redirectReason: admin ? "ALLOW" : "ROLE_DENIED",
+    moduleOn,
+    redirectReason: loading ? "LOADING" : !admin ? "ROLE_DENIED" : !moduleOn ? "MODULE_OFF" : "ALLOW",
   });
-  if (!admin) {
-    return <Navigate to="/no-access" replace />;
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
+        Betöltés…
+      </div>
+    );
   }
+
+  if (!admin) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  if (!moduleOn) {
+    return (
+      <AppShell title="Eszközök és fogyóanyagok">
+        <Card className="p-4 text-sm text-muted-foreground">
+          Ez a modul ki van kapcsolva a cég beállításaiban. Kapcsold be:{" "}
+          <strong>Több → Cég beállítások → Eszköz / fogyóanyag</strong>.
+        </Card>
+      </AppShell>
+    );
+  }
+
   return <SupplyStockAdmin />;
 }
 

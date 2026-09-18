@@ -10,6 +10,14 @@ import {
   type OrganizationSettings,
 } from "@/lib/organization";
 
+export type AccessDenialReason =
+  | "inactive"
+  | "missing_organization"
+  | "organization_unavailable"
+  | "viewer"
+  | "missing_profile"
+  | null;
+
 export type UserProfile = {
   role: AppRole;
   email: string | null;
@@ -49,14 +57,15 @@ async function fetchOrganization(orgId: string): Promise<Organization | null> {
 }
 
 async function fetchProfile(userId: string): Promise<{
-  profile: UserProfile;
+  profile: UserProfile | null;
   organization: Organization | null;
-} | null> {
+  denialReason: AccessDenialReason;
+}> {
   const { data, error } = await supabase
     .from("profiles")
     .select("role, email, full_name, is_active, organization_id")
     .eq("id", userId)
-    .single();
+    .maybeSingle();
 
   if (error || !data?.role) {
     authDiag({
@@ -70,8 +79,17 @@ async function fetchProfile(userId: string): Promise<{
       role: data?.role ?? null,
       is_active: data?.is_active ?? null,
     });
-    return null;
+    return { profile: null, organization: null, denialReason: "missing_profile" };
   }
+
+  const profile: UserProfile = {
+    role: data.role as AppRole,
+    email: data.email,
+    full_name: data.full_name,
+    is_active: data.is_active ?? true,
+    organization_id: data.organization_id,
+  };
+
   if (data.is_active === false) {
     authDiag({
       fn: "fetchProfile",
@@ -81,8 +99,9 @@ async function fetchProfile(userId: string): Promise<{
       is_active: false,
       message: "inactive_profile",
     });
-    return null;
+    return { profile, organization: null, denialReason: "inactive" };
   }
+
   if (!data.organization_id) {
     authDiag({
       fn: "fetchProfile",
@@ -91,7 +110,7 @@ async function fetchProfile(userId: string): Promise<{
       role: data.role,
       message: "missing_organization",
     });
-    return null;
+    return { profile, organization: null, denialReason: "missing_organization" };
   }
 
   const organization = await fetchOrganization(data.organization_id);
@@ -103,7 +122,18 @@ async function fetchProfile(userId: string): Promise<{
       role: data.role,
       message: "organization_unavailable",
     });
-    return null;
+    return { profile, organization: null, denialReason: "organization_unavailable" };
+  }
+
+  if (!canAccessApp(profile.role)) {
+    authDiag({
+      fn: "fetchProfile",
+      userId,
+      ok: false,
+      role: data.role,
+      message: "viewer_or_denied",
+    });
+    return { profile, organization, denialReason: "viewer" };
   }
 
   authDiag({
@@ -115,22 +145,14 @@ async function fetchProfile(userId: string): Promise<{
     organization_id: data.organization_id,
   });
 
-  return {
-    profile: {
-      role: data.role as AppRole,
-      email: data.email,
-      full_name: data.full_name,
-      is_active: data.is_active ?? true,
-      organization_id: data.organization_id,
-    },
-    organization,
-  };
+  return { profile, organization, denialReason: null };
 }
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
+  const [denialReason, setDenialReason] = useState<AccessDenialReason>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -141,14 +163,16 @@ export function useAuth() {
         if (active) {
           setProfile(null);
           setOrganization(null);
+          setDenialReason(null);
           setLoading(false);
         }
         return;
       }
       const result = await fetchProfile(sessionUser.id);
       if (active) {
-        setProfile(result?.profile ?? null);
-        setOrganization(result?.organization ?? null);
+        setProfile(result.profile);
+        setOrganization(result.organization);
+        setDenialReason(result.denialReason);
         setLoading(false);
       }
     }
@@ -170,6 +194,7 @@ export function useAuth() {
       if (!session?.user) {
         setProfile(null);
         setOrganization(null);
+        setDenialReason(null);
         setLoading(false);
         return;
       }
@@ -190,11 +215,12 @@ export function useAuth() {
     profile,
     organization,
     orgSettings,
+    denialReason,
     loading,
     role: profile?.role ?? null,
     isAdmin: isAdminRole(profile?.role),
     isExchangeOperator: isExchangeOperatorRole(profile?.role),
-    canAccessApp: canAccessApp(profile?.role) && !!organization,
+    canAccessApp: canAccessApp(profile?.role) && !!organization && denialReason === null,
   };
 }
 
