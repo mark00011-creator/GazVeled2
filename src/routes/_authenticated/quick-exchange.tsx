@@ -31,7 +31,6 @@ import {
   PackageMinus,
   RefreshCw,
   HandCoins,
-  Plus,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -44,14 +43,15 @@ import {
 } from "@/lib/labels";
 import {
   findCylinderByBarcode,
+  tryFindCylinderByBarcode,
   normalizeBarcode,
   recordExchange,
   recordSale,
   recordEmptyReturn,
   recordChineseSale,
-      recordChineseBroughtExchange,
-      recordChineseTake,
-      getChineseBroughtSerialOutgoingValidationError,
+  recordChineseBroughtExchange,
+  recordChineseTake,
+  getChineseBroughtSerialOutgoingValidationError,
   recordFlagaPbSale,
   recordPrimaPbSale,
   type CylinderRow,
@@ -88,8 +88,9 @@ import {
   QUICK_EXCHANGE_DRAFT_KEY,
   QUICK_EXCHANGE_DRAFT_VERSION,
   quickExchangeWorkflowStep,
+  zipExchangeLists,
   type QuickExchangeDraft,
-  type QuickExchangePairDraft,
+  type QuickExchangeListItem,
 } from "@/lib/quick-exchange-draft";
 import { useRouteScrollOnly } from "@/hooks/use-route-state-persistence";
 
@@ -131,7 +132,8 @@ function QuickExchange() {
   const [incomingCreated, setIncomingCreated] = useState(false);
   const [outgoing, setOutgoing] = useState<CylinderRow | null>(null);
   const [outgoingCreated, setOutgoingCreated] = useState(false);
-  const [pairs, setPairs] = useState<QuickExchangePairDraft[]>([]);
+  const [incomingList, setIncomingList] = useState<QuickExchangeListItem[]>([]);
+  const [outgoingList, setOutgoingList] = useState<QuickExchangeListItem[]>([]);
 
   const [newCylDialog, setNewCylDialog] = useState(false);
   const [newCylPhase, setNewCylPhase] = useState<"incoming" | "outgoing">("incoming");
@@ -177,7 +179,8 @@ function QuickExchange() {
     setIncomingCreated(draft.incomingCreated);
     setOutgoing(draft.outgoing);
     setOutgoingCreated(draft.outgoingCreated);
-    setPairs(draft.pairs ?? []);
+    setIncomingList(draft.incomingList ?? []);
+    setOutgoingList(draft.outgoingList ?? []);
     setChineseGas(draft.chineseGas);
     setChineseSize(draft.chineseSize);
     setChineseQty(draft.chineseQty);
@@ -207,7 +210,8 @@ function QuickExchange() {
       incomingCreated,
       outgoing,
       outgoingCreated,
-      pairs,
+      incomingList,
+      outgoingList,
       chineseGas,
       chineseSize,
       chineseQty,
@@ -226,9 +230,10 @@ function QuickExchange() {
         operation,
         exchangeMode,
         saleMode,
-        hasIncoming: !!incoming,
-        hasOutgoing: !!outgoing,
-        pairsCount: pairs.length,
+        hasIncoming: !!incoming || incomingList.length > 0,
+        hasOutgoing: !!outgoing || outgoingList.length > 0,
+        incomingCount: incomingList.length,
+        outgoingCount: outgoingList.length,
       }),
     }),
     [
@@ -242,7 +247,8 @@ function QuickExchange() {
       incomingCreated,
       outgoing,
       outgoingCreated,
-      pairs,
+      incomingList,
+      outgoingList,
       chineseGas,
       chineseSize,
       chineseQty,
@@ -273,7 +279,8 @@ function QuickExchange() {
       incomingCreated,
       outgoing,
       outgoingCreated,
-      pairs,
+      incomingList,
+      outgoingList,
       chineseGas,
       chineseSize,
       chineseQty,
@@ -304,7 +311,7 @@ function QuickExchange() {
     setSaleMode("barcode");
     setPartnerId("");
     resetCylinders();
-    clearPairs();
+    clearLists();
     setNote("");
     setChineseGas("Széndioxid");
     setChineseSize("10 kg");
@@ -457,52 +464,110 @@ function QuickExchange() {
     setChineseOutQty("1");
   }
 
-  function clearPairs() {
-    setPairs([]);
+  function clearLists() {
+    setIncomingList([]);
+    setOutgoingList([]);
   }
 
   function switchOperation(op: PartnerOperationType) {
     setOperation(op);
     resetCylinders();
-    clearPairs();
+    clearLists();
     if (op === "sale") setSaleMode("barcode");
     if (op === "exchange") setExchangeMode("barcode");
   }
 
-  function addCurrentPairToList() {
-    if (!incoming || !outgoing) {
-      toast.error("Beérkező és kiadandó palack is kell a párhoz");
-      return;
-    }
-    if (incoming.id === outgoing.id) {
-      toast.error("A beérkező és kiadott palack nem lehet ugyanaz");
-      return;
-    }
-    if (needsRentalQuestion) {
-      toast.error("Döntsd el az újrarendelés kérdést a pár hozzáadása előtt");
-      return;
-    }
-    const usedIds = new Set(pairs.flatMap((p) => [p.incoming.id, p.outgoing.id]));
-    if (usedIds.has(incoming.id) || usedIds.has(outgoing.id)) {
-      toast.error("Ez a palack már szerepel a listában");
-      return;
-    }
-    setPairs((prev) => [
-      ...prev,
-      {
-        incoming,
-        outgoing,
-        incomingCreated,
-        outgoingCreated,
-        reassign,
-      },
-    ]);
-    resetCylinders();
-    toast.success("Pár hozzáadva – viheted a következőt");
+  function cylinderAlreadyListed(id: string) {
+    return (
+      incomingList.some((item) => item.cylinder.id === id) ||
+      outgoingList.some((item) => item.cylinder.id === id)
+    );
   }
 
-  function removePair(index: number) {
-    setPairs((prev) => prev.filter((_, i) => i !== index));
+  async function pushIncomingListItem(cyl: CylinderRow, created: boolean) {
+    if (cylinderAlreadyListed(cyl.id)) {
+      toast.error("A palack már a listában van");
+      return false;
+    }
+    const rentalId = created ? null : await findActiveRentalIdForCylinder(cyl.id);
+    const isRental = !!rentalId || rentedCylIds.includes(cyl.id);
+    setIncomingList((prev) => [
+      ...prev,
+      { cylinder: cyl, created, isRental, reassign: null },
+    ]);
+    setIncomingBc("");
+    toast.success(`${cyl.barcode} hozzáadva (üres)`);
+    return true;
+  }
+
+  async function pushOutgoingListItem(cyl: CylinderRow, created: boolean) {
+    if (cylinderAlreadyListed(cyl.id)) {
+      toast.error("A palack már a listában van");
+      return false;
+    }
+    setOutgoingList((prev) => [
+      ...prev,
+      { cylinder: cyl, created, isRental: false, reassign: null },
+    ]);
+    setOutgoingBc("");
+    toast.success(`${cyl.barcode} hozzáadva (teli)`);
+    return true;
+  }
+
+  async function addIncomingToList() {
+    if (!incomingBc.trim()) return;
+    if (!partnerId) {
+      toast.error("Előbb válassz partnert");
+      return;
+    }
+    const bc = normalizeBarcode(incomingBc);
+    try {
+      const existing = await tryFindCylinderByBarcode(bc);
+      if (!existing) {
+        setNewCylBarcode(bc);
+        setNewCylPhase("incoming");
+        setNewCylDialog(true);
+        return;
+      }
+      await pushIncomingListItem(existing, false);
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
+  async function addOutgoingToList() {
+    if (!outgoingBc.trim()) return;
+    if (!partnerId) {
+      toast.error("Előbb válassz partnert");
+      return;
+    }
+    const bc = normalizeBarcode(outgoingBc);
+    try {
+      const existing = await tryFindCylinderByBarcode(bc);
+      if (!existing) {
+        setNewCylBarcode(bc);
+        setNewCylPhase("outgoing");
+        setNewCylDialog(true);
+        return;
+      }
+      await pushOutgoingListItem(existing, false);
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
+  function removeIncomingListItem(index: number) {
+    setIncomingList((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function removeOutgoingListItem(index: number) {
+    setOutgoingList((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function setIncomingListReassign(index: number, value: "yes" | "no") {
+    setIncomingList((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, reassign: value } : item)),
+    );
   }
 
   async function lookupIncoming() {
@@ -524,7 +589,7 @@ function QuickExchange() {
       const cyl = await findCylinderByBarcode(outgoingBc);
       setOutgoing(cyl);
       setOutgoingCreated(false);
-    } catch (e) {
+    } catch {
       if (
         operation === "exchange" &&
         exchangeMode === "chinese_brought" &&
@@ -541,23 +606,28 @@ function QuickExchange() {
     }
   }
 
-  const isForced = operation === "exchange" && exchangeMode === "barcode" && isCirculationMismatch;
-  const needsRentalQuestion =
-    operation === "exchange" &&
-    exchangeMode === "barcode" &&
-    incomingKind === "rental" &&
-    incoming &&
-    outgoing &&
-    reassign === null;
+  const isBarcodeExchange = operation === "exchange" && exchangeMode === "barcode";
+
+  const pendingRentalIndex = useMemo(() => {
+    if (!isBarcodeExchange) return -1;
+    const n = Math.min(incomingList.length, outgoingList.length);
+    for (let i = 0; i < n; i++) {
+      if (incomingList[i].isRental && incomingList[i].reassign === null) return i;
+    }
+    return -1;
+  }, [isBarcodeExchange, incomingList, outgoingList]);
+
+  const needsRentalQuestion = isBarcodeExchange && pendingRentalIndex >= 0;
 
   const showIncoming =
     operation === "exchange"
-      ? exchangeMode === "barcode" || exchangeMode === "chinese_take"
+      ? exchangeMode === "chinese_take"
       : operation === "empty_return";
   const showOutgoing =
     operation === "exchange"
-      ? exchangeMode === "barcode"
+      ? false
       : operation === "loan" || (operation === "sale" && saleMode === "barcode");
+  const showBarcodeExchangeLists = isBarcodeExchange;
 
   const loanOutgoingError = outgoing && operation === "loan" ? getLoanOutgoingValidationError(outgoing) : null;
   const chineseBroughtSerialError =
@@ -583,7 +653,10 @@ function QuickExchange() {
     partnerId &&
     ((operation === "exchange" &&
       exchangeMode === "barcode" &&
-      (pairs.length > 0 || (incoming && outgoing))) ||
+      incomingList.length > 0 &&
+      outgoingList.length > 0 &&
+      incomingList.length === outgoingList.length &&
+      !needsRentalQuestion) ||
       (operation === "exchange" &&
         exchangeMode === "chinese_brought" &&
         chineseBroughtIncomingOk &&
@@ -680,32 +753,26 @@ function QuickExchange() {
           });
           toast.success("Kínait visz rögzítve");
         } else {
-          const toSubmit: QuickExchangePairDraft[] = [...pairs];
-          if (incoming && outgoing) {
-            if (incoming.id === outgoing.id) {
+          if (incomingList.length === 0 || outgoingList.length === 0) {
+            toast.error("Adj hozzá legalább egy üres és egy teli palackot");
+            return;
+          }
+          if (incomingList.length !== outgoingList.length) {
+            toast.error(
+              `Ugyanannyi üres és teli kell (most: ${incomingList.length} üres, ${outgoingList.length} teli)`,
+            );
+            return;
+          }
+          if (needsRentalQuestion) {
+            toast.error("Döntsd el a bérlet újrarendelés kérdését");
+            return;
+          }
+          const toSubmit = zipExchangeLists(incomingList, outgoingList);
+          for (const pair of toSubmit) {
+            if (pair.incoming.id === pair.outgoing.id) {
               toast.error("A beérkező és kiadott palack nem lehet ugyanaz");
               return;
             }
-            if (needsRentalQuestion) {
-              toast.error("Döntsd el az újrarendelés kérdést, vagy add hozzá a párt a listához");
-              return;
-            }
-            const usedIds = new Set(toSubmit.flatMap((p) => [p.incoming.id, p.outgoing.id]));
-            if (usedIds.has(incoming.id) || usedIds.has(outgoing.id)) {
-              toast.error("A aktuális pár palackjai már a listában vannak");
-              return;
-            }
-            toSubmit.push({
-              incoming,
-              outgoing,
-              incomingCreated,
-              outgoingCreated,
-              reassign,
-            });
-          }
-          if (toSubmit.length === 0) {
-            toast.error("Adj hozzá legalább egy cserepárt");
-            return;
           }
 
           const batchId =
@@ -872,6 +939,25 @@ function QuickExchange() {
             setScanning(null);
             if (phase === "in") {
               setIncomingBc(bc);
+              if (isBarcodeExchange) {
+                if (!partnerId) {
+                  toast.error("Előbb válassz partnert");
+                  return;
+                }
+                try {
+                  const existing = await tryFindCylinderByBarcode(bc);
+                  if (!existing) {
+                    setNewCylBarcode(bc);
+                    setNewCylPhase("incoming");
+                    setNewCylDialog(true);
+                    return;
+                  }
+                  await pushIncomingListItem(existing, false);
+                } catch (e) {
+                  toast.error((e as Error).message);
+                }
+                return;
+              }
               try {
                 setIncoming(await findCylinderByBarcode(bc));
                 setIncomingCreated(false);
@@ -882,6 +968,25 @@ function QuickExchange() {
               }
             } else {
               setOutgoingBc(bc);
+              if (isBarcodeExchange) {
+                if (!partnerId) {
+                  toast.error("Előbb válassz partnert");
+                  return;
+                }
+                try {
+                  const existing = await tryFindCylinderByBarcode(bc);
+                  if (!existing) {
+                    setNewCylBarcode(bc);
+                    setNewCylPhase("outgoing");
+                    setNewCylDialog(true);
+                    return;
+                  }
+                  await pushOutgoingListItem(existing, false);
+                } catch (e) {
+                  toast.error((e as Error).message);
+                }
+                return;
+              }
               try {
                 setOutgoing(await findCylinderByBarcode(bc));
                 setOutgoingCreated(false);
@@ -903,6 +1008,14 @@ function QuickExchange() {
         status={newCylPhase === "outgoing" ? "full" : "empty"}
         locationType={newCylPhase === "outgoing" ? "warehouse_full" : "warehouse_empty"}
         onCreated={async (cyl) => {
+          if (isBarcodeExchange) {
+            if (newCylPhase === "incoming") {
+              await pushIncomingListItem(cyl, true);
+            } else {
+              await pushOutgoingListItem(cyl, true);
+            }
+            return;
+          }
           if (newCylPhase === "incoming") {
             setIncoming(cyl);
             setIncomingCreated(true);
@@ -943,7 +1056,7 @@ function QuickExchange() {
       <p className="mb-3 text-xs text-muted-foreground">
         {operation === "exchange" &&
           exchangeMode === "barcode" &&
-          "Több palackpár is felvihető egy tranzakcióban (mint a beszállítói cserénél). Új palacknál megadod az adatokat, majd jöhet a következő pár. A számlázási emlékeztető egyben jelenik meg."}
+          "Vonalkód → Hozzáad (mint a beszállítói cserénél). Ismeretlen palacknál megadod az adatokat, majd jöhet a következő. Ugyanannyi üres és teli kell; a számlázási emlékeztető egyben jelenik meg."}
         {operation === "exchange" &&
           exchangeMode !== "barcode" &&
           "Üres be + teli ki. Mindkét palack kötelező."}
@@ -1001,6 +1114,8 @@ function QuickExchange() {
               className="flex-1"
               onClick={() => {
                 setExchangeMode("barcode");
+                resetCylinders();
+                clearLists();
               }}
             >
               Vonalkódos csere
@@ -1012,7 +1127,7 @@ function QuickExchange() {
               onClick={() => {
                 setExchangeMode("chinese_brought");
                 resetCylinders();
-                clearPairs();
+                clearLists();
               }}
             >
               Hozott kínai
@@ -1025,13 +1140,129 @@ function QuickExchange() {
                 setExchangeMode("chinese_take");
                 setOutgoing(null);
                 setOutgoingBc("");
-                clearPairs();
+                clearLists();
               }}
             >
               Kínait visz
             </Button>
           </div>
         </Card>
+      )}
+
+      {partnerId && showBarcodeExchangeLists && (
+        <>
+          <Card className="mb-3 p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <Label>1. Beérkező üres palackok</Label>
+              <Button size="sm" variant="secondary" onClick={() => setScanning("in")}>
+                <Camera className="mr-1 h-4 w-4" /> Scan
+              </Button>
+            </div>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Vonalkód beírása vagy szkennelés, majd Hozzáad. Ismeretlen kódnál új palack adatai jönnek.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                className="font-mono"
+                placeholder="Vonalkód"
+                value={incomingBc}
+                onChange={(e) => setIncomingBc(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addIncomingToList()}
+              />
+              <Button variant="outline" onClick={addIncomingToList}>
+                Hozzáad
+              </Button>
+            </div>
+            {incomingList.length > 0 && (
+              <div className="mt-3 space-y-1">
+                {incomingList.map((item, index) => (
+                  <div
+                    key={item.cylinder.id}
+                    className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1 text-xs"
+                  >
+                    <div className="min-w-0">
+                      <span className="font-mono font-semibold">{item.cylinder.barcode}</span>
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · {item.cylinder.gas_type} · {item.cylinder.size} ·{" "}
+                        {circulationLabels[item.cylinder.circulation]}
+                        {item.isRental ? " · bérlet" : ""}
+                        {item.created ? " · új" : ""}
+                      </span>
+                    </div>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 shrink-0"
+                      onClick={() => removeIncomingListItem(index)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card className="mb-3 p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <Label>2. Kiadandó teli palackok</Label>
+              <Button size="sm" variant="secondary" onClick={() => setScanning("out")}>
+                <Camera className="mr-1 h-4 w-4" /> Scan
+              </Button>
+            </div>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Ugyanannyi teli palack kell, mint üres. Sorrend szerint párosítjuk (1–1, 2–2, …).
+            </p>
+            <div className="flex gap-2">
+              <Input
+                className="font-mono"
+                placeholder="Vonalkód"
+                value={outgoingBc}
+                onChange={(e) => setOutgoingBc(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addOutgoingToList()}
+              />
+              <Button variant="outline" onClick={addOutgoingToList}>
+                Hozzáad
+              </Button>
+            </div>
+            {outgoingList.length > 0 && (
+              <div className="mt-3 space-y-1">
+                {outgoingList.map((item, index) => (
+                  <div
+                    key={item.cylinder.id}
+                    className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1 text-xs"
+                  >
+                    <div className="min-w-0">
+                      <span className="font-mono font-semibold">{item.cylinder.barcode}</span>
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · {item.cylinder.gas_type} · {item.cylinder.size} ·{" "}
+                        {circulationLabels[item.cylinder.circulation]}
+                        {item.created ? " · új" : ""}
+                      </span>
+                    </div>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 shrink-0"
+                      onClick={() => removeOutgoingListItem(index)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {incomingList.length !== outgoingList.length &&
+              (incomingList.length > 0 || outgoingList.length > 0) && (
+                <div className="mt-2 text-xs text-warning">
+                  Most: {incomingList.length} üres · {outgoingList.length} teli — rögzítéshez egyenlő
+                  darabszám kell.
+                </div>
+              )}
+          </Card>
+        </>
       )}
 
       {partnerId && operation === "sale" && (
@@ -1223,17 +1454,6 @@ function QuickExchange() {
                   <span>{loanOutgoingError}</span>
                 </div>
               )}
-            </div>
-          )}
-          {isForced && (
-            <div className="mt-3 rounded-md bg-warning/15 p-2 text-xs text-warning">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 h-4 w-4" />
-                <div>
-                  Körforgás-eltérés: {incomingSide && formatExchangeCirculationLabel(incomingSide.key)} →{" "}
-                  {outgoingSide && formatExchangeCirculationLabel(outgoingSide.key)} (automatikusan rögzítve)
-                </div>
-              </div>
             </div>
           )}
         </Card>
@@ -1576,78 +1796,31 @@ function QuickExchange() {
         </Card>
       )}
 
-      {needsRentalQuestion && (
+      {needsRentalQuestion && pendingRentalIndex >= 0 && (
         <Card className="mb-3 border-primary/50 bg-primary/10 p-4">
           <div className="mb-2 flex items-center gap-2 text-primary">
             <Sparkles className="h-4 w-4" />
             <div className="text-sm font-semibold">
-              Az új palack legyen a bérlet aktív palackja?
+              {incomingList[pendingRentalIndex]?.cylinder.barcode}: az új palack legyen a bérlet aktív
+              palackja?
             </div>
           </div>
           <div className="flex gap-2">
             <Button
               className="flex-1"
-              onClick={() => setReassign("yes")}
-              variant={reassign === "yes" ? "default" : "outline"}
+              onClick={() => setIncomingListReassign(pendingRentalIndex, "yes")}
+              variant="outline"
             >
               IGEN
             </Button>
             <Button
               className="flex-1"
-              onClick={() => setReassign("no")}
-              variant={reassign === "no" ? "default" : "outline"}
+              onClick={() => setIncomingListReassign(pendingRentalIndex, "no")}
+              variant="outline"
             >
               NEM
             </Button>
           </div>
-        </Card>
-      )}
-
-      {partnerId && operation === "exchange" && exchangeMode === "barcode" && (
-        <Card className="mb-3 p-4">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <Label>Felvitt cserepárok ({pairs.length})</Label>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled={!incoming || !outgoing || needsRentalQuestion}
-              onClick={addCurrentPairToList}
-            >
-              <Plus className="mr-1 h-4 w-4" />
-              Pár hozzáadása
-            </Button>
-          </div>
-          <p className="mb-2 text-xs text-muted-foreground">
-            Ha kész a beérkező + kiadandó pár, add a listához, majd viheted a következő palackokat. A
-            végén egyszer rögzítesz.
-          </p>
-          {pairs.length === 0 ? (
-            <div className="text-xs text-muted-foreground">Még nincs pár a listában.</div>
-          ) : (
-            <div className="space-y-2">
-              {pairs.map((pair, index) => (
-                <div
-                  key={`${pair.incoming.id}-${pair.outgoing.id}`}
-                  className="flex items-start justify-between gap-2 rounded-md bg-muted/40 px-2 py-2 text-xs"
-                >
-                  <div className="min-w-0 space-y-0.5 font-mono">
-                    <div>↩ {pair.incoming.barcode} · {pair.incoming.gas_type} {pair.incoming.size}</div>
-                    <div>↪ {pair.outgoing.barcode} · {pair.outgoing.gas_type} {pair.outgoing.size}</div>
-                  </div>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7 shrink-0"
-                    onClick={() => removePair(index)}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
         </Card>
       )}
 
@@ -1670,7 +1843,7 @@ function QuickExchange() {
           <Button size="lg" className="w-full" disabled={busy} onClick={complete}>
             <Check className="mr-2 h-5 w-5" />
             {operation === "exchange" && exchangeMode === "barcode"
-              ? `Csere rögzítése (${pairs.length + (incoming && outgoing ? 1 : 0)} pár)`
+              ? `Csere rögzítése (${incomingList.length} pár)`
               : `${OP_LABELS[operation]} rögzítése`}
             <ArrowRight className="ml-2 h-5 w-5" />
           </Button>

@@ -31,7 +31,7 @@ function groupUninvoicedRows(rows) {
 
 test("exchange batch migration adds batch_id and mark_exchange_batch_invoiced", () => {
   const sql = fs.readFileSync(
-    path.join(root, "supabase/migrations/20260918120000_exchange_batch_id.sql"),
+    path.join(root, "supabase/migrations/20260918050716_exchange_batch_id.sql"),
     "utf8",
   );
   assert.match(sql, /ADD COLUMN IF NOT EXISTS batch_id uuid/);
@@ -58,9 +58,14 @@ test("quick exchange multi-pair wiring", () => {
   const draft = fs.readFileSync(path.join(root, "src/lib/quick-exchange-draft.ts"), "utf8");
   const card = fs.readFileSync(path.join(root, "src/components/UninvoicedExchangesCard.tsx"), "utf8");
   const ops = fs.readFileSync(path.join(root, "src/lib/cylinder-ops.ts"), "utf8");
-  assert.match(draft, /QUICK_EXCHANGE_DRAFT_VERSION = 2/);
-  assert.match(draft, /pairs: QuickExchangePairDraft\[\]/);
-  assert.match(quick, /addCurrentPairToList/);
+  assert.match(draft, /QUICK_EXCHANGE_DRAFT_VERSION = 3/);
+  assert.match(draft, /incomingList: QuickExchangeListItem\[\]/);
+  assert.match(draft, /outgoingList: QuickExchangeListItem\[\]/);
+  assert.match(draft, /zipExchangeLists/);
+  assert.match(quick, /addIncomingToList/);
+  assert.match(quick, /addOutgoingToList/);
+  assert.match(quick, /Hozzáad/);
+  assert.doesNotMatch(quick, /addCurrentPairToList/);
   assert.match(quick, /batch_id: batchId/);
   assert.match(ops, /p_batch_id/);
   assert.match(card, /markUninvoicedGroupInvoiced/);
