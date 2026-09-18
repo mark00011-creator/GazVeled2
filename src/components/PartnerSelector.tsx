@@ -33,6 +33,38 @@ type PartnerSelectorProps = {
   className?: string;
 };
 
+/** Android soft keyboard: Drawer a visual viewporthoz igazítva. */
+function useVisualViewportBox(active: boolean) {
+  const [box, setBox] = useState({ height: 0, bottom: 0 });
+
+  useEffect(() => {
+    if (!active || typeof window === "undefined") return;
+
+    const update = () => {
+      const vv = window.visualViewport;
+      if (!vv) {
+        setBox({ height: window.innerHeight, bottom: 0 });
+        return;
+      }
+      const bottom = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setBox({ height: vv.height, bottom });
+    };
+
+    update();
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", update);
+    vv?.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
+    return () => {
+      vv?.removeEventListener("resize", update);
+      vv?.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [active]);
+
+  return box;
+}
+
 function PartnerSearchPanel({
   partners,
   value,
@@ -41,6 +73,7 @@ function PartnerSearchPanel({
   onSelect,
   listClassName,
   autoFocus,
+  stickySearch,
 }: {
   partners: PartnerOption[];
   value: string;
@@ -49,6 +82,7 @@ function PartnerSearchPanel({
   onSelect: (partnerId: string) => void;
   listClassName?: string;
   autoFocus?: boolean;
+  stickySearch?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const filtered = useMemo(() => filterPartners(partners, query), [partners, query]);
@@ -59,37 +93,51 @@ function PartnerSearchPanel({
     return () => window.clearTimeout(timer);
   }, [autoFocus]);
 
+  const searchBlock = (
+    <div
+      className={cn(
+        "relative shrink-0 border-b bg-background px-3 py-2",
+        stickySearch && "sticky top-0 z-10",
+      )}
+    >
+      <Input
+        ref={inputRef}
+        value={query}
+        onChange={(e) => onQueryChange(e.target.value)}
+        placeholder="Partner keresése..."
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
+        inputMode="search"
+        enterKeyHint="search"
+        className="pr-9"
+      />
+      {query.length > 0 && (
+        <button
+          type="button"
+          aria-label="Keresés törlése"
+          className="absolute top-1/2 right-5 -translate-y-1/2 rounded-sm p-1 text-muted-foreground hover:text-foreground"
+          onClick={() => {
+            onQueryChange("");
+            inputRef.current?.focus();
+          }}
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <Command shouldFilter={false} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="relative shrink-0 border-b px-3 py-2">
-        <Input
-          ref={inputRef}
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="Partner keresése..."
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
-          inputMode="search"
-          enterKeyHint="search"
-          className="pr-9"
-        />
-        {query.length > 0 && (
-          <button
-            type="button"
-            aria-label="Keresés törlése"
-            className="absolute top-1/2 right-5 -translate-y-1/2 rounded-sm p-1 text-muted-foreground hover:text-foreground"
-            onClick={() => {
-              onQueryChange("");
-              inputRef.current?.focus();
-            }}
-          >
-            <X className="h-4 w-4" />
-          </button>
+      {searchBlock}
+      <CommandList
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+          listClassName,
         )}
-      </div>
-      <CommandList className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain", listClassName)}>
+      >
         {filtered.length === 0 ? (
           <CommandEmpty>Nincs találat</CommandEmpty>
         ) : (
@@ -102,7 +150,10 @@ function PartnerSearchPanel({
                 className="min-h-11 cursor-pointer py-3"
               >
                 <Check
-                  className={cn("mr-2 h-4 w-4 shrink-0", value === partner.id ? "opacity-100" : "opacity-0")}
+                  className={cn(
+                    "mr-2 h-4 w-4 shrink-0",
+                    value === partner.id ? "opacity-100" : "opacity-0",
+                  )}
                 />
                 <span className="line-clamp-2 text-left">{partnerDisplayLabel(partner)}</span>
               </CommandItem>
@@ -125,6 +176,7 @@ export function PartnerSelector({
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const viewport = useVisualViewportBox(isMobile && open);
 
   const selected = useMemo(
     () => partners.find((partner) => partner.id === value) ?? null,
@@ -161,28 +213,37 @@ export function PartnerSelector({
     </Button>
   );
 
-  const panel = (
-    <PartnerSearchPanel
-      partners={partners}
-      value={value}
-      query={query}
-      onQueryChange={setQuery}
-      onSelect={handleSelect}
-      autoFocus={open}
-      listClassName={isMobile ? "max-h-[min(55dvh,420px)]" : "max-h-[min(300px,50dvh)]"}
-    />
-  );
-
   if (isMobile) {
+    const maxHeight =
+      viewport.height > 0 ? Math.min(viewport.height * 0.92, viewport.height - 8) : undefined;
+
     return (
       <>
         {trigger}
         <Drawer open={open} onOpenChange={setOpen} repositionInputs={false}>
-          <DrawerContent className="flex max-h-[min(92dvh,100%)] flex-col pb-[env(safe-area-inset-bottom)]">
-            <DrawerHeader className="pb-0 text-left">
+          <DrawerContent
+            className="mt-0 flex flex-col overflow-hidden p-0 pb-[env(safe-area-inset-bottom)]"
+            style={{
+              bottom: viewport.bottom,
+              maxHeight: maxHeight ? `${maxHeight}px` : "92dvh",
+              height: maxHeight ? `${maxHeight}px` : undefined,
+            }}
+          >
+            <DrawerHeader className="shrink-0 border-b pb-2 text-left">
               <DrawerTitle>Partner</DrawerTitle>
             </DrawerHeader>
-            <div className="flex min-h-0 flex-1 flex-col px-2 pb-4">{panel}</div>
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 pb-2">
+              <PartnerSearchPanel
+                partners={partners}
+                value={value}
+                query={query}
+                onQueryChange={setQuery}
+                onSelect={handleSelect}
+                autoFocus={open}
+                stickySearch
+                listClassName="max-h-none"
+              />
+            </div>
           </DrawerContent>
         </Drawer>
       </>
@@ -197,7 +258,15 @@ export function PartnerSelector({
         align="start"
         sideOffset={4}
       >
-        {panel}
+        <PartnerSearchPanel
+          partners={partners}
+          value={value}
+          query={query}
+          onQueryChange={setQuery}
+          onSelect={handleSelect}
+          autoFocus={open}
+          listClassName="max-h-[min(300px,50dvh)]"
+        />
       </PopoverContent>
     </Popover>
   );

@@ -31,6 +31,8 @@ import {
   PackageMinus,
   RefreshCw,
   HandCoins,
+  Plus,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -87,6 +89,7 @@ import {
   QUICK_EXCHANGE_DRAFT_VERSION,
   quickExchangeWorkflowStep,
   type QuickExchangeDraft,
+  type QuickExchangePairDraft,
 } from "@/lib/quick-exchange-draft";
 import { useRouteScrollOnly } from "@/hooks/use-route-state-persistence";
 
@@ -128,6 +131,7 @@ function QuickExchange() {
   const [incomingCreated, setIncomingCreated] = useState(false);
   const [outgoing, setOutgoing] = useState<CylinderRow | null>(null);
   const [outgoingCreated, setOutgoingCreated] = useState(false);
+  const [pairs, setPairs] = useState<QuickExchangePairDraft[]>([]);
 
   const [newCylDialog, setNewCylDialog] = useState(false);
   const [newCylPhase, setNewCylPhase] = useState<"incoming" | "outgoing">("incoming");
@@ -173,6 +177,7 @@ function QuickExchange() {
     setIncomingCreated(draft.incomingCreated);
     setOutgoing(draft.outgoing);
     setOutgoingCreated(draft.outgoingCreated);
+    setPairs(draft.pairs ?? []);
     setChineseGas(draft.chineseGas);
     setChineseSize(draft.chineseSize);
     setChineseQty(draft.chineseQty);
@@ -202,6 +207,7 @@ function QuickExchange() {
       incomingCreated,
       outgoing,
       outgoingCreated,
+      pairs,
       chineseGas,
       chineseSize,
       chineseQty,
@@ -222,6 +228,7 @@ function QuickExchange() {
         saleMode,
         hasIncoming: !!incoming,
         hasOutgoing: !!outgoing,
+        pairsCount: pairs.length,
       }),
     }),
     [
@@ -235,6 +242,7 @@ function QuickExchange() {
       incomingCreated,
       outgoing,
       outgoingCreated,
+      pairs,
       chineseGas,
       chineseSize,
       chineseQty,
@@ -265,6 +273,7 @@ function QuickExchange() {
       incomingCreated,
       outgoing,
       outgoingCreated,
+      pairs,
       chineseGas,
       chineseSize,
       chineseQty,
@@ -295,6 +304,7 @@ function QuickExchange() {
     setSaleMode("barcode");
     setPartnerId("");
     resetCylinders();
+    clearPairs();
     setNote("");
     setChineseGas("Széndioxid");
     setChineseSize("10 kg");
@@ -447,11 +457,52 @@ function QuickExchange() {
     setChineseOutQty("1");
   }
 
+  function clearPairs() {
+    setPairs([]);
+  }
+
   function switchOperation(op: PartnerOperationType) {
     setOperation(op);
     resetCylinders();
+    clearPairs();
     if (op === "sale") setSaleMode("barcode");
     if (op === "exchange") setExchangeMode("barcode");
+  }
+
+  function addCurrentPairToList() {
+    if (!incoming || !outgoing) {
+      toast.error("Beérkező és kiadandó palack is kell a párhoz");
+      return;
+    }
+    if (incoming.id === outgoing.id) {
+      toast.error("A beérkező és kiadott palack nem lehet ugyanaz");
+      return;
+    }
+    if (needsRentalQuestion) {
+      toast.error("Döntsd el az újrarendelés kérdést a pár hozzáadása előtt");
+      return;
+    }
+    const usedIds = new Set(pairs.flatMap((p) => [p.incoming.id, p.outgoing.id]));
+    if (usedIds.has(incoming.id) || usedIds.has(outgoing.id)) {
+      toast.error("Ez a palack már szerepel a listában");
+      return;
+    }
+    setPairs((prev) => [
+      ...prev,
+      {
+        incoming,
+        outgoing,
+        incomingCreated,
+        outgoingCreated,
+        reassign,
+      },
+    ]);
+    resetCylinders();
+    toast.success("Pár hozzáadva – viheted a következőt");
+  }
+
+  function removePair(index: number) {
+    setPairs((prev) => prev.filter((_, i) => i !== index));
   }
 
   async function lookupIncoming() {
@@ -532,8 +583,7 @@ function QuickExchange() {
     partnerId &&
     ((operation === "exchange" &&
       exchangeMode === "barcode" &&
-      incoming &&
-      outgoing) ||
+      (pairs.length > 0 || (incoming && outgoing))) ||
       (operation === "exchange" &&
         exchangeMode === "chinese_brought" &&
         chineseBroughtIncomingOk &&
@@ -630,31 +680,64 @@ function QuickExchange() {
           });
           toast.success("Kínait visz rögzítve");
         } else {
-          if (!incoming || !outgoing) {
-            toast.error("Cserehez bejövő és kimenő palack is kell");
+          const toSubmit: QuickExchangePairDraft[] = [...pairs];
+          if (incoming && outgoing) {
+            if (incoming.id === outgoing.id) {
+              toast.error("A beérkező és kiadott palack nem lehet ugyanaz");
+              return;
+            }
+            if (needsRentalQuestion) {
+              toast.error("Döntsd el az újrarendelés kérdést, vagy add hozzá a párt a listához");
+              return;
+            }
+            const usedIds = new Set(toSubmit.flatMap((p) => [p.incoming.id, p.outgoing.id]));
+            if (usedIds.has(incoming.id) || usedIds.has(outgoing.id)) {
+              toast.error("A aktuális pár palackjai már a listában vannak");
+              return;
+            }
+            toSubmit.push({
+              incoming,
+              outgoing,
+              incomingCreated,
+              outgoingCreated,
+              reassign,
+            });
+          }
+          if (toSubmit.length === 0) {
+            toast.error("Adj hozzá legalább egy cserepárt");
             return;
           }
-          if (incoming.id === outgoing.id) {
-            toast.error("A beérkező és kiadott palack nem lehet ugyanaz");
-            return;
+
+          const batchId =
+            toSubmit.length > 1
+              ? typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+                ? crypto.randomUUID()
+                : `batch-${Date.now()}`
+              : null;
+
+          for (const pair of toSubmit) {
+            const pairRentalId =
+              (await findActiveRentalIdForCylinder(pair.incoming.id)) ??
+              (activeRentals ?? [])[0]?.id ??
+              null;
+            const reassignYes = !!(pairRentalId && pair.reassign === "yes");
+            await recordExchange({
+              partner_id: partnerId,
+              incoming_id: pair.incoming.id,
+              outgoing_id: pair.outgoing.id,
+              reason: null,
+              note: note || null,
+              rental_id: pairRentalId,
+              reassign_rental: reassignYes,
+              batch_id: batchId,
+            });
           }
-          if (needsRentalQuestion) {
-            toast.error("Döntsd el az újrarendelés kérdést");
-            return;
-          }
-          const rentalId = incomingRentalId ?? (activeRentals ?? [])[0]?.id ?? null;
-          const reassignYes = !!(rentalId && reassign === "yes");
-          await recordExchange({
-            partner_id: partnerId,
-            incoming_id: incoming.id,
-            outgoing_id: outgoing.id,
-            reason: null,
-            note: note || null,
-            rental_id: rentalId,
-            reassign_rental: reassignYes,
-          });
           toast.success(
-            primarySettleableDiff ? "Csere rögzítve – körforgás-eltérés rendezve" : "Csere rögzítve",
+            toSubmit.length > 1
+              ? `${toSubmit.length} csere rögzítve egy számlázási emlékeztetőben`
+              : primarySettleableDiff
+                ? "Csere rögzítve – körforgás-eltérés rendezve"
+                : "Csere rögzítve",
           );
         }
       } else if (operation === "sale") {
@@ -742,8 +825,7 @@ function QuickExchange() {
       }
 
       markCompleted();
-      resetCylinders();
-      setNote("");
+      resetWorkflow();
       invalidateQueries();
     } catch (e) {
       toast.error((e as Error).message);
@@ -859,7 +941,12 @@ function QuickExchange() {
       </Tabs>
 
       <p className="mb-3 text-xs text-muted-foreground">
-        {operation === "exchange" && "Üres be + teli ki. Mindkét palack kötelező."}
+        {operation === "exchange" &&
+          exchangeMode === "barcode" &&
+          "Több palackpár is felvihető egy tranzakcióban (mint a beszállítói cserénél). Új palacknál megadod az adatokat, majd jöhet a következő pár. A számlázási emlékeztető egyben jelenik meg."}
+        {operation === "exchange" &&
+          exchangeMode !== "barcode" &&
+          "Üres be + teli ki. Mindkét palack kötelező."}
         {operation === "loan" &&
           "0 üres → 1 teli: partner kölcsön kap teli palackot üres visszahozatal nélkül. A bérleti készlet külön folyamat."}
         {operation === "sale" && "Teli palack kiadása bejövő nélkül. Kínai vagy FLAGA palack darabszámmal is."}
@@ -925,6 +1012,7 @@ function QuickExchange() {
               onClick={() => {
                 setExchangeMode("chinese_brought");
                 resetCylinders();
+                clearPairs();
               }}
             >
               Hozott kínai
@@ -937,6 +1025,7 @@ function QuickExchange() {
                 setExchangeMode("chinese_take");
                 setOutgoing(null);
                 setOutgoingBc("");
+                clearPairs();
               }}
             >
               Kínait visz
@@ -1514,6 +1603,54 @@ function QuickExchange() {
         </Card>
       )}
 
+      {partnerId && operation === "exchange" && exchangeMode === "barcode" && (
+        <Card className="mb-3 p-4">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <Label>Felvitt cserepárok ({pairs.length})</Label>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={!incoming || !outgoing || needsRentalQuestion}
+              onClick={addCurrentPairToList}
+            >
+              <Plus className="mr-1 h-4 w-4" />
+              Pár hozzáadása
+            </Button>
+          </div>
+          <p className="mb-2 text-xs text-muted-foreground">
+            Ha kész a beérkező + kiadandó pár, add a listához, majd viheted a következő palackokat. A
+            végén egyszer rögzítesz.
+          </p>
+          {pairs.length === 0 ? (
+            <div className="text-xs text-muted-foreground">Még nincs pár a listában.</div>
+          ) : (
+            <div className="space-y-2">
+              {pairs.map((pair, index) => (
+                <div
+                  key={`${pair.incoming.id}-${pair.outgoing.id}`}
+                  className="flex items-start justify-between gap-2 rounded-md bg-muted/40 px-2 py-2 text-xs"
+                >
+                  <div className="min-w-0 space-y-0.5 font-mono">
+                    <div>↩ {pair.incoming.barcode} · {pair.incoming.gas_type} {pair.incoming.size}</div>
+                    <div>↪ {pair.outgoing.barcode} · {pair.outgoing.gas_type} {pair.outgoing.size}</div>
+                  </div>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 shrink-0"
+                    onClick={() => removePair(index)}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
       {partnerId && (
         <div className="mb-3 flex justify-end">
           <Button type="button" variant="outline" size="sm" disabled={busy} onClick={discardDraft}>
@@ -1532,7 +1669,9 @@ function QuickExchange() {
           />
           <Button size="lg" className="w-full" disabled={busy} onClick={complete}>
             <Check className="mr-2 h-5 w-5" />
-            {OP_LABELS[operation]} rögzítése
+            {operation === "exchange" && exchangeMode === "barcode"
+              ? `Csere rögzítése (${pairs.length + (incoming && outgoing ? 1 : 0)} pár)`
+              : `${OP_LABELS[operation]} rögzítése`}
             <ArrowRight className="ml-2 h-5 w-5" />
           </Button>
         </>

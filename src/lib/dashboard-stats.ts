@@ -62,24 +62,9 @@ export function applyCompletedQuickExchangeFilters<T extends ExchangeQuery>(quer
 
 type CylinderRef = { barcode: string; gas_type: string; size: string } | null;
 
-export type UninvoicedExchange = {
-  id: string;
-  created_at: string;
-  eladasi_ar: number;
-  profit: number;
-  partnerName: string;
-  incomingLabel: string;
-  outgoingLabel: string;
-};
-
-export type UninvoicedExchangeSummary = {
-  count: number;
-  totalSaleValue: number;
-  recent: UninvoicedExchange[];
-};
-
 const UNINVOICED_SELECT = `
   id,
+  batch_id,
   created_at,
   eladasi_ar,
   profit,
@@ -95,8 +80,38 @@ function cylinderLabel(cyl: CylinderRef): string {
   return `${cyl.barcode} · ${cyl.gas_type} ${cyl.size}`;
 }
 
+export type UninvoicedExchangeItem = {
+  exchangeId: string;
+  incomingLabel: string;
+  outgoingLabel: string;
+  eladasi_ar: number;
+  profit: number;
+};
+
+export type UninvoicedExchange = {
+  /** UI kulcs: batch_id vagy egyedi exchange id */
+  id: string;
+  batchId: string | null;
+  exchangeIds: string[];
+  created_at: string;
+  eladasi_ar: number;
+  profit: number;
+  partnerName: string;
+  incomingLabel: string;
+  outgoingLabel: string;
+  items: UninvoicedExchangeItem[];
+  pairCount: number;
+};
+
+export type UninvoicedExchangeSummary = {
+  count: number;
+  totalSaleValue: number;
+  recent: UninvoicedExchange[];
+};
+
 function mapUninvoicedRow(row: {
   id: string;
+  batch_id?: string | null;
   created_at: string;
   eladasi_ar: number | null;
   profit: number | null;
@@ -105,7 +120,7 @@ function mapUninvoicedRow(row: {
   partners: { name: string } | null;
   incoming: CylinderRef;
   outgoing: CylinderRef;
-}): UninvoicedExchange {
+}): UninvoicedExchangeItem & { batchId: string | null; created_at: string; partnerName: string } {
   const op = row.operation_type ?? "exchange";
   let incomingLabel = cylinderLabel(row.incoming);
   let outgoingLabel = cylinderLabel(row.outgoing);
@@ -128,51 +143,108 @@ function mapUninvoicedRow(row: {
     outgoingLabel = row.note?.split(" · ")[0] ?? "PRÍMA PB eladás";
   }
   return {
-    id: row.id,
+    exchangeId: row.id,
+    batchId: row.batch_id ?? null,
     created_at: row.created_at,
-    eladasi_ar: row.eladasi_ar ?? 0,
-    profit: row.profit ?? 0,
     partnerName: row.partners?.name ?? "—",
     incomingLabel,
     outgoingLabel,
+    eladasi_ar: row.eladasi_ar ?? 0,
+    profit: row.profit ?? 0,
   };
 }
 
-export async function fetchUninvoicedExchanges(limit = 5): Promise<UninvoicedExchangeSummary> {
-  const base = applyCompletedQuickExchangeFilters(
-    supabase.from("exchanges").select(UNINVOICED_SELECT).eq("invoiced", false),
-  );
+function groupUninvoicedRows(
+  rows: ReturnType<typeof mapUninvoicedRow>[],
+): UninvoicedExchange[] {
+  const groups = new Map<string, UninvoicedExchange>();
+  for (const row of rows) {
+    const key = row.batchId ?? row.exchangeId;
+    const existing = groups.get(key);
+    if (!existing) {
+      groups.set(key, {
+        id: key,
+        batchId: row.batchId,
+        exchangeIds: [row.exchangeId],
+        created_at: row.created_at,
+        eladasi_ar: row.eladasi_ar,
+        profit: row.profit,
+        partnerName: row.partnerName,
+        incomingLabel: row.incomingLabel,
+        outgoingLabel: row.outgoingLabel,
+        items: [
+          {
+            exchangeId: row.exchangeId,
+            incomingLabel: row.incomingLabel,
+            outgoingLabel: row.outgoingLabel,
+            eladasi_ar: row.eladasi_ar,
+            profit: row.profit,
+          },
+        ],
+        pairCount: 1,
+      });
+      continue;
+    }
+    existing.exchangeIds.push(row.exchangeId);
+    existing.eladasi_ar += row.eladasi_ar;
+    existing.profit += row.profit;
+    existing.items.push({
+      exchangeId: row.exchangeId,
+      incomingLabel: row.incomingLabel,
+      outgoingLabel: row.outgoingLabel,
+      eladasi_ar: row.eladasi_ar,
+      profit: row.profit,
+    });
+    existing.pairCount = existing.items.length;
+    if (row.created_at > existing.created_at) existing.created_at = row.created_at;
+  }
+  return [...groups.values()].sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
 
+export async function fetchUninvoicedExchanges(limit = 5): Promise<UninvoicedExchangeSummary> {
   const [allRes, recentRes] = await Promise.all([
     applyCompletedQuickExchangeFilters(
-      supabase.from("exchanges").select("eladasi_ar").eq("invoiced", false),
+      supabase.from("exchanges").select("id, batch_id, eladasi_ar").eq("invoiced", false),
     ),
-    base.order("created_at", { ascending: false }).limit(limit),
+    applyCompletedQuickExchangeFilters(
+      supabase.from("exchanges").select(UNINVOICED_SELECT).eq("invoiced", false),
+    )
+      .order("created_at", { ascending: false })
+      .limit(Math.max(limit * 20, 40)),
   ]);
 
   if (allRes.error) throw new Error(formatSupabaseError(allRes.error, "Számlázatlan cserék száma"));
   if (recentRes.error)
     throw new Error(formatSupabaseError(recentRes.error, "Számlázatlan cserék listája"));
 
-  const rows = allRes.data ?? [];
-  const totalSaleValue = rows.reduce((s, r) => s + (r.eladasi_ar ?? 0), 0);
+  const allRows = allRes.data ?? [];
+  const totalSaleValue = allRows.reduce((s, r) => s + (r.eladasi_ar ?? 0), 0);
+  const allGroupKeys = new Set(
+    allRows.map((r) => (r as { batch_id?: string | null }).batch_id ?? r.id),
+  );
+
+  const mapped = (recentRes.data ?? []).map((row) =>
+    mapUninvoicedRow(
+      row as {
+        id: string;
+        batch_id?: string | null;
+        created_at: string;
+        eladasi_ar: number | null;
+        profit: number | null;
+        operation_type?: string | null;
+        note?: string | null;
+        partners: { name: string } | null;
+        incoming: CylinderRef;
+        outgoing: CylinderRef;
+      },
+    ),
+  );
+  const grouped = groupUninvoicedRows(mapped);
 
   return {
-    count: rows.length,
+    count: allGroupKeys.size,
     totalSaleValue,
-    recent: (recentRes.data ?? []).map((row) =>
-      mapUninvoicedRow(
-        row as {
-          id: string;
-          created_at: string;
-          eladasi_ar: number | null;
-          profit: number | null;
-          partners: { name: string } | null;
-          incoming: CylinderRef;
-          outgoing: CylinderRef;
-        },
-      ),
-    ),
+    recent: grouped.slice(0, limit),
   };
 }
 
@@ -183,6 +255,30 @@ export async function markExchangeInvoiced(exchangeId: string): Promise<void> {
     .eq("id", exchangeId)
     .eq("invoiced", false);
 
+  if (error) throw new Error(formatSupabaseError(error, "Kiszámlázás rögzítése"));
+}
+
+export async function markUninvoicedGroupInvoiced(group: {
+  batchId: string | null;
+  exchangeIds: string[];
+}): Promise<void> {
+  if (group.batchId) {
+    const { error } = await supabase.rpc("mark_exchange_batch_invoiced", {
+      p_batch_id: group.batchId,
+    });
+    if (error) throw new Error(formatSupabaseError(error, "Batch kiszámlázás rögzítése"));
+    return;
+  }
+  if (group.exchangeIds.length === 0) return;
+  if (group.exchangeIds.length === 1) {
+    await markExchangeInvoiced(group.exchangeIds[0]);
+    return;
+  }
+  const { error } = await supabase
+    .from("exchanges")
+    .update({ invoiced: true, invoiced_at: new Date().toISOString() })
+    .in("id", group.exchangeIds)
+    .eq("invoiced", false);
   if (error) throw new Error(formatSupabaseError(error, "Kiszámlázás rögzítése"));
 }
 

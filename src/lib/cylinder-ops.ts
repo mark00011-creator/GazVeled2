@@ -244,6 +244,7 @@ export async function recordExchange(args: {
   note?: string | null;
   rental_id?: string | null;
   reassign_rental?: boolean;
+  batch_id?: string | null;
 }): Promise<string> {
   const { data, error } = await supabase.rpc("record_exchange", {
     p_partner_id: args.partner_id,
@@ -253,6 +254,7 @@ export async function recordExchange(args: {
     p_note: args.note ?? undefined,
     p_rental_id: args.rental_id ?? undefined,
     p_reassign_rental: args.reassign_rental ?? false,
+    p_batch_id: args.batch_id ?? undefined,
   });
 
   if (error) throw new Error(parseDbError(error.message));

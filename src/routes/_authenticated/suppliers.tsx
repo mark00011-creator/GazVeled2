@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Camera, Check, Plus, X } from "lucide-react";
 import { toast } from "sonner";
-import { circulationLabels, fmtDateTime, locationLabels } from "@/lib/labels";
+import { circulationLabels, fmtDateTime, locationLabels, manufacturerLabels, type Manufacturer } from "@/lib/labels";
 import {
   normalizeBarcode,
   resolveCylinderForSupplierReceive,
@@ -126,6 +126,40 @@ function Suppliers() {
     queryFn: async () =>
       (await supabase.from("supplier_exchanges").select("*, suppliers(name,kind)").order("created_at", { ascending: false }).limit(20))
         .data ?? [],
+  });
+
+  const historyCylinderIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const h of history ?? []) {
+      for (const id of h.returned_cylinder_ids ?? []) ids.add(id);
+      for (const id of h.received_cylinder_ids ?? []) ids.add(id);
+    }
+    return [...ids];
+  }, [history]);
+
+  const { data: historyCylinders } = useQuery({
+    queryKey: ["supex-cylinders", historyCylinderIds],
+    enabled: historyCylinderIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("cylinders")
+        .select("id, barcode, gas_type, size, manufacturer, circulation")
+        .in("id", historyCylinderIds);
+      if (error) throw error;
+      const map = new Map<
+        string,
+        {
+          id: string;
+          barcode: string;
+          gas_type: string;
+          size: string;
+          manufacturer: string | null;
+          circulation: string;
+        }
+      >();
+      for (const row of data ?? []) map.set(row.id, row);
+      return map;
+    },
   });
 
   useRouteScrollOnly(historyFetched || historyError);
@@ -458,19 +492,65 @@ function Suppliers() {
 
       <h2 className="mt-6 mb-2 text-sm font-semibold">Előzmények</h2>
       <div className="space-y-2">
-        {(history ?? []).map((h) => (
-          <Card key={h.id} className="p-3">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold">{(h as { suppliers?: { name: string } }).suppliers?.name ?? "—"}</div>
-              <div className="text-xs text-muted-foreground">{fmtDateTime(h.created_at)}</div>
-            </div>
-            <div className="mt-1 flex gap-2 text-xs">
-              <Badge variant="secondary">↩ {h.returned_cylinder_ids.length} üres</Badge>
-              <Badge variant="secondary">↪ {h.received_cylinder_ids.length} teli</Badge>
-            </div>
-            {h.note && <div className="mt-1 text-xs text-muted-foreground">{h.note}</div>}
-          </Card>
-        ))}
+        {(history ?? []).map((h) => {
+          const returnedDetails = (h.returned_cylinder_ids ?? [])
+            .map((id) => historyCylinders?.get(id))
+            .filter(Boolean);
+          const receivedDetails = (h.received_cylinder_ids ?? [])
+            .map((id) => historyCylinders?.get(id))
+            .filter(Boolean);
+          return (
+            <Card key={h.id} className="p-3">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold">
+                  {(h as { suppliers?: { name: string } }).suppliers?.name ?? "—"}
+                </div>
+                <div className="text-xs text-muted-foreground">{fmtDateTime(h.created_at)}</div>
+              </div>
+              <div className="mt-1 flex gap-2 text-xs">
+                <Badge variant="secondary">↩ {h.returned_cylinder_ids.length} üres</Badge>
+                <Badge variant="secondary">↪ {h.received_cylinder_ids.length} teli</Badge>
+              </div>
+              {returnedDetails.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  <div className="text-[11px] font-medium text-muted-foreground">Üres átadott</div>
+                  {returnedDetails.map((c) => (
+                    <div key={c!.id} className="rounded-md bg-muted/40 px-2 py-1 text-[11px]">
+                      <span className="font-mono font-semibold">{c!.barcode}</span>
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · {manufacturerLabels[(c!.manufacturer as Manufacturer) ?? "other"] ?? c!.manufacturer}
+                        {" "}
+                        · {c!.gas_type} · {c!.size}
+                        {" "}
+                        · {circulationLabels[(c!.circulation as keyof typeof circulationLabels) ?? "own"] ?? c!.circulation}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {receivedDetails.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  <div className="text-[11px] font-medium text-muted-foreground">Teli átvett</div>
+                  {receivedDetails.map((c) => (
+                    <div key={c!.id} className="rounded-md bg-muted/40 px-2 py-1 text-[11px]">
+                      <span className="font-mono font-semibold">{c!.barcode}</span>
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · {manufacturerLabels[(c!.manufacturer as Manufacturer) ?? "other"] ?? c!.manufacturer}
+                        {" "}
+                        · {c!.gas_type} · {c!.size}
+                        {" "}
+                        · {circulationLabels[(c!.circulation as keyof typeof circulationLabels) ?? "own"] ?? c!.circulation}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {h.note && <div className="mt-1 text-xs text-muted-foreground">{h.note}</div>}
+            </Card>
+          );
+        })}
       </div>
     </AppShell>
   );

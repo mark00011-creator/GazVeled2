@@ -7,7 +7,7 @@ import { fmtDateTime } from "@/lib/labels";
 import {
   fetchUninvoicedExchanges,
   formatProfit,
-  markExchangeInvoiced,
+  markUninvoicedGroupInvoiced,
   type UninvoicedExchangeSummary,
 } from "@/lib/dashboard-stats";
 
@@ -20,16 +20,16 @@ export function UninvoicedExchangesCard() {
   });
 
   const markInvoiced = useMutation({
-    mutationFn: markExchangeInvoiced,
-    onMutate: async (exchangeId) => {
+    mutationFn: markUninvoicedGroupInvoiced,
+    onMutate: async (group) => {
       await qc.cancelQueries({ queryKey: ["uninvoiced-exchanges"] });
       const prev = qc.getQueryData<UninvoicedExchangeSummary>(["uninvoiced-exchanges"]);
       if (prev) {
-        const removed = prev.recent.find((r) => r.id === exchangeId);
+        const removed = prev.recent.find((r) => r.id === (group.batchId ?? group.exchangeIds[0]));
         qc.setQueryData<UninvoicedExchangeSummary>(["uninvoiced-exchanges"], {
-          count: Math.max(0, prev.count - 1),
+          count: Math.max(0, prev.count - (removed ? 1 : 0)),
           totalSaleValue: Math.max(0, prev.totalSaleValue - (removed?.eladasi_ar ?? 0)),
-          recent: prev.recent.filter((r) => r.id !== exchangeId),
+          recent: prev.recent.filter((r) => r.id !== (group.batchId ?? group.exchangeIds[0])),
         });
       }
       return { prev };
@@ -74,14 +74,21 @@ export function UninvoicedExchangesCard() {
               <span className="font-semibold">{row.partnerName}</span>
             </div>
             <div className="space-y-1 text-xs">
-              <div>
-                <span className="text-muted-foreground">Átadott: </span>
-                <span className="font-mono">{row.outgoingLabel}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Átvett: </span>
-                <span className="font-mono">{row.incomingLabel}</span>
-              </div>
+              {row.items.map((item) => (
+                <div key={item.exchangeId} className="rounded-md bg-background/40 px-2 py-1.5">
+                  <div>
+                    <span className="text-muted-foreground">Átadott: </span>
+                    <span className="font-mono">{item.outgoingLabel}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Átvett: </span>
+                    <span className="font-mono">{item.incomingLabel}</span>
+                  </div>
+                </div>
+              ))}
+              {row.pairCount > 1 && (
+                <div className="pt-1 text-muted-foreground">{row.pairCount} tétel egy emlékeztetőben</div>
+              )}
               <div className="flex justify-between gap-2 pt-1">
                 <span>
                   Eladási ár: <span className="font-medium">{formatProfit(row.eladasi_ar)}</span>
@@ -96,7 +103,12 @@ export function UninvoicedExchangesCard() {
               variant="outline"
               className="mt-2 w-full"
               disabled={markInvoiced.isPending}
-              onClick={() => markInvoiced.mutate(row.id)}
+              onClick={() =>
+                markInvoiced.mutate({
+                  batchId: row.batchId,
+                  exchangeIds: row.exchangeIds,
+                })
+              }
             >
               Kiszámlázva
             </Button>

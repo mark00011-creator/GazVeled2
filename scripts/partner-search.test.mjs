@@ -44,6 +44,26 @@ test("quick exchange uses shared PartnerSelector", () => {
   assert.match(selector, /filterPartners/);
 });
 
+test("mobile partner drawer pins search above keyboard via visualViewport", () => {
+  const selector = fs.readFileSync(path.join(root, "src/components/PartnerSelector.tsx"), "utf8");
+  assert.match(selector, /visualViewport/);
+  assert.match(selector, /repositionInputs=\{false\}/);
+  assert.match(selector, /stickySearch/);
+  assert.match(selector, /overflow-hidden/);
+  assert.match(selector, /overflow-y-auto/);
+});
+
+test("successful quick exchange clears partner via resetWorkflow", () => {
+  const quick = fs.readFileSync(path.join(root, "src/routes/_authenticated/quick-exchange.tsx"), "utf8");
+  assert.match(quick, /markCompleted\(\);\s*resetWorkflow\(\);/s);
+  assert.match(quick, /setPartnerId\(""\)/);
+  assert.match(quick, /function discardDraft\(\)[\s\S]*resetWorkflow\(\)/);
+  assert.doesNotMatch(
+    quick,
+    /markCompleted\(\);\s*resetCylinders\(\);\s*setNote\(""\);/,
+  );
+});
+
 test("partner search filters from one character with substring match", () => {
   const byA = filterPartners(samplePartners, "a");
   assert.ok(byA.some((p) => p.name.includes("ATIS")));
