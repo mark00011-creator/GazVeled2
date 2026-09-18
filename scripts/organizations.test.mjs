@@ -85,3 +85,27 @@ test("org tax helpers and UI wiring", () => {
   assert.match(updateSql, /update_supply_product/);
   assert.match(updateSql, /org_effective_vat_rate/);
 });
+
+test("platform organizations migration and UI", () => {
+  const sql = fs.readFileSync(
+    path.join(root, "supabase/migrations/20260918150000_platform_organizations.sql"),
+    "utf8",
+  );
+  const page = fs.readFileSync(
+    path.join(root, "src/routes/_authenticated/platform-organizations.tsx"),
+    "utf8",
+  );
+  const more = fs.readFileSync(path.join(root, "src/routes/_authenticated/more.tsx"), "utf8");
+  const auth = fs.readFileSync(path.join(root, "src/lib/auth.ts"), "utf8");
+  assert.match(sql, /is_platform_admin/);
+  assert.match(sql, /create_organization/);
+  assert.match(sql, /platform_set_active_organization/);
+  assert.match(sql, /platform_list_organizations/);
+  assert.match(sql, /minta-gaztelep/);
+  assert.match(page, /Cégek \(platform\)/);
+  assert.match(page, /platform_set_active_organization/);
+  assert.match(more, /platform-organizations/);
+  assert.match(more, /platformOnly/);
+  assert.match(auth, /is_platform_admin/);
+  assert.match(auth, /isPlatformAdmin/);
+});

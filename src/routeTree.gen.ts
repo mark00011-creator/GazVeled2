@@ -23,6 +23,7 @@ import { Route as AuthenticatedQuotesRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedQuickExchangeRouteImport } from './routes/_authenticated/quick-exchange'
 import { Route as AuthenticatedPrimaPbStockRouteImport } from './routes/_authenticated/prima-pb-stock'
 import { Route as AuthenticatedPriceListRouteImport } from './routes/_authenticated/price-list'
+import { Route as AuthenticatedPlatformOrganizationsRouteImport } from './routes/_authenticated/platform-organizations'
 import { Route as AuthenticatedPartnersRouteImport } from './routes/_authenticated/partners'
 import { Route as AuthenticatedOrganizationSettingsRouteImport } from './routes/_authenticated/organization-settings'
 import { Route as AuthenticatedMoreRouteImport } from './routes/_authenticated/more'
@@ -116,6 +117,12 @@ const AuthenticatedPriceListRoute = AuthenticatedPriceListRouteImport.update({
   path: '/price-list',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedPlatformOrganizationsRoute =
+  AuthenticatedPlatformOrganizationsRouteImport.update({
+    id: '/platform-organizations',
+    path: '/platform-organizations',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedPartnersRoute = AuthenticatedPartnersRouteImport.update({
   id: '/partners',
   path: '/partners',
@@ -239,6 +246,7 @@ export interface FileRoutesByFullPath {
   '/more': typeof AuthenticatedMoreRoute
   '/organization-settings': typeof AuthenticatedOrganizationSettingsRoute
   '/partners': typeof AuthenticatedPartnersRouteWithChildren
+  '/platform-organizations': typeof AuthenticatedPlatformOrganizationsRoute
   '/price-list': typeof AuthenticatedPriceListRoute
   '/prima-pb-stock': typeof AuthenticatedPrimaPbStockRoute
   '/quick-exchange': typeof AuthenticatedQuickExchangeRoute
@@ -272,6 +280,7 @@ export interface FileRoutesByTo {
   '/loaned-cylinders': typeof AuthenticatedLoanedCylindersRoute
   '/more': typeof AuthenticatedMoreRoute
   '/organization-settings': typeof AuthenticatedOrganizationSettingsRoute
+  '/platform-organizations': typeof AuthenticatedPlatformOrganizationsRoute
   '/price-list': typeof AuthenticatedPriceListRoute
   '/prima-pb-stock': typeof AuthenticatedPrimaPbStockRoute
   '/quick-exchange': typeof AuthenticatedQuickExchangeRoute
@@ -307,6 +316,7 @@ export interface FileRoutesById {
   '/_authenticated/more': typeof AuthenticatedMoreRoute
   '/_authenticated/organization-settings': typeof AuthenticatedOrganizationSettingsRoute
   '/_authenticated/partners': typeof AuthenticatedPartnersRouteWithChildren
+  '/_authenticated/platform-organizations': typeof AuthenticatedPlatformOrganizationsRoute
   '/_authenticated/price-list': typeof AuthenticatedPriceListRoute
   '/_authenticated/prima-pb-stock': typeof AuthenticatedPrimaPbStockRoute
   '/_authenticated/quick-exchange': typeof AuthenticatedQuickExchangeRoute
@@ -343,6 +353,7 @@ export interface FileRouteTypes {
     | '/more'
     | '/organization-settings'
     | '/partners'
+    | '/platform-organizations'
     | '/price-list'
     | '/prima-pb-stock'
     | '/quick-exchange'
@@ -376,6 +387,7 @@ export interface FileRouteTypes {
     | '/loaned-cylinders'
     | '/more'
     | '/organization-settings'
+    | '/platform-organizations'
     | '/price-list'
     | '/prima-pb-stock'
     | '/quick-exchange'
@@ -410,6 +422,7 @@ export interface FileRouteTypes {
     | '/_authenticated/more'
     | '/_authenticated/organization-settings'
     | '/_authenticated/partners'
+    | '/_authenticated/platform-organizations'
     | '/_authenticated/price-list'
     | '/_authenticated/prima-pb-stock'
     | '/_authenticated/quick-exchange'
@@ -534,6 +547,13 @@ declare module '@tanstack/react-router' {
       path: '/price-list'
       fullPath: '/price-list'
       preLoaderRoute: typeof AuthenticatedPriceListRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/platform-organizations': {
+      id: '/_authenticated/platform-organizations'
+      path: '/platform-organizations'
+      fullPath: '/platform-organizations'
+      preLoaderRoute: typeof AuthenticatedPlatformOrganizationsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/partners': {
@@ -741,6 +761,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedMoreRoute: typeof AuthenticatedMoreRoute
   AuthenticatedOrganizationSettingsRoute: typeof AuthenticatedOrganizationSettingsRoute
   AuthenticatedPartnersRoute: typeof AuthenticatedPartnersRouteWithChildren
+  AuthenticatedPlatformOrganizationsRoute: typeof AuthenticatedPlatformOrganizationsRoute
   AuthenticatedPriceListRoute: typeof AuthenticatedPriceListRoute
   AuthenticatedPrimaPbStockRoute: typeof AuthenticatedPrimaPbStockRoute
   AuthenticatedQuickExchangeRoute: typeof AuthenticatedQuickExchangeRoute
@@ -767,6 +788,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedOrganizationSettingsRoute:
     AuthenticatedOrganizationSettingsRoute,
   AuthenticatedPartnersRoute: AuthenticatedPartnersRouteWithChildren,
+  AuthenticatedPlatformOrganizationsRoute:
+    AuthenticatedPlatformOrganizationsRoute,
   AuthenticatedPriceListRoute: AuthenticatedPriceListRoute,
   AuthenticatedPrimaPbStockRoute: AuthenticatedPrimaPbStockRoute,
   AuthenticatedQuickExchangeRoute: AuthenticatedQuickExchangeRoute,

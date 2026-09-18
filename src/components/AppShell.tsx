@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { signOut, useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
+import { GAZ_VEELED_ORG_ID } from "@/lib/organization";
 
 const tabs = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Áttekintés" },
@@ -46,6 +47,19 @@ function BrandMark() {
   );
 }
 
+function OrgContextBanner() {
+  const { organization, isPlatformAdmin } = useAuth();
+  if (!isPlatformAdmin || !organization || organization.id === GAZ_VEELED_ORG_ID) return null;
+  return (
+    <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-1.5 text-center text-[11px] text-amber-900 dark:text-amber-200">
+      Bemutató nézet: <strong>{organization.name}</strong> — a Gáz Veled adatok nem látszanak.{" "}
+      <Link to="/platform-organizations" className="underline">
+        Vissza a céglistához
+      </Link>
+    </div>
+  );
+}
+
 export function AppShell({
   children,
   title,
@@ -72,6 +86,7 @@ export function AppShell({
           </Button>
         </div>
       </header>
+      <OrgContextBanner />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-4">{children}</main>
       <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur">
         <ul className="mx-auto flex max-w-3xl">

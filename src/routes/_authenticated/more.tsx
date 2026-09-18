@@ -29,6 +29,7 @@ type MoreItem = {
   icon: typeof Package;
   label: string;
   desc: string;
+  platformOnly?: boolean;
   module?:
     | "flaga_pb"
     | "prima_pb"
@@ -41,6 +42,13 @@ type MoreItem = {
 };
 
 const adminItems: MoreItem[] = [
+  {
+    to: "/platform-organizations",
+    icon: Building2,
+    label: "Cégek (platform)",
+    desc: "Új ügyfélcég, bemutató váltás Gáz Veled ↔ Minta",
+    platformOnly: true,
+  },
   {
     to: "/organization-settings",
     icon: Building2,
@@ -187,11 +195,12 @@ function MoreLink({
 }
 
 function More() {
-  const { orgSettings } = useAuth();
+  const { orgSettings, isPlatformAdmin } = useAuth();
 
-  const visibleAdmin = adminItems.filter(
-    (it) => !it.module || isModuleEnabled(orgSettings, it.module),
-  );
+  const visibleAdmin = adminItems.filter((it) => {
+    if (it.platformOnly && !isPlatformAdmin) return false;
+    return !it.module || isModuleEnabled(orgSettings, it.module);
+  });
   const visibleItems = items.filter((it) => !it.module || isModuleEnabled(orgSettings, it.module));
 
   return (

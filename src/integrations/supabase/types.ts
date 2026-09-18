@@ -1234,6 +1234,7 @@ export type Database = {
           id: string
           is_active: boolean
           organization_id: string | null
+          is_platform_admin: boolean
           role: string
           updated_at: string
         }
@@ -1244,6 +1245,7 @@ export type Database = {
           id: string
           is_active?: boolean
           organization_id?: string | null
+          is_platform_admin?: boolean
           role?: string
           updated_at?: string
         }
@@ -1254,6 +1256,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           organization_id?: string | null
+          is_platform_admin?: boolean
           role?: string
           updated_at?: string
         }
@@ -1919,6 +1922,38 @@ export type Database = {
           p_role?: string
         }
         Returns: string
+      }
+      create_organization: {
+        Args: {
+          p_name: string
+          p_slug: string
+          p_admin_email?: string | null
+          p_logo_url?: string | null
+          p_tax_regime?: string
+          p_vat_rate?: number
+        }
+        Returns: string
+      }
+      platform_list_organizations: {
+        Args: Record<string, never>
+        Returns: {
+          id: string
+          name: string
+          slug: string
+          logo_url: string | null
+          is_active: boolean
+          tax_regime: string
+          member_count: number
+          created_at: string
+        }[]
+      }
+      platform_set_active_organization: {
+        Args: { p_organization_id: string }
+        Returns: undefined
+      }
+      is_platform_admin: {
+        Args: Record<string, never>
+        Returns: boolean
       }
       adjust_chinese_stock: {
         Args: {

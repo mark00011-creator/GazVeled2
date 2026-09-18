@@ -24,6 +24,7 @@ export type UserProfile = {
   full_name: string | null;
   is_active: boolean;
   organization_id: string | null;
+  is_platform_admin: boolean;
 };
 
 async function fetchOrganization(orgId: string): Promise<Organization | null> {
@@ -63,7 +64,7 @@ async function fetchProfile(userId: string): Promise<{
 }> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("role, email, full_name, is_active, organization_id")
+    .select("role, email, full_name, is_active, organization_id, is_platform_admin")
     .eq("id", userId)
     .maybeSingle();
 
@@ -88,6 +89,7 @@ async function fetchProfile(userId: string): Promise<{
     full_name: data.full_name,
     is_active: data.is_active ?? true,
     organization_id: data.organization_id,
+    is_platform_admin: data.is_platform_admin === true,
   };
 
   if (data.is_active === false) {
@@ -219,6 +221,7 @@ export function useAuth() {
     loading,
     role: profile?.role ?? null,
     isAdmin: isAdminRole(profile?.role),
+    isPlatformAdmin: profile?.is_platform_admin === true,
     isExchangeOperator: isExchangeOperatorRole(profile?.role),
     canAccessApp: canAccessApp(profile?.role) && !!organization && denialReason === null,
   };

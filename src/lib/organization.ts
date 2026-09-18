@@ -1,5 +1,7 @@
 /** Cég (tenant) beállítások – egy app, cégenkénti modulok/branding. */
 
+export const DEMO_ORG_ID = "a0000000-0000-4000-8000-000000000002";
+
 export const GAZ_VEELED_ORG_ID = "a0000000-0000-4000-8000-000000000001";
 
 export type OrganizationModules = {
