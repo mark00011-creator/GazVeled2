@@ -26,6 +26,7 @@ import {
   type InventoryPlace,
 } from "@/lib/inventory";
 import { registerInventoryCylinders, type InventoryRegisterResult } from "@/lib/cylinder-ops";
+import { usePersistedFormState } from "@/hooks/use-persisted-form-state";
 
 export const Route = createFileRoute("/_authenticated/inventory")({
   head: () => ({ meta: [{ title: "Leltár – Gáz Veled" }] }),
@@ -52,15 +53,31 @@ const DEFAULTS: SharedDefaults = {
   supplierId: "",
 };
 
+type InventoryForm = {
+  tab: string;
+  singleBarcode: string;
+  shared: SharedDefaults;
+  bulkText: string;
+};
+
+const INVENTORY_FORM_DEFAULTS: InventoryForm = {
+  tab: "single",
+  singleBarcode: "",
+  shared: DEFAULTS,
+  bulkText: "",
+};
+
 function Inventory() {
   const qc = useQueryClient();
-  const [tab, setTab] = useState("single");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<InventoryRegisterResult | null>(null);
-
-  const [singleBarcode, setSingleBarcode] = useState("");
-  const [shared, setShared] = useState<SharedDefaults>(DEFAULTS);
-  const [bulkText, setBulkText] = useState("");
+  const { state: form, patch, setState } = usePersistedFormState(INVENTORY_FORM_DEFAULTS, {
+    formKey: "register",
+  });
+  const { tab, singleBarcode, shared, bulkText } = form;
+  const setTab = (value: string) => patch({ tab: value });
+  const setSingleBarcode = (value: string) => patch({ singleBarcode: value });
+  const setBulkText = (value: string) => patch({ bulkText: value });
 
   const { data: partners } = useQuery({
     queryKey: ["partners-min"],
@@ -77,7 +94,7 @@ function Inventory() {
   const bulkCount = useMemo(() => parseBulkBarcodes(bulkText).length, [bulkText]);
 
   function updateShared<K extends keyof SharedDefaults>(key: K, value: SharedDefaults[K]) {
-    setShared((prev) => ({ ...prev, [key]: value }));
+    setState((prev) => ({ ...prev, shared: { ...prev.shared, [key]: value } }));
   }
 
   function entryFromShared(barcode: string): InventoryEntry {

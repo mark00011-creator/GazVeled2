@@ -1,22 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 
 import { useMemo, useState } from "react";
-
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-
 import { supabase } from "@/integrations/supabase/client";
-
 import { AppShell } from "@/components/AppShell";
-
 import { Card } from "@/components/ui/card";
-
 import { Badge } from "@/components/ui/badge";
-
 import { Button } from "@/components/ui/button";
-
 import { Input } from "@/components/ui/input";
-
 import { Label } from "@/components/ui/label";
+import { usePersistedFormState } from "@/hooks/use-persisted-form-state";
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -108,25 +101,22 @@ function PartnerDetail() {
 
   const qc = useQueryClient();
 
-  const [editOpen, setEditOpen] = useState(false);
-
-  const [editForm, setEditForm] = useState({
-
-    name: "",
-
-    company_name: "",
-
-    tax_number: "",
-
-    phone: "",
-
-    email: "",
-
-    address: "",
-
-    note: "",
-
-  });
+  const { state: editForm, setState: setEditForm, reset: resetEditForm, patch: patchEdit } =
+    usePersistedFormState(
+      {
+        name: "",
+        company_name: "",
+        tax_number: "",
+        phone: "",
+        email: "",
+        address: "",
+        note: "",
+        open: false,
+      },
+      { formKey: "edit" },
+    );
+  const editOpen = editForm.open;
+  const setEditOpen = (open: boolean) => patchEdit({ open });
 
   const [saving, setSaving] = useState(false);
 
@@ -312,29 +302,17 @@ function PartnerDetail() {
 
 
   function openEdit() {
-
     if (!partner) return;
-
     setEditForm({
-
       name: partner.name,
-
       company_name: partner.company_name ?? "",
-
       tax_number: partner.tax_number ?? "",
-
       phone: partner.phone ?? "",
-
       email: partner.email ?? "",
-
       address: partner.address ?? "",
-
       note: partner.note ?? "",
-
+      open: true,
     });
-
-    setEditOpen(true);
-
   }
 
 
@@ -389,7 +367,7 @@ function PartnerDetail() {
 
     toast.success("Partner mentve");
 
-    setEditOpen(false);
+    resetEditForm();
 
     qc.invalidateQueries({ queryKey: ["partner", id] });
 
@@ -523,7 +501,13 @@ function PartnerDetail() {
 
 
 
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+      <Dialog
+        open={editOpen}
+        onOpenChange={(o) => {
+          if (!o) resetEditForm();
+          else setEditOpen(true);
+        }}
+      >
 
         <DialogContent className="max-h-[90vh] overflow-y-auto">
 

@@ -49,6 +49,7 @@ import {
 } from "@/lib/gas-orders";
 import { fmtDate } from "@/lib/labels";
 import { useEffect, useMemo, useState } from "react";
+import { usePersistedFormState } from "@/hooks/use-persisted-form-state";
 
 export const Route = createFileRoute("/_authenticated/gas-order")({
   head: () => ({ meta: [{ title: "Gáz rendelés – Gáz Veled" }] }),
@@ -105,7 +106,12 @@ function CylinderList({ title, cylinders }: { title: string; cylinders: Orderabl
 function GasOrderPage() {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [orderBusy, setOrderBusy] = useState(false);
-  const [qtySelection, setQtySelection] = useState<QuantitySelectionState>({});
+  const { state: qtyForm, setState: setQtyForm } = usePersistedFormState<{
+    qtySelection: QuantitySelectionState;
+  }>({ qtySelection: {} }, { formKey: "qty" });
+  const qtySelection = qtyForm.qtySelection;
+  const setQtySelection = (next: QuantitySelectionState) =>
+    setQtyForm({ qtySelection: next });
   const qc = useQueryClient();
 
   const { data, isLoading, isError } = useQuery({
@@ -119,8 +125,15 @@ function GasOrderPage() {
   });
 
   useEffect(() => {
-    setQtySelection(initQuantitySelection(chineseLines));
-  }, [chineseLines]);
+    setQtyForm((prev) => {
+      const fresh = initQuantitySelection(chineseLines);
+      const merged: QuantitySelectionState = { ...fresh };
+      for (const [key, value] of Object.entries(prev.qtySelection)) {
+        if (key in merged) merged[key] = value;
+      }
+      return { qtySelection: merged };
+    });
+  }, [chineseLines, setQtyForm]);
 
   const selectedQuantityLines = useMemo(
     () => toSelectedQuantityLines(chineseLines, qtySelection),

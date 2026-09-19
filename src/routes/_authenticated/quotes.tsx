@@ -36,25 +36,69 @@ import {
 } from "@/lib/quotes";
 import { fmtDate } from "@/lib/labels";
 import { useRouteScrollOnly } from "@/hooks/use-route-state-persistence";
+import { usePersistedFormState } from "@/hooks/use-persisted-form-state";
 
 export const Route = createFileRoute("/_authenticated/quotes")({
   head: () => ({ meta: [{ title: "Árajánlat – Gáz Veled" }] }),
   component: QuotesPage,
 });
 
+type QuoteEditorForm = {
+  view: "list" | "edit";
+  editingId: string | null;
+  partnerId: string;
+  quoteNumber: string;
+  quoteDate: string;
+  note: string;
+  items: QuoteItemDraft[];
+  gasType: string;
+  size: string;
+  quantity: string;
+  discount: string;
+};
+
+const EDITOR_DEFAULTS: QuoteEditorForm = {
+  view: "list",
+  editingId: null,
+  partnerId: "",
+  quoteNumber: "",
+  quoteDate: new Date().toISOString().slice(0, 10),
+  note: "",
+  items: [],
+  gasType: "Argon",
+  size: "20 L",
+  quantity: "1",
+  discount: "0",
+};
+
 function QuotesPage() {
   const qc = useQueryClient();
-  const [view, setView] = useState<"list" | "edit">("list");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [partnerId, setPartnerId] = useState("");
-  const [quoteNumber, setQuoteNumber] = useState("");
-  const [quoteDate, setQuoteDate] = useState(new Date().toISOString().slice(0, 10));
-  const [note, setNote] = useState("");
-  const [items, setItems] = useState<QuoteItemDraft[]>([]);
-  const [gasType, setGasType] = useState("Argon");
-  const [size, setSize] = useState("20 L");
-  const [quantity, setQuantity] = useState("1");
-  const [discount, setDiscount] = useState<string>("0");
+  const { state: editor, patch, setState, reset: resetPersisted } = usePersistedFormState(
+    EDITOR_DEFAULTS,
+    { formKey: "editor" },
+  );
+  const {
+    view,
+    editingId,
+    partnerId,
+    quoteNumber,
+    quoteDate,
+    note,
+    items,
+    gasType,
+    size,
+    quantity,
+    discount,
+  } = editor;
+  const setView = (v: "list" | "edit") => patch({ view: v });
+  const setPartnerId = (v: string) => patch({ partnerId: v });
+  const setQuoteNumber = (v: string) => patch({ quoteNumber: v });
+  const setQuoteDate = (v: string) => patch({ quoteDate: v });
+  const setNote = (v: string) => patch({ note: v });
+  const setGasType = (v: string) => patch({ gasType: v });
+  const setSize = (v: string) => patch({ size: v });
+  const setQuantity = (v: string) => patch({ quantity: v });
+  const setDiscount = (v: string) => patch({ discount: v });
   const [busy, setBusy] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [belowCostWarnings, setBelowCostWarnings] = useState<string[]>([]);
@@ -79,33 +123,30 @@ function QuotesPage() {
     queryFn: () => fetchProductPrices(true),
   });
 
-  function resetEditor() {
-    setEditingId(null);
-    setPartnerId("");
-    setQuoteNumber(nextQuoteNumber(quotes));
-    setQuoteDate(new Date().toISOString().slice(0, 10));
-    setNote("");
-    setItems([]);
-    setBelowCostWarnings([]);
-  }
-
   function startNew() {
-    resetEditor();
-    setQuoteNumber(nextQuoteNumber(quotes));
-    setView("edit");
+    setBelowCostWarnings([]);
+    setState({
+      ...EDITOR_DEFAULTS,
+      view: "edit",
+      quoteNumber: nextQuoteNumber(quotes),
+      quoteDate: new Date().toISOString().slice(0, 10),
+    });
   }
 
   async function startEdit(id: string) {
     setBusy(true);
     try {
       const { quote, items: rows } = await fetchQuote(id);
-      setEditingId(quote.id);
-      setPartnerId(quote.partner_id);
-      setQuoteNumber(quote.quote_number);
-      setQuoteDate(quote.quote_date);
-      setNote(quote.note ?? "");
-      setItems(
-        rows.map((r) => ({
+      setBelowCostWarnings([]);
+      setState({
+        ...EDITOR_DEFAULTS,
+        view: "edit",
+        editingId: quote.id,
+        partnerId: quote.partner_id,
+        quoteNumber: quote.quote_number,
+        quoteDate: quote.quote_date,
+        note: quote.note ?? "",
+        items: rows.map((r) => ({
           gas_type: r.gas_type,
           size: r.size,
           quantity: r.quantity,
@@ -114,8 +155,7 @@ function QuotesPage() {
           unit_price: r.unit_price,
           is_custom_price: r.is_custom_price,
         })),
-      );
-      setView("edit");
+      });
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -135,20 +175,22 @@ function QuotesPage() {
       toast.error("Nincs eladási ár az árlistában ehhez a termékhez");
       return;
     }
-    setItems((prev) => [...prev, draft]);
+    setState((prev) => ({ ...prev, items: [...prev.items, draft] }));
   }
 
   function updateItemPrice(index: number, unitPrice: number) {
-    setItems((prev) =>
-      prev.map((item, i) =>
+    setState((prev) => ({
+      ...prev,
+      items: prev.items.map((item, i) =>
         i === index ? { ...item, unit_price: Math.round(unitPrice), is_custom_price: true } : item,
       ),
-    );
+    }));
   }
 
   function updateItemDiscount(index: number, discountPercent: number) {
-    setItems((prev) =>
-      prev.map((item, i) =>
+    setState((prev) => ({
+      ...prev,
+      items: prev.items.map((item, i) =>
         i === index
           ? {
               ...item,
@@ -158,11 +200,11 @@ function QuotesPage() {
             }
           : item,
       ),
-    );
+    }));
   }
 
   function removeItem(index: number) {
-    setItems((prev) => prev.filter((_, i) => i !== index));
+    setState((prev) => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }));
   }
 
   const total = useMemo(() => quoteTotal(items), [items]);
@@ -206,8 +248,11 @@ function QuotesPage() {
       toast.success(
         warnings.length > 0 ? "Mentve (figyelmeztetés: alacsony ár)" : "Árajánlat mentve",
       );
-      setEditingId(id);
-      if (warnings.length === 0) setView("list");
+      if (warnings.length === 0) {
+        resetPersisted();
+      } else {
+        patch({ editingId: id });
+      }
     } catch (e) {
       toast.error((e as Error).message);
     } finally {

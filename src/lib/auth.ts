@@ -1,5 +1,15 @@
-import { useEffect, useState } from "react";
-import type { User } from "@supabase/supabase-js";
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import type { AuthChangeEvent, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import type { AppRole } from "@/lib/roles";
 import { canAccessApp, isAdminRole, isExchangeOperatorRole } from "@/lib/roles";
@@ -26,6 +36,22 @@ export type UserProfile = {
   organization_id: string | null;
   is_platform_admin: boolean;
 };
+
+type AuthValue = {
+  user: User | null;
+  profile: UserProfile | null;
+  organization: Organization | null;
+  orgSettings: OrganizationSettings | null;
+  denialReason: AccessDenialReason;
+  loading: boolean;
+  role: AppRole | null;
+  isAdmin: boolean;
+  isPlatformAdmin: boolean;
+  isExchangeOperator: boolean;
+  canAccessApp: boolean;
+};
+
+const AuthContext = createContext<AuthValue | null>(null);
 
 async function fetchOrganization(orgId: string): Promise<Organization | null> {
   const { data, error } = await supabase
@@ -150,81 +176,125 @@ async function fetchProfile(userId: string): Promise<{
   return { profile, organization, denialReason: null };
 }
 
-export function useAuth() {
+/** Ablakváltáskori token refresh – NE takarja el az oldalt (formállapot megmarad). */
+function shouldBlockUiForAuthEvent(
+  event: AuthChangeEvent,
+  nextUserId: string | null,
+  hydratedUserId: string | null,
+): boolean {
+  if (!nextUserId) return false;
+  if (!hydratedUserId) return true;
+  if (hydratedUserId !== nextUserId) return true;
+  if (event === "TOKEN_REFRESHED" || event === "USER_UPDATED") return false;
+  // Ugyanaz a user, session újrajelzés (pl. tab focus) – háttérben frissítünk
+  if (event === "SIGNED_IN" || event === "INITIAL_SESSION") return false;
+  return false;
+}
+
+function useAuthState(): AuthValue {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [denialReason, setDenialReason] = useState<AccessDenialReason>(null);
   const [loading, setLoading] = useState(true);
+  const hydratedUserIdRef = useRef<string | null>(null);
+  const loadGenRef = useRef(0);
+
+  const applySession = useCallback(async (sessionUser: User | null, blockUi: boolean) => {
+    const gen = ++loadGenRef.current;
+    if (!sessionUser) {
+      hydratedUserIdRef.current = null;
+      setUser(null);
+      setProfile(null);
+      setOrganization(null);
+      setDenialReason(null);
+      setLoading(false);
+      return;
+    }
+
+    setUser(sessionUser);
+    if (blockUi) setLoading(true);
+
+    const result = await fetchProfile(sessionUser.id);
+    if (gen !== loadGenRef.current) return;
+
+    setProfile(result.profile);
+    setOrganization(result.organization);
+    setDenialReason(result.denialReason);
+    hydratedUserIdRef.current = sessionUser.id;
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
     let active = true;
 
-    async function load(sessionUser: User | null) {
-      if (!sessionUser) {
-        if (active) {
-          setProfile(null);
-          setOrganization(null);
-          setDenialReason(null);
-          setLoading(false);
-        }
-        return;
-      }
-      const result = await fetchProfile(sessionUser.id);
-      if (active) {
-        setProfile(result.profile);
-        setOrganization(result.organization);
-        setDenialReason(result.denialReason);
-        setLoading(false);
-      }
-    }
-
-    supabase.auth.getSession().then(({ data }) => {
+    void supabase.auth.getSession().then(({ data }) => {
       if (!active) return;
-      setUser(data.session?.user ?? null);
-      void load(data.session?.user ?? null);
+      const u = data.session?.user ?? null;
+      void applySession(u, true);
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!active) return;
+      const nextUser = session?.user ?? null;
       authDiag({
         fn: "onAuthStateChange",
         event,
-        userId: session?.user?.id ?? null,
-        email: session?.user?.email ?? null,
+        userId: nextUser?.id ?? null,
+        email: nextUser?.email ?? null,
+        quiet: !shouldBlockUiForAuthEvent(event, nextUser?.id ?? null, hydratedUserIdRef.current),
       });
-      setUser(session?.user?.id ? session.user : null);
-      if (!session?.user) {
-        setProfile(null);
-        setOrganization(null);
-        setDenialReason(null);
-        setLoading(false);
+
+      if (!nextUser) {
+        void applySession(null, false);
         return;
       }
-      setLoading(true);
-      void load(session.user);
+
+      const blockUi = shouldBlockUiForAuthEvent(
+        event,
+        nextUser.id,
+        hydratedUserIdRef.current,
+      );
+      void applySession(nextUser, blockUi);
     });
 
     return () => {
       active = false;
       sub.subscription.unsubscribe();
     };
-  }, []);
+  }, [applySession]);
 
   const orgSettings: OrganizationSettings | null = organization?.settings ?? null;
 
-  return {
-    user,
-    profile,
-    organization,
-    orgSettings,
-    denialReason,
-    loading,
-    role: profile?.role ?? null,
-    isAdmin: isAdminRole(profile?.role),
-    isPlatformAdmin: profile?.is_platform_admin === true,
-    isExchangeOperator: isExchangeOperatorRole(profile?.role),
-    canAccessApp: canAccessApp(profile?.role) && !!organization && denialReason === null,
-  };
+  return useMemo(
+    () => ({
+      user,
+      profile,
+      organization,
+      orgSettings,
+      denialReason,
+      loading,
+      role: profile?.role ?? null,
+      isAdmin: isAdminRole(profile?.role),
+      isPlatformAdmin: profile?.is_platform_admin === true,
+      isExchangeOperator: isExchangeOperatorRole(profile?.role),
+      canAccessApp: canAccessApp(profile?.role) && !!organization && denialReason === null,
+    }),
+    [user, profile, organization, orgSettings, denialReason, loading],
+  );
+}
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const value = useAuthState();
+  return createElement(AuthContext.Provider, { value }, children);
+}
+
+export function useAuth(): AuthValue {
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
+    throw new Error("useAuth csak AuthProvider-en belül használható");
+  }
+  return ctx;
 }
 
 export async function signOut() {

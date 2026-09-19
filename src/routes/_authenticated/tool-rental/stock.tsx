@@ -49,6 +49,7 @@ import {
   useRouteScrollRestoration,
   useRouteStatePersistence,
 } from "@/hooks/use-route-state-persistence";
+import { usePersistedFormState } from "@/hooks/use-persisted-form-state";
 import {
   formatMarginPercent,
   formatSupplyHuf,
@@ -137,17 +138,26 @@ function SupplyStockPage() {
 function SupplyStockAdmin() {
   const qc = useQueryClient();
   const { organization } = useAuth();
-  const { state, patch, storageKey } = useRouteStatePersistence<{ tab: string }>({ tab: "stock" });
+  const { state, patch, storageKey } = useRouteStatePersistence<{
+    tab: string;
+    saleOpen: boolean;
+    editorOpen: boolean;
+    editProductId: string | null;
+    priceProductId: string | null;
+    receiveProductId: string | null;
+  }>({
+    tab: "stock",
+    saleOpen: false,
+    editorOpen: false,
+    editProductId: null,
+    priceProductId: null,
+    receiveProductId: null,
+  });
   const tab = state.tab;
   const setTab = (value: string) => patch({ tab: value });
   const [busy, setBusy] = useState(false);
-  const [saleOpen, setSaleOpen] = useState(false);
-  const [priceProduct, setPriceProduct] = useState<SupplyProduct | null>(null);
-  const [receiveProduct, setReceiveProduct] = useState<SupplyProduct | null>(null);
   const [detailProduct, setDetailProduct] = useState<SupplyProduct | null>(null);
   const [saleDetail, setSaleDetail] = useState<SupplySale | null>(null);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editProduct, setEditProduct] = useState<SupplyProduct | null>(null);
 
   const productsQuery = useQuery({ queryKey: ["supply-products"], queryFn: fetchSupplyProducts });
   const salesQuery = useQuery({ queryKey: ["supply-sales"], queryFn: fetchSupplySales });
@@ -165,6 +175,21 @@ function SupplyStockAdmin() {
 
   const products = productsQuery.data ?? [];
   const sales = salesQuery.data ?? [];
+  const editProduct =
+    state.editProductId == null
+      ? null
+      : (products.find((p) => p.id === state.editProductId) ?? null);
+  const priceProduct =
+    state.priceProductId == null
+      ? null
+      : (products.find((p) => p.id === state.priceProductId) ?? null);
+  const receiveProduct =
+    state.receiveProductId == null
+      ? null
+      : (products.find((p) => p.id === state.receiveProductId) ?? null);
+  const editorOpen =
+    state.editorOpen && (state.editProductId == null || editProduct != null);
+  const saleOpen = state.saleOpen;
 
   useRouteScrollRestoration(
     storageKey,
@@ -188,14 +213,13 @@ function SupplyStockAdmin() {
           className="gap-2"
           variant="outline"
           onClick={() => {
-            setEditProduct(null);
-            setEditorOpen(true);
+            patch({ editorOpen: true, editProductId: null });
           }}
         >
           <Plus className="h-4 w-4" />
           Új tétel
         </Button>
-        <Button className="gap-2" onClick={() => setSaleOpen(true)}>
+        <Button className="gap-2" onClick={() => patch({ saleOpen: true })}>
           <ShoppingCart className="h-4 w-4" />
           Gyors értékesítés
         </Button>
@@ -219,11 +243,10 @@ function SupplyStockAdmin() {
               key={p.id}
               product={p}
               onEdit={() => {
-                setEditProduct(p);
-                setEditorOpen(true);
+                patch({ editorOpen: true, editProductId: p.id });
               }}
-              onPrice={() => setPriceProduct(p)}
-              onReceive={() => setReceiveProduct(p)}
+              onPrice={() => patch({ priceProductId: p.id })}
+              onReceive={() => patch({ receiveProductId: p.id })}
               onDetail={() => setDetailProduct(p)}
             />
           ))}
@@ -276,37 +299,37 @@ function SupplyStockAdmin() {
 
       <QuickSaleDialog
         open={saleOpen}
-        onOpenChange={setSaleOpen}
+        onOpenChange={(v) => patch({ saleOpen: v })}
         products={products.filter((p) => p.is_active && p.is_sellable)}
         partners={partnersQuery.data ?? []}
         busy={busy}
         setBusy={setBusy}
         onSuccess={async () => {
           await refreshAll();
-          setSaleOpen(false);
+          patch({ saleOpen: false });
         }}
       />
 
       <PriceDialog
         product={priceProduct}
-        onClose={() => setPriceProduct(null)}
+        onClose={() => patch({ priceProductId: null })}
         busy={busy}
         setBusy={setBusy}
         onSuccess={async () => {
           await refreshAll();
-          setPriceProduct(null);
+          patch({ priceProductId: null });
         }}
       />
 
       <ReceiveDialog
         product={receiveProduct}
         suppliers={suppliersQuery.data ?? []}
-        onClose={() => setReceiveProduct(null)}
+        onClose={() => patch({ receiveProductId: null })}
         busy={busy}
         setBusy={setBusy}
         onSuccess={async () => {
           await refreshAll();
-          setReceiveProduct(null);
+          patch({ receiveProductId: null });
         }}
       />
 
@@ -320,13 +343,11 @@ function SupplyStockAdmin() {
         busy={busy}
         setBusy={setBusy}
         onClose={() => {
-          setEditorOpen(false);
-          setEditProduct(null);
+          patch({ editorOpen: false, editProductId: null });
         }}
         onSuccess={async () => {
           await refreshAll();
-          setEditorOpen(false);
-          setEditProduct(null);
+          patch({ editorOpen: false, editProductId: null });
         }}
       />
     </AppShell>
@@ -448,58 +469,78 @@ function ProductEditorDialog({
   onSuccess: () => Promise<void>;
 }) {
   const isEdit = product != null;
-  const [name, setName] = useState("");
-  const [naturalKey, setNaturalKey] = useState("");
-  const [category, setCategory] = useState("");
-  const [specification, setSpecification] = useState("");
-  const [packaging, setPackaging] = useState("");
-  const [unit, setUnit] = useState("db");
-  const [minStock, setMinStock] = useState("0");
-  const [initialStock, setInitialStock] = useState("0");
-  const [isSellable, setIsSellable] = useState(true);
-  const [isRentable, setIsRentable] = useState(false);
-  const [isActive, setIsActive] = useState(true);
-  const [note, setNote] = useState("");
-  const [keyTouched, setKeyTouched] = useState(false);
+  const formKey = product?.id ? `edit:${product.id}` : "create";
+  const editorDefaults = {
+    name: "",
+    naturalKey: "",
+    category: "",
+    specification: "",
+    packaging: "",
+    unit: "db",
+    minStock: "0",
+    initialStock: "0",
+    isSellable: true,
+    isRentable: false,
+    isActive: true,
+    note: "",
+    keyTouched: false,
+    seeded: false,
+  };
+  const { state: editor, patch, reset, setState } = usePersistedFormState(editorDefaults, {
+    formKey,
+    enabled: open,
+  });
+  const {
+    name,
+    naturalKey,
+    category,
+    specification,
+    packaging,
+    unit,
+    minStock,
+    initialStock,
+    isSellable,
+    isRentable,
+    isActive,
+    note,
+    keyTouched,
+  } = editor;
 
   useEffect(() => {
     if (!open) return;
+    if (editor.seeded) return;
     if (product) {
-      setName(product.name);
-      setNaturalKey(product.natural_key);
-      setCategory(product.category ?? "");
-      setSpecification(product.specification ?? "");
-      setPackaging(product.packaging ?? "");
-      setUnit(product.unit_of_measure);
-      setMinStock(String(product.minimum_stock));
-      setInitialStock("0");
-      setIsSellable(product.is_sellable);
-      setIsRentable(product.is_rentable);
-      setIsActive(product.is_active);
-      setNote(product.note ?? "");
-      setKeyTouched(true);
+      setState({
+        name: product.name,
+        naturalKey: product.natural_key,
+        category: product.category ?? "",
+        specification: product.specification ?? "",
+        packaging: product.packaging ?? "",
+        unit: product.unit_of_measure,
+        minStock: String(product.minimum_stock),
+        initialStock: "0",
+        isSellable: product.is_sellable,
+        isRentable: product.is_rentable,
+        isActive: product.is_active,
+        note: product.note ?? "",
+        keyTouched: true,
+        seeded: true,
+      });
     } else {
-      setName("");
-      setNaturalKey("");
-      setCategory("");
-      setSpecification("");
-      setPackaging("");
-      setUnit("db");
-      setMinStock("0");
-      setInitialStock("0");
-      setIsSellable(true);
-      setIsRentable(false);
-      setIsActive(true);
-      setNote("");
-      setKeyTouched(false);
+      setState({ ...editorDefaults, seeded: true });
     }
-  }, [open, product?.id]);
+  }, [open, product, editor.seeded, setState]);
+
+  function closeAndClear() {
+    reset();
+    onClose();
+  }
 
   return (
     <Dialog
       open={open}
       onOpenChange={(o) => {
-        if (!o) onClose();
+        if (!o) closeAndClear();
       }}
     >
       <DialogContent className="max-h-[92vh] overflow-y-auto">
@@ -577,6 +618,7 @@ function ProductEditorDialog({
                 });
                 toast.success("Új tétel létrehozva");
               }
+              reset();
               await onSuccess();
             } catch (err) {
               toast.error((err as Error).message);
@@ -591,8 +633,11 @@ function ProductEditorDialog({
               value={name}
               onChange={(e) => {
                 const v = e.target.value;
-                setName(v);
-                if (!isEdit && !keyTouched) setNaturalKey(suggestSupplyNaturalKey(v));
+                if (!isEdit && !keyTouched) {
+                  patch({ name: v, naturalKey: suggestSupplyNaturalKey(v) });
+                } else {
+                  patch({ name: v });
+                }
               }}
               required
             />
@@ -603,8 +648,7 @@ function ProductEditorDialog({
               <Input
                 value={naturalKey}
                 onChange={(e) => {
-                  setKeyTouched(true);
-                  setNaturalKey(e.target.value);
+                  patch({ keyTouched: true, naturalKey: e.target.value });
                 }}
                 placeholder="supply:..."
               />
@@ -616,11 +660,11 @@ function ProductEditorDialog({
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label>Kategória</Label>
-              <Input value={category} onChange={(e) => setCategory(e.target.value)} />
+              <Input value={category} onChange={(e) => patch({ category: e.target.value })} />
             </div>
             <div>
               <Label>Mértékegység *</Label>
-              <Input value={unit} onChange={(e) => setUnit(e.target.value)} required />
+              <Input value={unit} onChange={(e) => patch({ unit: e.target.value })} required />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -628,7 +672,7 @@ function ProductEditorDialog({
               <Label>Specifikáció</Label>
               <Input
                 value={specification}
-                onChange={(e) => setSpecification(e.target.value)}
+                onChange={(e) => patch({ specification: e.target.value })}
                 placeholder="pl. 1,0 mm"
               />
             </div>
@@ -636,7 +680,7 @@ function ProductEditorDialog({
               <Label>Kiszerelés</Label>
               <Input
                 value={packaging}
-                onChange={(e) => setPackaging(e.target.value)}
+                onChange={(e) => patch({ packaging: e.target.value })}
                 placeholder="pl. 15 kg-os tekercs"
               />
             </div>
@@ -644,14 +688,18 @@ function ProductEditorDialog({
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label>Minimum készlet</Label>
-              <Input value={minStock} onChange={(e) => setMinStock(e.target.value)} inputMode="numeric" />
+              <Input
+                value={minStock}
+                onChange={(e) => patch({ minStock: e.target.value })}
+                inputMode="numeric"
+              />
             </div>
             {!isEdit && (
               <div>
                 <Label>Induló készlet</Label>
                 <Input
                   value={initialStock}
-                  onChange={(e) => setInitialStock(e.target.value)}
+                  onChange={(e) => patch({ initialStock: e.target.value })}
                   inputMode="numeric"
                 />
               </div>
@@ -660,22 +708,22 @@ function ProductEditorDialog({
           <div className="space-y-2 rounded-md border p-3">
             <div className="flex items-center justify-between gap-3">
               <Label>Eladható</Label>
-              <Switch checked={isSellable} onCheckedChange={setIsSellable} />
+              <Switch checked={isSellable} onCheckedChange={(v) => patch({ isSellable: v })} />
             </div>
             <div className="flex items-center justify-between gap-3">
               <Label>Bérbe adható</Label>
-              <Switch checked={isRentable} onCheckedChange={setIsRentable} />
+              <Switch checked={isRentable} onCheckedChange={(v) => patch({ isRentable: v })} />
             </div>
             {isEdit && (
               <div className="flex items-center justify-between gap-3">
                 <Label>Aktív</Label>
-                <Switch checked={isActive} onCheckedChange={setIsActive} />
+                <Switch checked={isActive} onCheckedChange={(v) => patch({ isActive: v })} />
               </div>
             )}
           </div>
           <div>
             <Label>Megjegyzés</Label>
-            <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
+            <Textarea value={note} onChange={(e) => patch({ note: e.target.value })} rows={2} />
           </div>
           <DialogFooter className="flex-col gap-2 sm:flex-row">
             {isEdit && product?.is_active && (
@@ -690,6 +738,7 @@ function ProductEditorDialog({
                   try {
                     await deactivateSupplyProduct(product.id);
                     toast.success("Tétel inaktiválva");
+                    reset();
                     await onSuccess();
                   } catch (err) {
                     toast.error((err as Error).message);
@@ -701,7 +750,7 @@ function ProductEditorDialog({
                 Inaktiválás
               </Button>
             )}
-            <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+            <Button type="button" variant="outline" onClick={closeAndClear} disabled={busy}>
               Mégse
             </Button>
             <Button type="submit" disabled={busy}>
@@ -729,12 +778,26 @@ function PriceDialog({
 }) {
   const { organization } = useAuth();
   const vatOn = isVatRegistered(organization?.settings);
-  const [mode, setMode] = useState<"profit" | "margin" | "manual">("profit");
-  const [purchase, setPurchase] = useState("");
-  const [profitFt, setProfitFt] = useState("");
-  const [marginPct, setMarginPct] = useState("");
-  const [sale, setSale] = useState("");
-  const [vat, setVat] = useState("27");
+  const priceDefaults = {
+    mode: "profit" as "profit" | "margin" | "manual",
+    purchase: "",
+    profitFt: "",
+    marginPct: "",
+    sale: "",
+    vat: "27",
+    seeded: false,
+  };
+  const { state: priceForm, patch, reset, setState } = usePersistedFormState(priceDefaults, {
+    formKey: product?.id ? `price:${product.id}` : "price:idle",
+    enabled: product != null,
+  });
+  const { mode, purchase, profitFt, marginPct, sale, vat } = priceForm;
+  const setMode = (v: "profit" | "margin" | "manual") => patch({ mode: v });
+  const setPurchase = (v: string) => patch({ purchase: v });
+  const setProfitFt = (v: string) => patch({ profitFt: v });
+  const setMarginPct = (v: string) => patch({ marginPct: v });
+  const setSale = (v: string) => patch({ sale: v });
+  const setVat = (v: string) => patch({ vat: v });
 
   const purchaseNum = parseSupplyPriceInput(purchase);
   const saleNum = parseSupplyPriceInput(sale);
@@ -761,24 +824,29 @@ function PriceDialog({
     return { prof, m, gross };
   }, [computedSale, purchaseNum, vatNum]);
 
-  function resetFromProduct(p: SupplyProduct) {
-    setPurchase(p.purchase_price != null ? String(p.purchase_price) : "");
-    setSale(p.sale_price != null ? String(p.sale_price) : "");
-    setVat(String(vatOn ? p.vat_rate || getTaxSettings(organization?.settings).default_rate : 0));
-    setProfitFt("");
-    setMarginPct("");
-    setMode("manual");
-  }
-
   useEffect(() => {
-    if (product) resetFromProduct(product);
-  }, [product?.id, vatOn]);
+    if (!product || priceForm.seeded) return;
+    setState({
+      mode: "manual",
+      purchase: product.purchase_price != null ? String(product.purchase_price) : "",
+      sale: product.sale_price != null ? String(product.sale_price) : "",
+      vat: String(vatOn ? product.vat_rate || getTaxSettings(organization?.settings).default_rate : 0),
+      profitFt: "",
+      marginPct: "",
+      seeded: true,
+    });
+  }, [product, priceForm.seeded, vatOn, organization?.settings, setState]);
+
+  function closeAndClear() {
+    reset();
+    onClose();
+  }
 
   return (
     <Dialog
       open={product != null}
       onOpenChange={(o) => {
-        if (!o) onClose();
+        if (!o) closeAndClear();
       }}
     >
       <DialogContent className="max-h-[90vh] overflow-y-auto">
@@ -815,6 +883,7 @@ function PriceDialog({
                   vatRate: vatNum,
                 });
                 toast.success("Ár mentve");
+                reset();
                 await onSuccess();
               } catch (err) {
                 toast.error((err as Error).message);
@@ -911,13 +980,27 @@ function ReceiveDialog({
   setBusy: (v: boolean) => void;
   onSuccess: () => Promise<void>;
 }) {
-  const [qty, setQty] = useState("1");
-  const [purchase, setPurchase] = useState("");
-  const [updatePurchase, setUpdatePurchase] = useState(false);
-  const [supplierId, setSupplierId] = useState("");
-  const [docNo, setDocNo] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [note, setNote] = useState("");
+  const receiveDefaults = {
+    qty: "1",
+    purchase: "",
+    updatePurchase: false,
+    supplierId: "",
+    docNo: "",
+    date: new Date().toISOString().slice(0, 10),
+    note: "",
+  };
+  const { state: receive, patch, reset } = usePersistedFormState(receiveDefaults, {
+    formKey: product?.id ? `receive:${product.id}` : "receive:idle",
+    enabled: product != null,
+  });
+  const { qty, purchase, updatePurchase, supplierId, docNo, date, note } = receive;
+  const setQty = (v: string) => patch({ qty: v });
+  const setPurchase = (v: string) => patch({ purchase: v });
+  const setUpdatePurchase = (v: boolean) => patch({ updatePurchase: v });
+  const setSupplierId = (v: string) => patch({ supplierId: v });
+  const setDocNo = (v: string) => patch({ docNo: v });
+  const setDate = (v: string) => patch({ date: v });
+  const setNote = (v: string) => patch({ note: v });
 
   const purchaseNum = parseSupplyPriceInput(purchase);
   const profitHint =
@@ -925,8 +1008,13 @@ function ReceiveDialog({
       ? profitPerUnit(purchaseNum, product.sale_price)
       : null;
 
+  function closeAndClear() {
+    reset();
+    onClose();
+  }
+
   return (
-    <Dialog open={product != null} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={product != null} onOpenChange={(o) => !o && closeAndClear()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Bevételezés</DialogTitle>
@@ -960,6 +1048,7 @@ function ReceiveDialog({
                   note: note || undefined,
                 });
                 toast.success("Bevételezés rögzítve");
+                reset();
                 await onSuccess();
               } catch (err) {
                 toast.error((err as Error).message);
@@ -1051,11 +1140,27 @@ function QuickSaleDialog({
 }) {
   const { organization } = useAuth();
   const vatOn = isVatRegistered(organization?.settings);
-  const [partnerId, setPartnerId] = useState("");
-  const [lines, setLines] = useState<SupplySaleLineInput[]>([]);
-  const [note, setNote] = useState("");
-  const [confirmNoPurchase, setConfirmNoPurchase] = useState(false);
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const saleDefaults = {
+    partnerId: "",
+    lines: [] as SupplySaleLineInput[],
+    note: "",
+    confirmNoPurchase: false,
+    idempotencyKey: crypto.randomUUID(),
+  };
+  const { state: saleForm, patch, reset, setState } = usePersistedFormState(saleDefaults, {
+    formKey: "quick-sale",
+    enabled: open,
+  });
+  const { partnerId, lines, note, confirmNoPurchase, idempotencyKey } = saleForm;
+  const setPartnerId = (v: string) => patch({ partnerId: v });
+  const setLines = (v: SupplySaleLineInput[] | ((prev: SupplySaleLineInput[]) => SupplySaleLineInput[])) => {
+    setState((prev) => ({
+      ...prev,
+      lines: typeof v === "function" ? v(prev.lines) : v,
+    }));
+  };
+  const setNote = (v: string) => patch({ note: v });
+  const setConfirmNoPurchase = (v: boolean) => patch({ confirmNoPurchase: v });
 
   const missingSalePrice = lines.some((line) => {
     const p = products.find((x) => x.id === line.product_id);
@@ -1102,7 +1207,13 @@ function QuickSaleDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) reset();
+        onOpenChange(v);
+      }}
+    >
       <DialogContent className="max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Gyors értékesítés</DialogTitle>
@@ -1151,10 +1262,7 @@ function QuickSaleDialog({
                 idempotencyKey,
               });
               toast.success("Értékesítés rögzítve");
-              setLines([]);
-              setPartnerId("");
-              setNote("");
-              setConfirmNoPurchase(false);
+              reset();
               await onSuccess();
             } catch (err) {
               toast.error((err as Error).message);

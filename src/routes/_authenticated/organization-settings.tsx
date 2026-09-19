@@ -1,6 +1,6 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
@@ -23,6 +23,7 @@ import {
   type OrganizationModules,
   type OrganizationSettings,
 } from "@/lib/organization";
+import { usePersistedFormState } from "@/hooks/use-persisted-form-state";
 
 export const Route = createFileRoute("/_authenticated/organization-settings")({
   head: () => ({ meta: [{ title: "Cég beállítások – Gáz Veled" }] }),
@@ -40,13 +41,29 @@ const MODULE_LABELS: { key: keyof OrganizationModules; label: string; desc: stri
   { key: "gas_orders", label: "Gáz rendelés", desc: "Üres palack rendelés" },
 ];
 
+type SettingsForm = {
+  orgId: string;
+  name: string;
+  logoUrl: string;
+  settings: OrganizationSettings;
+  binsText: string;
+};
+
+const SETTINGS_DEFAULTS: SettingsForm = {
+  orgId: "",
+  name: "",
+  logoUrl: "",
+  settings: DEFAULT_ORGANIZATION_SETTINGS,
+  binsText: "",
+};
+
 function OrganizationSettingsPage() {
   const { isAdmin, organization, loading } = useAuth();
   const qc = useQueryClient();
-  const [name, setName] = useState("");
-  const [logoUrl, setLogoUrl] = useState("");
-  const [settings, setSettings] = useState<OrganizationSettings>(DEFAULT_ORGANIZATION_SETTINGS);
-  const [binsText, setBinsText] = useState("");
+  const { state: form, patch, setState } = usePersistedFormState(SETTINGS_DEFAULTS, {
+    formKey: "draft",
+  });
+  const { name, logoUrl, settings, binsText } = form;
 
   const { data: orgRow } = useQuery({
     queryKey: ["organization", organization?.id],
@@ -64,12 +81,17 @@ function OrganizationSettingsPage() {
 
   useEffect(() => {
     if (!orgRow) return;
-    setName(orgRow.name ?? "");
-    setLogoUrl(orgRow.logo_url ?? "");
+    // Ugyanarra a cégre mentett draft (ablakváltás után) – ne írjuk felül
+    if (form.orgId === orgRow.id) return;
     const parsed = parseOrganizationSettings(orgRow.settings);
-    setSettings(parsed);
-    setBinsText(parsed.warehouse_bins.join("\n"));
-  }, [orgRow]);
+    setState({
+      orgId: orgRow.id,
+      name: orgRow.name ?? "",
+      logoUrl: orgRow.logo_url ?? "",
+      settings: parsed,
+      binsText: parsed.warehouse_bins.join("\n"),
+    });
+  }, [orgRow, form.orgId, setState]);
 
   const save = useMutation({
     mutationFn: async () => {
@@ -110,13 +132,17 @@ function OrganizationSettingsPage() {
       <Card className="mb-3 space-y-4 p-4">
         <div>
           <Label className="mb-1 block">Cég neve</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Cég neve" />
+          <Input
+            value={name}
+            onChange={(e) => patch({ name: e.target.value })}
+            placeholder="Cég neve"
+          />
         </div>
         <div>
           <Label className="mb-1 block">Logó URL (opcionális)</Label>
           <Input
             value={logoUrl}
-            onChange={(e) => setLogoUrl(e.target.value)}
+            onChange={(e) => patch({ logoUrl: e.target.value })}
             placeholder="https://..."
           />
           <p className="mt-1 text-xs text-muted-foreground">
@@ -146,9 +172,12 @@ function OrganizationSettingsPage() {
             <Switch
               checked={settings.modules[m.key]}
               onCheckedChange={(v) =>
-                setSettings((prev) => ({
+                setState((prev) => ({
                   ...prev,
-                  modules: { ...prev.modules, [m.key]: v },
+                  settings: {
+                    ...prev.settings,
+                    modules: { ...prev.settings.modules, [m.key]: v },
+                  },
                 }))
               }
             />
@@ -164,7 +193,7 @@ function OrganizationSettingsPage() {
         <textarea
           className="min-h-28 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           value={binsText}
-          onChange={(e) => setBinsText(e.target.value)}
+          onChange={(e) => patch({ binsText: e.target.value })}
           placeholder={"Kaloda 1\nKaloda 2\nStargon sor"}
         />
       </Card>
@@ -180,11 +209,14 @@ function OrganizationSettingsPage() {
           <Select
             value={settings.tax.regime}
             onValueChange={(v) =>
-              setSettings((prev) => ({
+              setState((prev) => ({
                 ...prev,
-                tax: {
-                  ...prev.tax,
-                  regime: v as "vat_exempt" | "vat_registered",
+                settings: {
+                  ...prev.settings,
+                  tax: {
+                    ...prev.settings.tax,
+                    regime: v as "vat_exempt" | "vat_registered",
+                  },
                 },
               }))
             }
@@ -208,11 +240,14 @@ function OrganizationSettingsPage() {
               value={settings.tax.default_rate}
               onChange={(e) => {
                 const n = Number(e.target.value);
-                setSettings((prev) => ({
+                setState((prev) => ({
                   ...prev,
-                  tax: {
-                    ...prev.tax,
-                    default_rate: Number.isFinite(n) ? n : 27,
+                  settings: {
+                    ...prev.settings,
+                    tax: {
+                      ...prev.settings.tax,
+                      default_rate: Number.isFinite(n) ? n : 27,
+                    },
                   },
                 }));
               }}
@@ -238,9 +273,12 @@ function OrganizationSettingsPage() {
             <Switch
               checked={settings.invoicing[key]}
               onCheckedChange={(v) =>
-                setSettings((prev) => ({
+                setState((prev) => ({
                   ...prev,
-                  invoicing: { ...prev.invoicing, [key]: v },
+                  settings: {
+                    ...prev.settings,
+                    invoicing: { ...prev.settings.invoicing, [key]: v },
+                  },
                 }))
               }
             />

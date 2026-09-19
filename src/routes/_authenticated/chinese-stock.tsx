@@ -25,19 +25,38 @@ import {
   parseStockQuantityInput,
   type ChineseMovementType,
 } from "@/lib/chinese-stock";
+import { usePersistedFormState } from "@/hooks/use-persisted-form-state";
 
 export const Route = createFileRoute("/_authenticated/chinese-stock")({
   head: () => ({ meta: [{ title: "Kínai készlet – Gáz Veled" }] }),
   component: ChineseStockPage,
 });
 
+type MovementForm = {
+  gasType: string;
+  size: string;
+  quantity: string;
+  movementType: ChineseMovementType;
+  note: string;
+};
+
+const MOVEMENT_DEFAULTS: MovementForm = {
+  gasType: "Széndioxid",
+  size: "5 kg",
+  quantity: "1",
+  movementType: "purchase",
+  note: "",
+};
+
 function ChineseStockPage() {
   const qc = useQueryClient();
-  const [gasType, setGasType] = useState("Széndioxid");
-  const [size, setSize] = useState("5 kg");
-  const [quantity, setQuantity] = useState("1");
-  const [movementType, setMovementType] = useState<ChineseMovementType>("purchase");
-  const [note, setNote] = useState("");
+  const { state: form, patch } = usePersistedFormState(MOVEMENT_DEFAULTS, { formKey: "movement" });
+  const { gasType, size, quantity, movementType, note } = form;
+  const setGasType = (v: string) => patch({ gasType: v });
+  const setSize = (v: string) => patch({ size: v });
+  const setQuantity = (v: string) => patch({ quantity: v });
+  const setMovementType = (v: ChineseMovementType) => patch({ movementType: v });
+  const setNote = (v: string) => patch({ note: v });
   const [busy, setBusy] = useState(false);
 
   const sizes = getAvailableSizes(gasType);

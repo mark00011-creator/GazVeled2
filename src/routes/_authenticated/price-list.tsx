@@ -34,6 +34,7 @@ import {
 import { formatHuf } from "@/lib/gas-order-prices";
 import { useAuth } from "@/lib/auth";
 import { isVatRegistered, priceBasisHint } from "@/lib/org-tax";
+import { usePersistedFormState } from "@/hooks/use-persisted-form-state";
 
 export const Route = createFileRoute("/_authenticated/price-list")({
   head: () => ({ meta: [{ title: "Árlista – Gáz Veled" }] }),
@@ -44,16 +45,32 @@ function parseFt(value: string): number {
   return Number(value.replace(/\s/g, ""));
 }
 
+type AddForm = {
+  gasType: string;
+  size: string;
+  beszerzesiAr: string;
+  arres: string;
+  productCode: string;
+  note: string;
+};
+
+const ADD_DEFAULTS: AddForm = {
+  gasType: "Argon",
+  size: "20 L",
+  beszerzesiAr: "",
+  arres: "",
+  productCode: "",
+  note: "",
+};
+
 function PriceListPage() {
   const qc = useQueryClient();
   const { organization } = useAuth();
   const vatOn = isVatRegistered(organization?.settings);
-  const [gasType, setGasType] = useState("Argon");
-  const [size, setSize] = useState("20 L");
-  const [beszerzesiAr, setBeszerzesiAr] = useState("");
-  const [arres, setArres] = useState("");
-  const [productCode, setProductCode] = useState("");
-  const [note, setNote] = useState("");
+  const { state: add, patch: patchAdd, reset: resetAdd } = usePersistedFormState(ADD_DEFAULTS, {
+    formKey: "add",
+  });
+  const { gasType, size, beszerzesiAr, arres, productCode, note } = add;
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<ProductPrice | null>(null);
   const [editBeszerzesiAr, setEditBeszerzesiAr] = useState("");
@@ -85,12 +102,7 @@ function PriceListPage() {
   });
 
   function resetAddForm() {
-    setGasType("Argon");
-    setSize("20 L");
-    setBeszerzesiAr("");
-    setArres("");
-    setProductCode("");
-    setNote("");
+    resetAdd();
   }
 
   function startEdit(row: ProductPrice) {
@@ -203,8 +215,7 @@ function PriceListPage() {
               <Select
                 value={gasType}
                 onValueChange={(v) => {
-                  setGasType(v);
-                  setSize(getPriceListSizes(v)[0] ?? "");
+                  patchAdd({ gasType: v, size: getPriceListSizes(v)[0] ?? "" });
                 }}
               >
                 <SelectTrigger>
@@ -221,7 +232,7 @@ function PriceListPage() {
             </div>
             <div>
               <Label>Méret</Label>
-              <Select value={size} onValueChange={setSize}>
+              <Select value={size} onValueChange={(v) => patchAdd({ size: v })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -243,7 +254,7 @@ function PriceListPage() {
                 min={0}
                 step={100}
                 value={beszerzesiAr}
-                onChange={(e) => setBeszerzesiAr(e.target.value)}
+                onChange={(e) => patchAdd({ beszerzesiAr: e.target.value })}
                 required
               />
             </div>
@@ -254,7 +265,7 @@ function PriceListPage() {
                 min={0}
                 step={100}
                 value={arres}
-                onChange={(e) => setArres(e.target.value)}
+                onChange={(e) => patchAdd({ arres: e.target.value })}
                 required
               />
             </div>
@@ -273,13 +284,13 @@ function PriceListPage() {
               <Label>Termékkód (opcionális)</Label>
               <Input
                 value={productCode}
-                onChange={(e) => setProductCode(e.target.value)}
+                onChange={(e) => patchAdd({ productCode: e.target.value })}
                 placeholder="számlázáshoz később"
               />
             </div>
             <div>
               <Label>Megjegyzés</Label>
-              <Input value={note} onChange={(e) => setNote(e.target.value)} />
+              <Input value={note} onChange={(e) => patchAdd({ note: e.target.value })} />
             </div>
           </div>
           <Button type="submit" disabled={busy}>

@@ -24,18 +24,35 @@ import {
   PB_MOVEMENT_LABELS,
   type PbMovementType,
 } from "@/lib/flaga-pb-stock";
+import { usePersistedFormState } from "@/hooks/use-persisted-form-state";
 
 export const Route = createFileRoute("/_authenticated/flaga-pb-stock")({
   head: () => ({ meta: [{ title: "FLAGA PB készlet – Gáz Veled" }] }),
   component: FlagaPbStockPage,
 });
 
+type MovementForm = {
+  productKey: string;
+  quantity: string;
+  movementType: PbMovementType;
+  note: string;
+};
+
+const MOVEMENT_DEFAULTS: MovementForm = {
+  productKey: flagaPbProductKey(FLAGA_PB_CATALOG[0].gas_type, FLAGA_PB_CATALOG[0].size),
+  quantity: "1",
+  movementType: "purchase",
+  note: "",
+};
+
 function FlagaPbStockPage() {
   const qc = useQueryClient();
-  const [productKey, setProductKey] = useState(flagaPbProductKey(FLAGA_PB_CATALOG[0].gas_type, FLAGA_PB_CATALOG[0].size));
-  const [quantity, setQuantity] = useState("1");
-  const [movementType, setMovementType] = useState<PbMovementType>("purchase");
-  const [note, setNote] = useState("");
+  const { state: form, patch } = usePersistedFormState(MOVEMENT_DEFAULTS, { formKey: "movement" });
+  const { productKey, quantity, movementType, note } = form;
+  const setProductKey = (v: string) => patch({ productKey: v });
+  const setQuantity = (v: string) => patch({ quantity: v });
+  const setMovementType = (v: PbMovementType) => patch({ movementType: v });
+  const setNote = (v: string) => patch({ note: v });
   const [busy, setBusy] = useState(false);
 
   const selected =

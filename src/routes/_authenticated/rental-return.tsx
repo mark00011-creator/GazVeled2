@@ -22,6 +22,7 @@ import {
   RENTAL_QUANTITY_KIND_LABELS,
   type RentalQuantityItem,
 } from "@/lib/rental-quantity-stock";
+import { usePersistedFormState } from "@/hooks/use-persisted-form-state";
 
 export const Route = createFileRoute("/_authenticated/rental-return")({
   validateSearch: (s: Record<string, unknown>) => ({
@@ -111,15 +112,35 @@ function QuantityItemRow({
 function RentalReturn() {
   const { rentalId: initialRentalId, cylinderId: initialCylinderId } = Route.useSearch();
   const qc = useQueryClient();
-  const [rentalId, setRentalId] = useState(initialRentalId);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [qtyReturns, setQtyReturns] = useState<Record<string, number>>({});
-  const [note, setNote] = useState("");
+  const { state: form, patch, setState } = usePersistedFormState<{
+    rentalId: string;
+    selectedIds: string[];
+    qtyReturns: Record<string, number>;
+    note: string;
+    selectedSeededFor: string;
+    qtySeededFor: string;
+  }>(
+    {
+      rentalId: initialRentalId,
+      selectedIds: [],
+      qtyReturns: {},
+      note: "",
+      selectedSeededFor: "",
+      qtySeededFor: "",
+    },
+    { formKey: "return" },
+  );
+  const rentalId = form.rentalId;
+  const setRentalId = (id: string) => patch({ rentalId: id });
+  const selected = useMemo(() => new Set(form.selectedIds), [form.selectedIds]);
+  const qtyReturns = form.qtyReturns;
+  const note = form.note;
+  const setNote = (v: string) => patch({ note: v });
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (initialRentalId) setRentalId(initialRentalId);
-  }, [initialRentalId]);
+    if (initialRentalId && initialRentalId !== rentalId) setRentalId(initialRentalId);
+  }, [initialRentalId, rentalId]);
 
   const {
     data: rentals,
@@ -163,36 +184,52 @@ function RentalReturn() {
   });
 
   useEffect(() => {
-    setSelected(new Set());
-    setQtyReturns({});
-  }, [rentalId]);
-
-  useEffect(() => {
-    if (!cylsFetching && cylLinks) {
-      if (initialCylinderId && cylLinks.some((l) => l.cylinder_id === initialCylinderId)) {
-        setSelected(new Set([initialCylinderId]));
-      } else {
-        setSelected(new Set(cylLinks.map((l) => l.cylinder_id)));
-      }
-    }
-  }, [cylLinks, cylsFetching, initialCylinderId]);
-
-  useEffect(() => {
-    if (!qtyFetching && qtyItems) {
-      const init: Record<string, number> = {};
-      for (const item of qtyItems) init[item.id] = 0;
-      setQtyReturns(init);
-    }
-  }, [qtyItems, qtyFetching]);
-
-  const toggle = useCallback((id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
+    setState((prev) => {
+      if (prev.rentalId === rentalId && prev.selectedSeededFor === rentalId) return prev;
+      return {
+        ...prev,
+        rentalId,
+        selectedIds: [],
+        qtyReturns: {},
+        selectedSeededFor: "",
+        qtySeededFor: "",
+      };
     });
-  }, []);
+  }, [rentalId, setState]);
+
+  useEffect(() => {
+    if (cylsFetching || !cylLinks) return;
+    setState((prev) => {
+      if (prev.selectedSeededFor === rentalId) return prev;
+      const ids =
+        initialCylinderId && cylLinks.some((l) => l.cylinder_id === initialCylinderId)
+          ? [initialCylinderId]
+          : cylLinks.map((l) => l.cylinder_id);
+      return { ...prev, selectedIds: ids, selectedSeededFor: rentalId };
+    });
+  }, [cylLinks, cylsFetching, initialCylinderId, rentalId, setState]);
+
+  useEffect(() => {
+    if (qtyFetching || !qtyItems) return;
+    setState((prev) => {
+      if (prev.qtySeededFor === rentalId) return prev;
+      const init: Record<string, number> = {};
+      for (const item of qtyItems) init[item.id] = prev.qtyReturns[item.id] ?? 0;
+      return { ...prev, qtyReturns: init, qtySeededFor: rentalId };
+    });
+  }, [qtyItems, qtyFetching, rentalId, setState]);
+
+  const toggle = useCallback(
+    (id: string) => {
+      setState((prev) => {
+        const next = new Set(prev.selectedIds);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return { ...prev, selectedIds: [...next] };
+      });
+    },
+    [setState],
+  );
 
   const qtyReturnCount = useMemo(
     () => Object.values(qtyReturns).reduce((sum, q) => sum + (q > 0 ? q : 0), 0),
@@ -224,7 +261,14 @@ function RentalReturn() {
         note: note.trim() || null,
       });
       toast.success("Visszavétel rögzítve");
-      setNote("");
+      setState((prev) => ({
+        ...prev,
+        note: "",
+        selectedIds: [],
+        qtyReturns: {},
+        selectedSeededFor: "",
+        qtySeededFor: "",
+      }));
       await qc.invalidateQueries({ queryKey: ["rental-return-cyls", rental.id] });
       await qc.invalidateQueries({ queryKey: ["rental-return-qty", rental.id] });
       await qc.invalidateQueries({ queryKey: ["rentals-returnable"] });
@@ -335,7 +379,12 @@ function RentalReturn() {
                     key={item.id}
                     item={item}
                     returnQty={qtyReturns[item.id] ?? 0}
-                    onChange={(id, qty) => setQtyReturns((prev) => ({ ...prev, [id]: qty }))}
+                    onChange={(id, qty) =>
+                      setState((prev) => ({
+                        ...prev,
+                        qtyReturns: { ...prev.qtyReturns, [id]: qty },
+                      }))
+                    }
                   />
                 ))}
               </div>

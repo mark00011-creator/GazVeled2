@@ -1,6 +1,5 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 import { toast } from "sonner";
 import { Building2, Plus, RefreshCw } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
@@ -20,6 +19,7 @@ import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { formatSupabaseError } from "@/lib/supabase-error";
 import { GAZ_VEELED_ORG_ID } from "@/lib/organization";
+import { usePersistedFormState } from "@/hooks/use-persisted-form-state";
 
 export const Route = createFileRoute("/_authenticated/platform-organizations")({
   head: () => ({ meta: [{ title: "Cégek – Gáz Veled platform" }] }),
@@ -37,6 +37,24 @@ type OrgRow = {
   created_at: string;
 };
 
+type CreateForm = {
+  name: string;
+  slug: string;
+  slugTouched: boolean;
+  adminEmail: string;
+  taxRegime: "vat_exempt" | "vat_registered";
+  vatRate: string;
+};
+
+const CREATE_DEFAULTS: CreateForm = {
+  name: "",
+  slug: "",
+  slugTouched: false,
+  adminEmail: "",
+  taxRegime: "vat_exempt",
+  vatRate: "27",
+};
+
 function slugify(name: string): string {
   return name
     .normalize("NFD")
@@ -50,12 +68,10 @@ function slugify(name: string): string {
 function PlatformOrganizationsPage() {
   const { isPlatformAdmin, organization, loading } = useAuth();
   const qc = useQueryClient();
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
-  const [slugTouched, setSlugTouched] = useState(false);
-  const [adminEmail, setAdminEmail] = useState("");
-  const [taxRegime, setTaxRegime] = useState<"vat_exempt" | "vat_registered">("vat_exempt");
-  const [vatRate, setVatRate] = useState("27");
+  const { state: form, patch, reset } = usePersistedFormState(CREATE_DEFAULTS, {
+    formKey: "create",
+  });
+  const { name, slug, slugTouched, adminEmail, taxRegime, vatRate } = form;
 
   const { data: orgs, isLoading } = useQuery({
     queryKey: ["platform-organizations"],
@@ -87,12 +103,7 @@ function PlatformOrganizationsPage() {
     },
     onSuccess: () => {
       toast.success("Új cég létrehozva");
-      setName("");
-      setSlug("");
-      setSlugTouched(false);
-      setAdminEmail("");
-      setTaxRegime("vat_exempt");
-      setVatRate("27");
+      reset();
       qc.invalidateQueries({ queryKey: ["platform-organizations"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -118,8 +129,9 @@ function PlatformOrganizationsPage() {
   return (
     <AppShell title="Cégek (platform)">
       <p className="mb-3 text-sm text-muted-foreground">
-        Új ügyfélcégek, modulok/ÁFA a cég beállításokban. Bemutatóhoz válts a{" "}
-        <strong>Minta Gáztelep</strong>re (üres adat, áfakörös), majd vissza a Gáz Veledre.
+        Új ügyfélcégek <strong>üres adattal</strong> indulnak (saját partnerek, készlet, árak).
+        Bemutatóhoz válts a <strong>Minta Gáztelep</strong>re vagy a létrehozott cégre, majd vissza a Gáz
+        Veledre.
       </p>
       <p className="mb-4 text-xs text-muted-foreground">
         Most aktív: <span className="font-medium text-foreground">{organization?.name ?? "—"}</span>
@@ -136,8 +148,10 @@ function PlatformOrganizationsPage() {
             value={name}
             onChange={(e) => {
               const v = e.target.value;
-              setName(v);
-              if (!slugTouched) setSlug(slugify(v));
+              patch({
+                name: v,
+                ...(!slugTouched ? { slug: slugify(v) } : {}),
+              });
             }}
             placeholder="pl. Kovács Gáz Kft."
           />
@@ -147,8 +161,7 @@ function PlatformOrganizationsPage() {
           <Input
             value={slug}
             onChange={(e) => {
-              setSlugTouched(true);
-              setSlug(e.target.value.toLowerCase());
+              patch({ slugTouched: true, slug: e.target.value.toLowerCase() });
             }}
             placeholder="kovacs-gaz"
           />
@@ -158,7 +171,7 @@ function PlatformOrganizationsPage() {
           <Input
             type="email"
             value={adminEmail}
-            onChange={(e) => setAdminEmail(e.target.value)}
+            onChange={(e) => patch({ adminEmail: e.target.value })}
             placeholder="ugyfel@pelda.hu – előbb regisztráljon"
           />
         </div>
@@ -167,7 +180,9 @@ function PlatformOrganizationsPage() {
             <Label>Adózás</Label>
             <Select
               value={taxRegime}
-              onValueChange={(v) => setTaxRegime(v as "vat_exempt" | "vat_registered")}
+              onValueChange={(v) =>
+                patch({ taxRegime: v as "vat_exempt" | "vat_registered" })
+              }
             >
               <SelectTrigger>
                 <SelectValue />
@@ -186,7 +201,7 @@ function PlatformOrganizationsPage() {
                 min={0}
                 max={100}
                 value={vatRate}
-                onChange={(e) => setVatRate(e.target.value)}
+                onChange={(e) => patch({ vatRate: e.target.value })}
               />
             </div>
           )}

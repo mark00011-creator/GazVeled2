@@ -1,6 +1,5 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +18,7 @@ import { ROLE_LABELS, type AppRole } from "@/lib/roles";
 import { toast } from "sonner";
 import { formatSupabaseError } from "@/lib/supabase-error";
 import { UserPlus } from "lucide-react";
+import { usePersistedFormState } from "@/hooks/use-persisted-form-state";
 
 export const Route = createFileRoute("/_authenticated/users")({
   head: () => ({ meta: [{ title: "Jogosultságok – Gáz Veled" }] }),
@@ -35,12 +35,26 @@ type ProfileRow = {
 
 const ASSIGNABLE_ROLES: AppRole[] = ["admin", "exchange_operator", "viewer"];
 
+type InviteForm = {
+  inviteEmail: string;
+  inviteName: string;
+  inviteRole: AppRole;
+};
+
+const INVITE_DEFAULTS: InviteForm = {
+  inviteEmail: "",
+  inviteName: "",
+  inviteRole: "exchange_operator",
+};
+
 function UsersAdminPage() {
   const { isAdmin, loading: authLoading, organization } = useAuth();
   const qc = useQueryClient();
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteName, setInviteName] = useState("");
-  const [inviteRole, setInviteRole] = useState<AppRole>("exchange_operator");
+  const { state: invite, patch: patchInvite, reset: resetInvite } = usePersistedFormState(
+    INVITE_DEFAULTS,
+    { formKey: "invite" },
+  );
+  const { inviteEmail, inviteName, inviteRole } = invite;
 
   const { data: profiles, isLoading } = useQuery({
     queryKey: ["admin-profiles"],
@@ -69,9 +83,7 @@ function UsersAdminPage() {
     },
     onSuccess: () => {
       toast.success("Felhasználó hozzáadva a céghez");
-      setInviteEmail("");
-      setInviteName("");
-      setInviteRole("exchange_operator");
+      resetInvite();
       qc.invalidateQueries({ queryKey: ["admin-profiles"] });
     },
     onError: (e) => toast.error((e as Error).message),
@@ -155,7 +167,7 @@ function UsersAdminPage() {
               <Input
                 type="email"
                 value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
+                onChange={(e) => patchInvite({ inviteEmail: e.target.value })}
                 placeholder="dolgozo@ceg.hu"
                 className="font-mono"
               />
@@ -164,13 +176,16 @@ function UsersAdminPage() {
               <Label className="mb-1 block">Megjelenő név (opcionális)</Label>
               <Input
                 value={inviteName}
-                onChange={(e) => setInviteName(e.target.value)}
+                onChange={(e) => patchInvite({ inviteName: e.target.value })}
                 placeholder="Kovács János"
               />
             </div>
             <div>
               <Label className="mb-1 block">Szerepkör</Label>
-              <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as AppRole)}>
+              <Select
+                value={inviteRole}
+                onValueChange={(v) => patchInvite({ inviteRole: v as AppRole })}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

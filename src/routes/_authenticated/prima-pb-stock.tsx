@@ -23,18 +23,33 @@ import {
   PB_MOVEMENT_LABELS,
   type PbMovementType,
 } from "@/lib/prima-pb-stock";
+import { usePersistedFormState } from "@/hooks/use-persisted-form-state";
 
 export const Route = createFileRoute("/_authenticated/prima-pb-stock")({
   head: () => ({ meta: [{ title: "PRÍMA PB készlet – Gáz Veled" }] }),
   component: PrimaPbStockPage,
 });
 
+type MovementForm = {
+  quantity: string;
+  movementType: PbMovementType;
+  note: string;
+};
+
+const MOVEMENT_DEFAULTS: MovementForm = {
+  quantity: "1",
+  movementType: "purchase",
+  note: "",
+};
+
 function PrimaPbStockPage() {
   const qc = useQueryClient();
   const item = PRIMA_PB_CATALOG[0];
-  const [quantity, setQuantity] = useState("1");
-  const [movementType, setMovementType] = useState<PbMovementType>("purchase");
-  const [note, setNote] = useState("");
+  const { state: form, patch } = usePersistedFormState(MOVEMENT_DEFAULTS, { formKey: "movement" });
+  const { quantity, movementType, note } = form;
+  const setQuantity = (v: string) => patch({ quantity: v });
+  const setMovementType = (v: PbMovementType) => patch({ movementType: v });
+  const setNote = (v: string) => patch({ note: v });
   const [busy, setBusy] = useState(false);
 
   const { data: stock = [], isLoading, isError } = useQuery({
