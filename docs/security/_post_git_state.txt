@@ -1,0 +1,44 @@
+# Post-git state after security commits
+# Generated: 2026-09-22T13:17:26+02:00
+
+## HEAD
+d15f953d5d56b760657efaab232ce7df62948a1f
+
+## git log -5
+d15f953 security: add privilege lockdown regression tests
+939ca06 docs: add security audit and pentest reports
+22da077 security: add baseline web security headers
+38fa6ac security: harden profiles privilege and org-scoped RPCs
+b582f23 Harden multi-tenant RPCs and empty-org onboarding.
+
+## git status --short
+ M package.json
+ M scripts/exchange-batch.test.mjs
+ M src/components/UninvoicedExchangesCard.tsx
+ M src/lib/dashboard-stats.ts
+ M src/routes/_authenticated/organization-settings.tsx
+ M src/routes/_authenticated/quick-exchange.tsx
+?? docs/security/_post_git_state.txt
+?? scripts/szamlazz-invoicing.test.mjs
+?? src/components/InvoiceAskDialog.tsx
+?? src/components/InvoicePreviewDialog.tsx
+?? src/lib/api/szamlazz.functions.ts
+?? src/lib/invoice-drafts.ts
+?? src/lib/szamlazz/
+?? supabase/functions/
+?? supabase/migrations/20260922120000_szamlazz_invoicing.sql
+
+## Remaining dirty files count
+15
+
+## Push result
+SUCCESS: b582f23..d15f953 HEAD -> main (origin/main)
+
+## Commits pushed
+- 38fa6ac security: harden profiles privilege and org-scoped RPCs
+- 22da077 security: add baseline web security headers
+- 939ca06 docs: add security audit and pentest reports
+- d15f953 security: add privilege lockdown regression tests
+
+## Test result
+node --test scripts/security-privilege-lockdown.test.mjs -> 4 pass, 0 fail

@@ -93,7 +93,8 @@ Secret scan: PASS (no raw service_role key in repo)
 - INFO: 2 (OK)
 
 ### POST
-- Production lockdown applied
-- Docs under `docs/security/`
-- Regression test added
-- Security commits: lásd git log (security: …)
+- Branch: `main`
+- HEAD: `d15f953d5d56b760657efaab232ce7df62948a1f`
+- Pushed: `origin/main` (`38fa6ac` … `d15f953`)
+- Production lockdown applied on `snmiwsgtnokvqlnwvfwf`
+- Remaining dirty: Számlázz WIP (szándékosan nem commitolva) + `szamlazz.functions` auth/finalize harden (WIP-ben)
