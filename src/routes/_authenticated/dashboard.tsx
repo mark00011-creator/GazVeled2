@@ -24,6 +24,9 @@ import {
   Banknote,
   BarChart3,
   Warehouse,
+  Users,
+  Tags,
+  ClipboardList,
 } from "lucide-react";
 
 import { fmtDate, isRentalExpired, rentalTypeLabels, cylinderExpiryDate, type RentalType } from "@/lib/labels";
@@ -47,9 +50,11 @@ import { fetchChineseStock } from "@/lib/chinese-stock";
 import { fetchFlagaPbStock, sumFlagaPbCounts } from "@/lib/flaga-pb-stock";
 import { fetchPrimaPbStock, sumPrimaPbCounts } from "@/lib/prima-pb-stock";
 import { fetchActiveDeployedQuantitySummary } from "@/lib/rental-quantity-stock";
+import { useAuth } from "@/lib/auth";
+import { GAZ_VEELED_ORG_ID } from "@/lib/organization";
 import { UninvoicedExchangesCard } from "@/components/UninvoicedExchangesCard";
 import { useRouteScrollOnly } from "@/hooks/use-route-state-persistence";
-
+import { Button } from "@/components/ui/button";
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({ meta: [{ title: "Áttekintés – Gáz Veled" }] }),
 
@@ -74,6 +79,7 @@ type CylinderExpiryWidget = RentalWidget & {
 };
 
 function Dashboard() {
+  const { organization } = useAuth();
   const {
     data: stats,
     isLoading,
@@ -83,6 +89,16 @@ function Dashboard() {
     queryKey: ["dashboard-stats"],
 
     queryFn: async () => {
+      const { count: partnerCount, error: partnerErr } = await supabase
+        .from("partners")
+        .select("*", { count: "exact", head: true });
+      if (partnerErr) throw partnerErr;
+
+      const { count: priceCount, error: priceErr } = await supabase
+        .from("product_prices")
+        .select("*", { count: "exact", head: true });
+      if (priceErr) throw priceErr;
+
       const { data: cyls, error: cylErr } = await supabase
         .from("cylinders")
         .select("circulation,status,location_type,last_movement_at")
@@ -316,11 +332,21 @@ function Dashboard() {
         flagaPbTotals,
         primaPbTotals,
         deployedQty,
+        partnerCount: partnerCount ?? 0,
+        priceCount: priceCount ?? 0,
+        cylinderCount: list.length,
       };
     },
   });
 
   useRouteScrollOnly(isFetched || isError);
+
+  const isEmptyTenant =
+    !!organization &&
+    organization.id !== GAZ_VEELED_ORG_ID &&
+    (stats?.partnerCount ?? 0) === 0 &&
+    (stats?.priceCount ?? 0) === 0 &&
+    (stats?.cylinderCount ?? 0) === 0;
 
   if (isLoading) {
     return (
@@ -342,6 +368,35 @@ function Dashboard() {
 
   return (
     <AppShell title="Áttekintés">
+      {isEmptyTenant && (
+        <Card className="mb-4 border-primary/30 bg-primary/5 p-4">
+          <h2 className="text-base font-semibold">Üdvözöljük a {organization?.name} cégnél</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Üres adatbázissal indultok — töltsétek fel a saját partnereket, árakat és készletet.
+          </p>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+            <Button asChild className="gap-2">
+              <Link to="/partners">
+                <Users className="h-4 w-4" />
+                Partner hozzáadása
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="gap-2">
+              <Link to="/price-list">
+                <Tags className="h-4 w-4" />
+                Árlista feltöltése
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="gap-2">
+              <Link to="/inventory">
+                <ClipboardList className="h-4 w-4" />
+                Leltár / palackfelvitel
+              </Link>
+            </Button>
+          </div>
+        </Card>
+      )}
+
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Link
           to="/quick-exchange"

@@ -20,6 +20,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { formatSupabaseError } from "@/lib/supabase-error";
 import { GAZ_VEELED_ORG_ID } from "@/lib/organization";
 import { usePersistedFormState } from "@/hooks/use-persisted-form-state";
+import { clearAllRouteStates } from "@/lib/route-state-storage";
+import { clearUserWorkflowDrafts } from "@/lib/workflow-draft-storage";
 
 export const Route = createFileRoute("/_authenticated/platform-organizations")({
   head: () => ({ meta: [{ title: "Cégek – Gáz Veled platform" }] }),
@@ -66,7 +68,7 @@ function slugify(name: string): string {
 }
 
 function PlatformOrganizationsPage() {
-  const { isPlatformAdmin, organization, loading } = useAuth();
+  const { isPlatformAdmin, organization, loading, user } = useAuth();
   const qc = useQueryClient();
   const { state: form, patch, reset } = usePersistedFormState(CREATE_DEFAULTS, {
     formKey: "create",
@@ -117,6 +119,10 @@ function PlatformOrganizationsPage() {
       if (error) throw new Error(formatSupabaseError(error, "Cégváltás"));
     },
     onSuccess: () => {
+      // Másik cég: ne maradjon előző org query cache / draft
+      qc.clear();
+      clearAllRouteStates();
+      if (user?.id) clearUserWorkflowDrafts(user.id);
       toast.success("Aktív cég átállítva");
       window.location.assign("/dashboard");
     },
