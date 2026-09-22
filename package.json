@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test": "node --test scripts/rental-temp-barcode-save.test.mjs scripts/cylinder-history-events.test.mjs scripts/global-events.test.mjs scripts/event-integrity-check.test.mjs scripts/exchange-operator-rbac.test.mjs scripts/password-recovery-redirect.test.mjs scripts/supply-stock.test.mjs scripts/supply-pricing.test.mjs scripts/supply-stock-ui.test.mjs scripts/workflow-draft.test.mjs scripts/partner-search.test.mjs scripts/route-state.test.mjs scripts/exchange-batch.test.mjs scripts/organizations.test.mjs scripts/org-tax.test.mjs scripts/form-persist.test.mjs scripts/org-isolation.test.mjs"
+    "test": "node --test scripts/rental-temp-barcode-save.test.mjs scripts/cylinder-history-events.test.mjs scripts/global-events.test.mjs scripts/event-integrity-check.test.mjs scripts/exchange-operator-rbac.test.mjs scripts/password-recovery-redirect.test.mjs scripts/supply-stock.test.mjs scripts/supply-pricing.test.mjs scripts/supply-stock-ui.test.mjs scripts/workflow-draft.test.mjs scripts/partner-search.test.mjs scripts/route-state.test.mjs scripts/exchange-batch.test.mjs scripts/organizations.test.mjs scripts/org-tax.test.mjs scripts/form-persist.test.mjs scripts/org-isolation.test.mjs scripts/security-privilege-lockdown.test.mjs",
+    "test:security": "node --test scripts/security-privilege-lockdown.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
