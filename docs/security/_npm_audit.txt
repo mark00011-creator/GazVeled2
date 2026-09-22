@@ -1,0 +1,8 @@
+npm audit summary
+info: 0
+low: 2
+moderate: 1
+high: 8
+critical: 0
+total: 11
+npm_audit_exit: 1

@@ -1,0 +1,66 @@
+=== Blackbox anon passive probes ===
+Date: 2026-09-22T13:12:25.5568757+02:00
+Base: https://snmiwsgtnokvqlnwvfwf.supabase.co
+Method: GET only (non-destructive)
+
+--- GET /rest/v1/profiles?select=*&limit=1 ---
+HTTP: 401
+Data leaked: NO_LEAK (permission denied / auth)
+Body preview: {"code":"42501","details":null,"hint":"Grant the required privileges to the current role with: GRANT SELECT ON public.profiles TO anon;","message":"permission denied for table profiles"}
+
+--- GET /rest/v1/partners?select=*&limit=1 ---
+HTTP: 401
+Data leaked: NO_LEAK (permission denied / auth)
+Body preview: {"code":"42501","details":null,"hint":"Grant the required privileges to the current role with: GRANT SELECT ON public.partners TO anon;","message":"permission denied for table partners"}
+
+--- GET /rest/v1/cylinders?select=*&limit=1 ---
+HTTP: 401
+Data leaked: NO_LEAK (permission denied / auth)
+Body preview: {"code":"42501","details":null,"hint":"Grant the required privileges to the current role with: GRANT SELECT ON public.cylinders TO anon;","message":"permission denied for table cylinders"}
+
+--- GET /rest/v1/exchanges?select=*&limit=1 ---
+HTTP: 401
+Data leaked: NO_LEAK (permission denied / auth)
+Body preview: {"code":"42501","details":null,"hint":"Grant the required privileges to the current role with: GRANT SELECT ON public.exchanges TO anon;","message":"permission denied for table exchanges"}
+
+--- GET /rest/v1/organizations?select=*&limit=1 ---
+HTTP: 401
+Data leaked: NO_LEAK (permission denied / auth)
+Body preview: {"code":"42501","details":null,"hint":"Grant the required privileges to the current role with: GRANT SELECT ON public.organizations TO anon;","message":"permission denied for table organizations"}
+
+--- GET /rest/v1/invoice_documents?select=*&limit=1 ---
+HTTP: 401
+Data leaked: NO_LEAK (permission denied / auth)
+Body preview: {"code":"42501","details":null,"hint":"Grant the required privileges to the current role with: GRANT SELECT ON public.invoice_documents TO anon;","message":"permission denied for table invoice_documents"}
+
+--- GET /rest/v1/organization_invoicing_secrets?select=*&limit=1 ---
+HTTP: 401
+Data leaked: NO_LEAK (permission denied / auth)
+Body preview: {"code":"42501","details":null,"hint":"Grant the required privileges to the current role with: GRANT SELECT ON public.organization_invoicing_secrets TO anon;","message":"permission denied for table organization_invoicing
+
+--- GET /auth/v1/health ---
+HTTP: 200
+Data leaked: NO_LEAK (public health metadata only)
+Body preview: {"version":"v2.197.0","name":"GoTrue","description":"GoTrue is a user registration and authentication API"}
+
+--- GET https://gazveeled2.vercel.app/ ---
+HTTP: 200
+sourceMappingURL present: False
+.map references in HTML: 0
+  Asset .map probe https://gazveeled2.vercel.app/assets/styles-DuDyw4Ah.css.map -> HTTP 404; NO_LEAK (no source map)
+  Asset .map probe https://gazveeled2.vercel.app/assets/index-CDq7lF2_.js.map -> HTTP 404; NO_LEAK (no source map)
+  Asset .map probe https://gazveeled2.vercel.app/assets/index-BbmeVqSl.js.map -> HTTP 404; NO_LEAK (no source map)
+Data leaked (.map): NO_LEAK (no source map refs)
+Data leaked (homepage HTML itself): expected public page (not secret leak)
+
+--- GET https://gazveeled2.vercel.app/.env ---
+HTTP: 404 (expect 404)
+Data leaked: NO_LEAK (not found, expected)
+Body preview: <!DOCTYPE html><html lang="hu"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-s
+
+--- GET https://gazveeled2.vercel.app/api/health ---
+HTTP: 404 (expect 404)
+Data leaked: NO_LEAK (not found, expected)
+Body preview: <!DOCTYPE html><html lang="hu"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-s
+
+=== End blackbox anon probes ===

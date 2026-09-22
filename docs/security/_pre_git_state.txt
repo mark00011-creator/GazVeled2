@@ -1,0 +1,17 @@
+﻿=== git status -sb ===
+## main...origin/main  M package.json  M scripts/exchange-batch.test.mjs  M src/components/UninvoicedExchangesCard.tsx  M src/lib/dashboard-stats.ts  M src/routes/_authenticated/organization-settings.tsx  M src/routes/_authenticated/quick-exchange.tsx ?? scripts/szamlazz-invoicing.test.mjs ?? src/components/InvoiceAskDialog.tsx ?? src/components/InvoicePreviewDialog.tsx ?? src/lib/api/szamlazz.functions.ts ?? src/lib/invoice-drafts.ts ?? src/lib/szamlazz/ ?? supabase/functions/ ?? supabase/migrations/20260922120000_szamlazz_invoicing.sql ?? supabase/migrations/20260922140000_security_privilege_lockdown.sql
+
+=== branch ===
+main
+
+=== HEAD ===
+b582f232f881ceae432ef30c5a95d464ad8b2173
+
+=== git log -5 --oneline ===
+b582f23 Harden multi-tenant RPCs and empty-org onboarding. 89ba4d1 Persist form drafts across tab switches and isolate tenant data. 5d73bb3 Add platform multi-company management and demo org. 930831a Add org VAT settings and supply product create/edit. 2ab5ed5 Fix permissions module, audit readability, and supply stock access.
+
+=== porcelain dirty list ===
+ M package.json  M scripts/exchange-batch.test.mjs  M src/components/UninvoicedExchangesCard.tsx  M src/lib/dashboard-stats.ts  M src/routes/_authenticated/organization-settings.tsx  M src/routes/_authenticated/quick-exchange.tsx ?? scripts/szamlazz-invoicing.test.mjs ?? src/components/InvoiceAskDialog.tsx ?? src/components/InvoicePreviewDialog.tsx ?? src/lib/api/szamlazz.functions.ts ?? src/lib/invoice-drafts.ts ?? src/lib/szamlazz/ ?? supabase/functions/ ?? supabase/migrations/20260922120000_szamlazz_invoicing.sql ?? supabase/migrations/20260922140000_security_privilege_lockdown.sql
+
+=== dirty count ===
+15

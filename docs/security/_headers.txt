@@ -1,0 +1,15 @@
+﻿url: https://gazveeled2.vercel.app
+source: src/lib/app-url.ts PRODUCTION_APP_URL / .env.example VITE_APP_URL
+
+=== curl -sI ===
+HTTP/1.1 200 OK
+Age: 0
+Cache-Control: public, max-age=0, must-revalidate
+Content-Type: text/html; charset=utf-8
+Date: Tue, 22 Sep 2026 11:04:58 GMT
+Server: Vercel
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+X-Vercel-Cache: MISS
+X-Vercel-Id: fra1::iad1::q5hh8-1790075098491-80f76ad3b95a
+
+

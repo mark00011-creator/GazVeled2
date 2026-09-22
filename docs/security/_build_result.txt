@@ -1,0 +1,53 @@
+﻿exit_code: 0
+
+=== last 50 lines ===
+.vercel/output/functions/__server.func/_ssr/partners._id-HJ4EaY2S.mjs                           25.57 kB
+.vercel/output/functions/__server.func/_libs/lucide-react.mjs                                   25.58 kB
+.vercel/output/functions/__server.func/_tanstack-start-manifest_v-BJnQn8QY.mjs                  27.18 kB
+.vercel/output/functions/__server.func/_ssr/quotes-ByEN6n_x.mjs                                 27.49 kB
+.vercel/output/functions/__server.func/_libs/supabase__supabase-js.mjs                          31.47 kB
+.vercel/output/functions/__server.func/_ssr/rental-import-BX-53RYw.mjs                          36.64 kB
+.vercel/output/functions/__server.func/_ssr/rentals._id-CE62A0Ej.mjs                            37.73 kB
+.vercel/output/functions/__server.func/_ssr/router-CHeZe4EL.mjs                                 39.29 kB
+.vercel/output/functions/__server.func/_libs/tanstack__react-router.mjs                         42.94 kB
+.vercel/output/functions/__server.func/_ssr/rentals.index-Bt0fmOxn.mjs                          44.10 kB
+.vercel/output/functions/__server.func/_ssr/dashboard-BQpv29KB.mjs                              46.34 kB
+.vercel/output/functions/__server.func/_libs/pdf-lib__upng.mjs                                  47.26 kB
+.vercel/output/functions/__server.func/_libs/seroval.mjs                                        48.40 kB
+.vercel/output/functions/__server.func/_ssr/rental-ops-DrFks2su.mjs                             49.18 kB
+.vercel/output/functions/__server.func/_libs/zxing__browser.mjs                                 51.50 kB
+.vercel/output/functions/__server.func/_libs/radix-ui__react-select.mjs                         52.35 kB
+.vercel/output/functions/__server.func/_libs/supabase__phoenix.mjs                              53.95 kB
+.vercel/output/functions/__server.func/_libs/vaul.mjs                                           60.11 kB
+.vercel/output/functions/__server.func/_libs/pngjs.mjs                                          65.02 kB
+.vercel/output/functions/__server.func/_ssr/server-BfoXOkgp.mjs                                 65.27 kB
+.vercel/output/functions/__server.func/_libs/qrcode.mjs                                         71.20 kB
+.vercel/output/functions/__server.func/_ssr/stock-CDpMaof4.mjs                                  73.21 kB
+.vercel/output/functions/__server.func/_libs/supabase__realtime-js.mjs                          73.92 kB
+.vercel/output/functions/__server.func/_ssr/cylinder-ops-LaDCS_Li.mjs                           74.00 kB
+.vercel/output/functions/__server.func/_libs/tanstack__query-core.mjs                           75.11 kB
+.vercel/output/functions/__server.func/_ssr/quick-exchange-CYZzm1IW.mjs                         95.36 kB
+.vercel/output/functions/__server.func/_libs/supabase__storage-js.mjs                           97.77 kB
+.vercel/output/functions/__server.func/_libs/tailwind-merge.mjs                                 99.21 kB
+.vercel/output/functions/__server.func/_libs/zod.mjs                                           105.95 kB
+.vercel/output/functions/__server.func/_libs/pako.mjs                                          121.02 kB
+.vercel/output/functions/__server.func/_libs/pdf-lib__standard-fonts.mjs                       133.51 kB
+.vercel/output/functions/__server.func/_libs/supabase__postgrest-js.mjs                        136.15 kB
+.vercel/output/functions/__server.func/_libs/tanstack__router-core.mjs                         171.54 kB
+.vercel/output/functions/__server.func/_libs/supabase__auth-js.mjs                             300.53 kB
+.vercel/output/functions/__server.func/_libs/pdf-lib.mjs                                       480.59 kB
+.vercel/output/functions/__server.func/_libs/react-dom.mjs                                     509.08 kB
+.vercel/output/functions/__server.func/_libs/xlsx.mjs                                          698.02 kB
+.vercel/output/functions/__server.func/_libs/zxing__library.mjs                                972.46 kB
+Ôťô built in 35.02s
+
+PWA v1.3.0
+mode      generateSW
+precache  95 entries (2157.24 KiB)
+files generated
+  dist/sw.js
+  dist/workbox-2fbc6a65.js
+i Generated .vercel/output/nitro.json
+
+[nitro] ÔłÜ You can preview this build using npx vite preview
+[nitro] ÔłÜ You can deploy this build using npx nitro deploy --prebuilt
