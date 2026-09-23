@@ -7,16 +7,27 @@ import {
   calculateAdr1136,
   type AdrLineInput,
   type AdrProductData,
+  type AdrCalculationResult,
 } from "@/lib/adr/types-and-calc";
 import { gasTypeToAdrKey, parseNetGasMassKg, parseWaterCapacityLitres } from "@/lib/adr/physical";
-import { generateDeliveryNotePdf, downloadDeliveryNotePdf } from "@/lib/delivery-notes/pdf";
+import {
+  downloadDeliveryNotePdf,
+  generateDeliveryNotePdfFromSnapshots,
+  pdfBase64ToBytes,
+  pdfBytesToBase64,
+} from "@/lib/delivery-notes/pdf";
+import {
+  buildAdrSnapshot,
+  buildBusinessSnapshot,
+  type DeliveryNoteBusinessSnapshot,
+} from "@/lib/delivery-notes/snapshot";
 import type {
   DeliveryNoteHeaderInput,
   DeliveryNoteItemInput,
   DeliveryNoteRow,
+  DeliveryNoteStatus,
 } from "@/lib/delivery-notes/types";
 
-/** Typed access before generated Database types include delivery_notes. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
@@ -82,28 +93,27 @@ export async function resolveAdrProduct(gasType: string | null | undefined): Pro
       .maybeSingle();
     if (!error && data) return mapMasterRow(data);
   } catch {
-    /* tábla még nincs – seed fallback */
+    /* tábla még nincs */
   }
   return fallbackProduct(key);
 }
 
 function enrichItem(item: DeliveryNoteItemInput): DeliveryNoteItemInput {
-  const water =
-    item.waterCapacityL ?? parseWaterCapacityLitres(item.size);
-  const net = item.netGasMassKg ?? parseNetGasMassKg(item.size);
   return {
     ...item,
-    waterCapacityL: water,
-    netGasMassKg: net,
+    waterCapacityL: item.waterCapacityL ?? parseWaterCapacityLitres(item.size),
+    netGasMassKg: item.netGasMassKg ?? parseNetGasMassKg(item.size),
     adrProductKey: item.adrProductKey ?? gasTypeToAdrKey(item.gasType),
   };
 }
 
 export async function buildAdrForItems(items: DeliveryNoteItemInput[]) {
   const enriched = items.map(enrichItem);
+  const products: AdrProductData[] = [];
   const lines: AdrLineInput[] = [];
   for (const it of enriched) {
     const product = await resolveAdrProduct(it.gasType);
+    products.push(product);
     lines.push({
       id: `${it.lineRole}-${it.barcode ?? it.gasType ?? "x"}-${it.size ?? ""}`,
       state: it.cylinderState,
@@ -118,14 +128,14 @@ export async function buildAdrForItems(items: DeliveryNoteItemInput[]) {
   }
   const adr = calculateAdr1136(lines);
   const adrReady = adr.blockingWarnings.length === 0;
-  return { enriched, adr, adrReady };
+  return { enriched, products, adr, adrReady };
 }
 
 export async function listDeliveryNotes(limit = 50): Promise<DeliveryNoteRow[]> {
   const { data, error } = await db
     .from("delivery_notes")
     .select(
-      "id, organization_id, document_number, status, issued_at, partner_id, supplier_id, source_type, source_id, shipper_name, shipper_address, consignee_name, consignee_address, delivery_address, vehicle_plate, driver_name, adr_ruleset_version, adr_snapshot, business_snapshot, adr_total_points, adr_within_116, created_at, finalized_at",
+      "id, organization_id, document_number, status, issued_at, partner_id, supplier_id, source_type, source_id, shipper_name, shipper_address, consignee_name, consignee_address, delivery_address, vehicle_plate, driver_name, adr_ruleset_version, adr_snapshot, business_snapshot, adr_total_points, adr_within_116, created_at, finalized_at, cancelled_at, cancellation_reason, pdf_base64",
     )
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -191,109 +201,193 @@ export async function createDeliveryNoteDraft(
 
   const { error: itemErr } = await db.from("delivery_note_items").insert(rows);
   if (itemErr) {
-    await db.from("delivery_notes").delete().eq("id", note.id);
+    await db.from("delivery_notes").delete().eq("id", note.id).eq("status", "draft");
     throw new Error(formatSupabaseError(itemErr, "Szállítólevél tételek"));
   }
 
   return { id: note.id as string, adrReady };
 }
 
-export async function finalizeDeliveryNote(noteId: string): Promise<{
-  documentNumber: string;
-  pdfBytes: Uint8Array;
-  adrReady: boolean;
-}> {
-  const { data: note, error } = await db.from("delivery_notes").select("*").eq("id", noteId).single();
-  if (error || !note) throw new Error(formatSupabaseError(error, "Szállítólevél betöltése"));
-  if (note.status === "finalized") throw new Error("A szállítólevél már véglegesítve van");
+type FinalizeRpcResult = {
+  id: string;
+  document_number: string;
+  status: DeliveryNoteStatus;
+  issued_at: string;
+  finalized_at: string;
+  adr_snapshot: AdrCalculationResult;
+  business_snapshot: DeliveryNoteBusinessSnapshot;
+  adr_total_points: number;
+  adr_within_116: boolean;
+  cancellation_reason?: string | null;
+};
 
-  const { data: items, error: iErr } = await db
+async function loadDraftItems(noteId: string): Promise<DeliveryNoteItemInput[]> {
+  const { data: items, error } = await db
     .from("delivery_note_items")
     .select("*")
     .eq("delivery_note_id", noteId)
     .order("sort_order");
-  if (iErr) throw new Error(formatSupabaseError(iErr, "Szállítólevél tételek"));
+  if (error) throw new Error(formatSupabaseError(error, "Szállítólevél tételek"));
+  return (items ?? []).map((it: Record<string, unknown>) => ({
+    lineRole: it.line_role as DeliveryNoteItemInput["lineRole"],
+    cylinderState: it.cylinder_state as DeliveryNoteItemInput["cylinderState"],
+    gasType: (it.gas_type as string) ?? null,
+    size: (it.size as string) ?? null,
+    quantity: Number(it.quantity),
+    barcode: (it.barcode as string) ?? null,
+    cylinderId: (it.cylinder_id as string) ?? null,
+    waterCapacityL: it.water_capacity_l != null ? Number(it.water_capacity_l) : null,
+    netGasMassKg: it.net_gas_mass_kg != null ? Number(it.net_gas_mass_kg) : null,
+    adrProductKey: (it.adr_product_key as string) ?? null,
+    note: (it.note as string) ?? null,
+  }));
+}
 
-  const itemInputs: DeliveryNoteItemInput[] = (items ?? []).map(
-    (it: Record<string, unknown>) => ({
-      lineRole: it.line_role as DeliveryNoteItemInput["lineRole"],
-      cylinderState: it.cylinder_state as DeliveryNoteItemInput["cylinderState"],
-      gasType: (it.gas_type as string) ?? null,
-      size: (it.size as string) ?? null,
-      quantity: Number(it.quantity),
-      barcode: (it.barcode as string) ?? null,
-      cylinderId: (it.cylinder_id as string) ?? null,
-      waterCapacityL: it.water_capacity_l != null ? Number(it.water_capacity_l) : null,
-      netGasMassKg: it.net_gas_mass_kg != null ? Number(it.net_gas_mass_kg) : null,
-      adrProductKey: (it.adr_product_key as string) ?? null,
-      note: (it.note as string) ?? null,
-    }),
-  );
+/**
+ * Finalize via single SECURITY DEFINER RPC (number + snapshots + status).
+ * PDF is generated from returned snapshots only, then attached once.
+ */
+export async function finalizeDeliveryNote(noteId: string): Promise<{
+  documentNumber: string;
+  pdfBytes: Uint8Array;
+  adrReady: boolean;
+  status: DeliveryNoteStatus;
+}> {
+  const { data: note, error } = await db.from("delivery_notes").select("*").eq("id", noteId).single();
+  if (error || !note) throw new Error(formatSupabaseError(error, "Szállítólevél betöltése"));
+  if (note.status === "finalized") throw new Error("A szállítólevél már véglegesítve van");
+  if (note.status === "cancelled") throw new Error("Érvénytelenített szállítólevél nem véglegesíthető");
+  if (note.status !== "draft") throw new Error("Csak piszkozat véglegesíthető");
 
-  const { adr, adrReady, enriched } = await buildAdrForItems(itemInputs);
+  const itemInputs = await loadDraftItems(noteId);
+  const { enriched, products, adr, adrReady } = await buildAdrForItems(itemInputs);
 
-  let documentNumber = note.document_number as string | null;
-  if (!documentNumber) {
-    const { data: num, error: nErr } = await db.rpc("next_delivery_note_number", {
-      p_organization_id: note.organization_id,
-    });
-    if (nErr) throw new Error(formatSupabaseError(nErr, "Szállítólevél sorszám"));
-    documentNumber = num as string;
-  }
-
-  const issuedAt = new Date().toISOString();
-  const pdfBytes = await generateDeliveryNotePdf({
-    documentNumber,
-    issuedAtIso: issuedAt,
-    shipperName: note.shipper_name ?? "",
-    shipperAddress: note.shipper_address,
-    consigneeName: note.consignee_name ?? "",
-    consigneeAddress: note.consignee_address,
-    deliveryAddress: note.delivery_address,
-    vehiclePlate: note.vehicle_plate,
-    driverName: note.driver_name,
+  const business = buildBusinessSnapshot({
+    header: {
+      shipperName: note.shipper_name ?? "",
+      shipperAddress: note.shipper_address,
+      consigneeName: note.consignee_name ?? "",
+      consigneeAddress: note.consignee_address,
+      deliveryAddress: note.delivery_address,
+      vehiclePlate: note.vehicle_plate,
+      driverName: note.driver_name,
+    },
     items: enriched,
+    products,
     adr,
-    adrReady,
+  });
+  const adrSnap = buildAdrSnapshot(adr);
+
+  const { data: rpcData, error: rpcErr } = await db.rpc("finalize_delivery_note", {
+    p_note_id: noteId,
+    p_adr_snapshot: adrSnap,
+    p_business_snapshot: business,
+    p_adr_total_points: adr.totalPoints,
+    p_adr_within_116: adr.within116Exemption,
+    p_pdf_base64: null,
   });
 
-  const { data: auth } = await supabase.auth.getUser();
-  let b64: string;
-  if (typeof Buffer !== "undefined") {
-    b64 = Buffer.from(pdfBytes).toString("base64");
-  } else {
-    let binary = "";
-    const chunk = 0x8000;
-    for (let i = 0; i < pdfBytes.length; i += chunk) {
-      binary += String.fromCharCode(...pdfBytes.subarray(i, i + chunk));
-    }
-    b64 = btoa(binary);
+  if (rpcErr) throw new Error(formatSupabaseError(rpcErr, "Szállítólevél véglegesítés"));
+  if (!rpcData?.document_number || rpcData.status !== "finalized") {
+    throw new Error("Finalize RPC nem adott vissza véglegesített dokumentumot");
   }
 
-  const { error: updErr } = await db
+  const fin = rpcData as FinalizeRpcResult;
+  const pdfBytes = await generateDeliveryNotePdfFromSnapshots({
+    documentNumber: fin.document_number,
+    issuedAtIso: fin.issued_at ?? fin.finalized_at,
+    status: "finalized",
+    business: fin.business_snapshot,
+    adr: fin.adr_snapshot,
+  });
+
+  const { error: pdfErr } = await db.rpc("attach_delivery_note_pdf", {
+    p_note_id: noteId,
+    p_pdf_base64: pdfBytesToBase64(pdfBytes),
+  });
+  if (pdfErr) throw new Error(formatSupabaseError(pdfErr, "PDF csatolás"));
+
+  return {
+    documentNumber: fin.document_number,
+    pdfBytes,
+    adrReady,
+    status: "finalized",
+  };
+}
+
+export async function cancelDeliveryNote(
+  noteId: string,
+  reason: string,
+): Promise<{ documentNumber: string; pdfBytes: Uint8Array }> {
+  if (!reason.trim()) throw new Error("Az érvénytelenítés indoka kötelező");
+
+  const { data: note, error } = await db
     .from("delivery_notes")
-    .update({
-      status: "finalized",
-      document_number: documentNumber,
-      issued_at: issuedAt,
-      finalized_at: issuedAt,
-      finalized_by: auth.user?.id ?? null,
-      adr_snapshot: adr,
-      business_snapshot: {
-        items: enriched,
-        partner: { name: note.consignee_name, address: note.consignee_address },
-        shipper: { name: note.shipper_name, address: note.shipper_address },
-      },
-      adr_total_points: adr.totalPoints,
-      adr_within_116: adr.within116Exemption,
-      pdf_base64: b64,
-    })
+    .select(
+      "id, status, document_number, issued_at, finalized_at, adr_snapshot, business_snapshot, cancellation_reason",
+    )
     .eq("id", noteId)
-    .eq("status", "draft");
+    .single();
+  if (error || !note) throw new Error(formatSupabaseError(error, "Szállítólevél"));
+  if (note.status !== "finalized") throw new Error("Csak véglegesített szállítólevél érvényteleníthető");
 
-  if (updErr) throw new Error(formatSupabaseError(updErr, "Szállítólevél véglegesítés"));
+  const business = note.business_snapshot as DeliveryNoteBusinessSnapshot;
+  const adr = note.adr_snapshot as AdrCalculationResult;
+  if (!business || !adr || !note.document_number) {
+    throw new Error("Hiányzó snapshot – érvénytelenítés nem lehetséges");
+  }
 
-  return { documentNumber, pdfBytes, adrReady };
+  const pdfBytes = await generateDeliveryNotePdfFromSnapshots({
+    documentNumber: note.document_number,
+    issuedAtIso: note.issued_at ?? note.finalized_at,
+    status: "cancelled",
+    cancellationReason: reason.trim(),
+    business,
+    adr,
+  });
+
+  const { data: rpcData, error: rpcErr } = await db.rpc("cancel_delivery_note", {
+    p_note_id: noteId,
+    p_reason: reason.trim(),
+    p_pdf_base64: pdfBytesToBase64(pdfBytes),
+  });
+  if (rpcErr) throw new Error(formatSupabaseError(rpcErr, "Érvénytelenítés"));
+  if (!rpcData || rpcData.status !== "cancelled") {
+    throw new Error("Cancel RPC nem adott vissza érvénytelenített dokumentumot");
+  }
+
+  return { documentNumber: rpcData.document_number as string, pdfBytes };
+}
+
+export async function downloadStoredDeliveryNotePdf(noteId: string): Promise<void> {
+  const { data: note, error } = await db
+    .from("delivery_notes")
+    .select("document_number, status, pdf_base64, issued_at, finalized_at, cancelled_at, cancellation_reason, adr_snapshot, business_snapshot")
+    .eq("id", noteId)
+    .single();
+  if (error || !note) throw new Error(formatSupabaseError(error, "Szállítólevél"));
+  if (note.status === "draft") throw new Error("Piszkozathoz még nincs végleges PDF");
+
+  let bytes: Uint8Array;
+  if (note.pdf_base64) {
+    bytes = pdfBase64ToBytes(note.pdf_base64 as string);
+  } else {
+    // Regenerálás kizárólag snapshotból
+    const business = note.business_snapshot as DeliveryNoteBusinessSnapshot;
+    const adr = note.adr_snapshot as AdrCalculationResult;
+    if (!business || !adr || !note.document_number) {
+      throw new Error("Hiányzó snapshot/PDF");
+    }
+    bytes = await generateDeliveryNotePdfFromSnapshots({
+      documentNumber: note.document_number,
+      issuedAtIso: note.issued_at ?? note.finalized_at,
+      status: note.status === "cancelled" ? "cancelled" : "finalized",
+      cancellationReason: note.cancellation_reason,
+      business,
+      adr,
+    });
+  }
+  downloadDeliveryNotePdf(bytes, `${note.document_number ?? "SZL"}.pdf`);
 }
 
 export async function createAndFinalizeFromSupplierExchange(args: {

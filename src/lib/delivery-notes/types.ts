@@ -6,7 +6,7 @@ export type DeliveryNoteSourceType =
   | "exchange_batch"
   | "quick_exchange";
 
-export type DeliveryNoteStatus = "draft" | "finalized" | "void";
+export type DeliveryNoteStatus = "draft" | "finalized" | "cancelled";
 
 export type DeliveryNoteLineRole = "outgoing_full" | "incoming_empty" | "other";
 
@@ -66,6 +66,9 @@ export type DeliveryNoteRow = {
   adr_within_116: boolean | null;
   created_at: string;
   finalized_at: string | null;
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
+  pdf_base64?: string | null;
 };
 
 export type DeliveryNoteItemRow = {
