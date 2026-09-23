@@ -68,6 +68,6 @@ test("quick exchange multi-pair wiring", () => {
   assert.doesNotMatch(quick, /addCurrentPairToList/);
   assert.match(quick, /batch_id: batchId/);
   assert.match(ops, /p_batch_id/);
-  assert.match(card, /markUninvoicedGroupInvoiced/);
+  assert.match(card, /createInvoiceDraft|Számlázás/);
   assert.match(card, /pairCount/);
 });

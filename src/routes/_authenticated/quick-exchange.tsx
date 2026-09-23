@@ -12,6 +12,16 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { NewCylinderDialog } from "@/components/NewCylinderDialog";
+import { InvoiceAskDialog } from "@/components/InvoiceAskDialog";
+import { DeliveryNoteAskDialog } from "@/components/DeliveryNoteAskDialog";
+import { createAndFinalizeFromExchangeBatch } from "@/lib/delivery-notes/ops";
+import { InvoicePreviewDialog } from "@/components/InvoicePreviewDialog";
+import {
+  buildDraftItemsFromUninvoicedGroup,
+  createInvoiceDraft,
+  fetchSzamlazzPublicSettings,
+} from "@/lib/invoice-drafts";
+import { formatProfit } from "@/lib/dashboard-stats";
 import {
   Select,
   SelectContent,
@@ -120,12 +130,27 @@ const OP_LABELS: Record<PartnerOperationType, string> = {
 
 function QuickExchange() {
   const qc = useQueryClient();
-  const { isExchangeOperator, user, orgSettings } = useAuth();
+  const { isExchangeOperator, user, orgSettings, organization } = useAuth();
   const Shell = isExchangeOperator ? OperatorShell : AppShell;
   const [operation, setOperation] = useState<PartnerOperationType>("exchange");
   const [exchangeMode, setExchangeMode] = useState<ExchangeMode>("barcode");
   const [saleMode, setSaleMode] = useState<SaleMode>("barcode");
   const [partnerId, setPartnerId] = useState<string>("");
+  const [invoiceAsk, setInvoiceAsk] = useState<{
+    partnerId: string;
+    partnerName: string;
+    batchId: string | null;
+    exchangeIds: string[];
+    itemCount: number;
+  } | null>(null);
+  const [deliveryNoteAsk, setDeliveryNoteAsk] = useState<{
+    partnerId: string;
+    partnerName: string;
+    batchId: string | null;
+    exchangeIds: string[];
+    itemCount: number;
+  } | null>(null);
+  const [invoicePreviewDocId, setInvoicePreviewDocId] = useState<string | null>(null);
   const [scanning, setScanning] = useState<"in" | "out" | null>(null);
   const [incomingBc, setIncomingBc] = useState("");
   const [outgoingBc, setOutgoingBc] = useState("");
@@ -783,13 +808,14 @@ function QuickExchange() {
                 : `batch-${Date.now()}`
               : null;
 
+          const exchangeIds: string[] = [];
           for (const pair of toSubmit) {
             const pairRentalId =
               (await findActiveRentalIdForCylinder(pair.incoming.id)) ??
               (activeRentals ?? [])[0]?.id ??
               null;
             const reassignYes = !!(pairRentalId && pair.reassign === "yes");
-            await recordExchange({
+            const exId = await recordExchange({
               partner_id: partnerId,
               incoming_id: pair.incoming.id,
               outgoing_id: pair.outgoing.id,
@@ -799,14 +825,30 @@ function QuickExchange() {
               reassign_rental: reassignYes,
               batch_id: batchId,
             });
+            exchangeIds.push(exId);
           }
           toast.success(
             toSubmit.length > 1
-              ? `${toSubmit.length} csere rögzítve egy számlázási emlékeztetőben`
+              ? `${toSubmit.length} csere rögzítve`
               : primarySettleableDiff
                 ? "Csere rögzítve – körforgás-eltérés rendezve"
                 : "Csere rögzítve",
           );
+          // Számlázzam? – igen → előnézet; nem → számlázatlan queue
+          setInvoiceAsk({
+            partnerId,
+            partnerName: selectedPartner?.name ?? "Partner",
+            batchId,
+            exchangeIds,
+            itemCount: toSubmit.length,
+          });
+          setDeliveryNoteAsk({
+            partnerId,
+            partnerName: selectedPartner?.name ?? "Partner",
+            batchId,
+            exchangeIds,
+            itemCount: toSubmit.length,
+          });
         }
       } else if (operation === "sale") {
         if (saleMode === "chinese") {
@@ -930,8 +972,126 @@ function QuickExchange() {
   const chineseSizes = getAvailableSizes(chineseGas);
   const chineseOutSizes = getAvailableSizes(chineseOutGas);
 
+  async function handleDeliveryNoteAskYes() {
+    if (!deliveryNoteAsk || !organization?.id) return;
+    try {
+      const fin = await createAndFinalizeFromExchangeBatch({
+        organizationId: organization.id,
+        organizationName: organization.name,
+        partnerId: deliveryNoteAsk.partnerId,
+        partnerName: deliveryNoteAsk.partnerName,
+        batchId: deliveryNoteAsk.batchId,
+        exchangeIds: deliveryNoteAsk.exchangeIds,
+      });
+      toast.success(
+        fin.adrReady
+          ? `Szállítólevél: ${fin.documentNumber}`
+          : `Szállítólevél (ADR figyelmeztetés): ${fin.documentNumber}`,
+      );
+      qc.invalidateQueries({ queryKey: ["delivery-notes"] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDeliveryNoteAsk(null);
+    }
+  }
+
+  async function handleInvoiceAskYes() {
+    if (!invoiceAsk || !organization?.id) return;
+    try {
+      const settings = await fetchSzamlazzPublicSettings();
+      if (!settings?.has_agent_key) {
+        toast.error(
+          "Nincs Számla Agent kulcs. Állítsd be a Cég beállításokban (teszt fiók ajánlott).",
+        );
+        return;
+      }
+      const { data: rows, error } = await supabase
+        .from("exchanges")
+        .select(
+          "id, eladasi_ar, outgoing: cylinders!exchanges_outgoing_cylinder_id_fkey ( barcode, gas_type, size )",
+        )
+        .in("id", invoiceAsk.exchangeIds);
+      if (error) throw new Error(error.message);
+      const tax = organization.settings.tax;
+      const items = buildDraftItemsFromUninvoicedGroup({
+        items: (rows ?? []).map((r) => {
+          const out = (
+            r as {
+              id: string;
+              eladasi_ar: number | null;
+              outgoing: { barcode: string; gas_type: string; size: string } | null;
+            }
+          ).outgoing;
+          const label = out
+            ? `${out.barcode} · ${out.gas_type} ${out.size}`
+            : "Gázcsere";
+          return {
+            exchangeId: (r as { id: string }).id,
+            outgoingLabel: label,
+            eladasi_ar: (r as { eladasi_ar: number | null }).eladasi_ar ?? 0,
+          };
+        }),
+        taxRegime: tax.regime,
+        defaultVatRate: tax.default_rate,
+      });
+      const docId = await createInvoiceDraft({
+        organizationId: organization.id,
+        partnerId: invoiceAsk.partnerId,
+        batchId: invoiceAsk.batchId,
+        items,
+        paymentMethod: settings.payment_method,
+      });
+      setInvoicePreviewDocId(docId);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setInvoiceAsk(null);
+    }
+  }
+
   return (
     <Shell {...(isExchangeOperator ? {} : { title: "Gyors csere" })}>
+      <InvoiceAskDialog
+        open={!!invoiceAsk}
+        onOpenChange={(o) => {
+          if (!o) setInvoiceAsk(null);
+        }}
+        partnerName={invoiceAsk?.partnerName}
+        itemCount={invoiceAsk?.itemCount ?? 0}
+        totalSaleValue={0}
+        formatMoney={formatProfit}
+        onYes={() => {
+          void handleInvoiceAskYes();
+        }}
+        onNo={() => {
+          toast.message("Számlázatlanul megjegyezve – a dashboardon később számlázható");
+        }}
+      />
+      <DeliveryNoteAskDialog
+        open={!!deliveryNoteAsk && !invoiceAsk}
+        onOpenChange={(o) => {
+          if (!o) setDeliveryNoteAsk(null);
+        }}
+        partnerName={deliveryNoteAsk?.partnerName}
+        itemCount={deliveryNoteAsk?.itemCount ?? 0}
+        onYes={() => {
+          void handleDeliveryNoteAskYes();
+        }}
+        onNo={() => {
+          toast.message("Szállítólevél kihagyva – később a Szállítólevelek menüből is lehet");
+        }}
+      />
+      <InvoicePreviewDialog
+        documentId={invoicePreviewDocId}
+        open={!!invoicePreviewDocId}
+        onOpenChange={(o) => {
+          if (!o) setInvoicePreviewDocId(null);
+        }}
+        onFinalized={() => {
+          qc.invalidateQueries({ queryKey: ["uninvoiced-exchanges"] });
+        }}
+      />
       {scanning && (
         <BarcodeScanner
           onResult={async (t) => {

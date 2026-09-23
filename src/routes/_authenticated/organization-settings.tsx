@@ -1,6 +1,6 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
@@ -24,11 +24,157 @@ import {
   type OrganizationSettings,
 } from "@/lib/organization";
 import { usePersistedFormState } from "@/hooks/use-persisted-form-state";
+import {
+  clearSzamlazzAgentKey,
+  fetchSzamlazzPublicSettings,
+  saveSzamlazzAgentKey,
+  updateSzamlazzInvoicingSettings,
+} from "@/lib/invoice-drafts";
 
 export const Route = createFileRoute("/_authenticated/organization-settings")({
   head: () => ({ meta: [{ title: "Cég beállítások – Gáz Veled" }] }),
   component: OrganizationSettingsPage,
 });
+
+function SzamlazzAgentSettingsCard() {
+  const qc = useQueryClient();
+  const [agentKey, setAgentKey] = useState("");
+  const [prefix, setPrefix] = useState("");
+  const [eszamla, setEszamla] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState("Átutalás");
+  const [dueDays, setDueDays] = useState(8);
+
+  const { data: sz } = useQuery({
+    queryKey: ["szamlazz-settings"],
+    queryFn: fetchSzamlazzPublicSettings,
+  });
+
+  useEffect(() => {
+    if (!sz) return;
+    setPrefix(sz.invoice_prefix ?? "");
+    setEszamla(sz.eszamla);
+    setPaymentMethod(sz.payment_method || "Átutalás");
+    setDueDays(sz.due_days ?? 8);
+  }, [sz]);
+
+  const saveKey = useMutation({
+    mutationFn: async () => {
+      if (agentKey.trim()) {
+        await saveSzamlazzAgentKey({
+          agentKey: agentKey.trim(),
+          invoicePrefix: prefix,
+          eszamla,
+          paymentMethod,
+          dueDays,
+        });
+        return;
+      }
+      if (sz?.has_agent_key) {
+        await updateSzamlazzInvoicingSettings({
+          invoicePrefix: prefix,
+          eszamla,
+          paymentMethod,
+          dueDays,
+        });
+        return;
+      }
+      throw new Error("Add meg a Számla Agent kulcsot");
+    },
+    onSuccess: () => {
+      toast.success("Számlázz.hu Agent beállítások mentve");
+      setAgentKey("");
+      qc.invalidateQueries({ queryKey: ["szamlazz-settings"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const clearKey = useMutation({
+    mutationFn: clearSzamlazzAgentKey,
+    onSuccess: () => {
+      toast.success("Agent kulcs törölve");
+      qc.invalidateQueries({ queryKey: ["szamlazz-settings"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Card className="mb-3 space-y-3 p-4">
+      <div className="text-sm font-semibold">Számlázz.hu Agent</div>
+      <p className="text-xs text-muted-foreground">
+        #free csomaggal is működik (papír számla). Az Agent havi sávos díjas (éles
+        fiók). Fejlesztéshez használd a <strong>teszt fiók</strong> kulcsát – az
+        díjmentes. A kulcs soha nem jelenik meg újra a UI-n.
+      </p>
+      <p className="text-xs">
+        Állapot:{" "}
+        <span className="font-medium">
+          {sz?.has_agent_key ? "Kulcs beállítva" : "Nincs kulcs"}
+        </span>
+      </p>
+      <div>
+        <Label>Számla Agent kulcs</Label>
+        <Input
+          type="password"
+          autoComplete="off"
+          placeholder={sz?.has_agent_key ? "Új kulcs megadása…" : "Agent kulcs"}
+          value={agentKey}
+          onChange={(e) => setAgentKey(e.target.value)}
+        />
+      </div>
+      <div>
+        <Label>Számlaszám előtag (opcionális)</Label>
+        <Input value={prefix} onChange={(e) => setPrefix(e.target.value)} />
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm">E-számla</div>
+          <p className="text-xs text-muted-foreground">
+            #free-n nem elérhető – csak #start+ csomagban.
+          </p>
+        </div>
+        <Switch checked={eszamla} onCheckedChange={setEszamla} />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label>Fizetési mód</Label>
+          <Input
+            value={paymentMethod}
+            onChange={(e) => setPaymentMethod(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label>Fizetési határidő (nap)</Label>
+          <Input
+            type="number"
+            min={0}
+            value={dueDays}
+            onChange={(e) => setDueDays(Number(e.target.value) || 0)}
+          />
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          className="flex-1"
+          disabled={saveKey.isPending}
+          onClick={() => saveKey.mutate()}
+        >
+          Agent mentése
+        </Button>
+        {sz?.has_agent_key && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={clearKey.isPending}
+            onClick={() => clearKey.mutate()}
+          >
+            Törlés
+          </Button>
+        )}
+      </div>
+    </Card>
+  );
+}
 
 const MODULE_LABELS: { key: keyof OrganizationModules; label: string; desc: string }[] = [
   { key: "suppliers", label: "Beszállítói csere", desc: "Beszállítói üres/teli mozgások" },
@@ -259,8 +405,36 @@ function OrganizationSettingsPage() {
       <Card className="mb-3 space-y-3 p-4">
         <div className="text-sm font-semibold">Számlázási irányelvek</div>
         <p className="text-xs text-muted-foreground">
-          Számlázó bekötés később (Billingo / Számlázz.hu). Itt már rögzíthető, mit számlázzunk.
+          Mit számlázzunk körforgás szerint. A Számlázz.hu Agent kulcsot lentebb tudod
+          megadni.
         </p>
+        <div className="space-y-2">
+          <Label>Számlázó szolgáltató</Label>
+          <Select
+            value={settings.invoicing.provider ?? "none"}
+            onValueChange={(v) =>
+              setState((prev) => ({
+                ...prev,
+                settings: {
+                  ...prev.settings,
+                  invoicing: {
+                    ...prev.settings.invoicing,
+                    provider: v === "none" ? null : (v as "szamlazz" | "billingo"),
+                  },
+                },
+              }))
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Nincs bekötve</SelectItem>
+              <SelectItem value="szamlazz">Számlázz.hu</SelectItem>
+              <SelectItem value="billingo">Billingo (később)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         {(
           [
             ["bill_own_circulation", "Saját körforgás számlázása"],
@@ -285,6 +459,8 @@ function OrganizationSettingsPage() {
           </div>
         ))}
       </Card>
+
+      <SzamlazzAgentSettingsCard />
 
       <Button className="w-full" size="lg" disabled={save.isPending} onClick={() => save.mutate()}>
         Mentés

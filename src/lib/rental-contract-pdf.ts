@@ -157,14 +157,14 @@ function wrapText(text: string, maxLen: number): string[] {
 
 function drawParagraph(ctx: PdfCtx, text: string, size = 9, bold = false, indent = 0) {
   for (const line of wrapText(text, 95)) {
-    ensureSpace(size + 5);
+    ensureSpace(ctx, size + 5);
     drawText(ctx, ctx.margin + indent, line, size, bold);
     ctx.y -= size + 4;
   }
 }
 
 function drawHeading(ctx: PdfCtx, text: string, size = 11) {
-  ensureSpace(size + 8);
+  ensureSpace(ctx, size + 8);
   drawText(ctx, ctx.margin, text, size, true);
   ctx.y -= size + 6;
 }
@@ -225,11 +225,11 @@ function drawCylinderTable(ctx: PdfCtx, lines: RentalContractLine[]) {
   const cellSize = 6.5;
 
   const drawRow = (values: string[], bold = false) => {
-    ensureSpace(rowH + 2);
+    ensureSpace(ctx, rowH + 2);
     let x = tableX;
     for (let i = 0; i < cols.length; i++) {
       const text = pdfSafe(values[i] ?? "");
-      const clipped = text.length > 16 ? `${text.slice(0, 15)}…` : text;
+      const clipped = pdfSafe(text.length > 16 ? `${text.slice(0, 15)}...` : text);
       ctx.page.drawText(clipped, {
         x: x + 2,
         y: ctx.y - 8,
@@ -337,7 +337,7 @@ function drawDeclarations(ctx: PdfCtx) {
 }
 
 function drawSignatures(ctx: PdfCtx, contractDate: string) {
-  ensureSpace(70);
+  ensureSpace(ctx, 70);
   const sigY = ctx.y;
   const colMid = ctx.pageWidth / 2;
   ctx.page.drawLine({
@@ -404,7 +404,7 @@ export async function generateRentalContractPdf(data: RentalContractData): Promi
     `${data.startDate.slice(0, 4)}/B-${data.rentalId.replace(/-/g, "").slice(0, 4).toUpperCase()}`;
 
   // Cím + szerződésszám
-  ensureSpace(60);
+  ensureSpace(ctx, 60);
   const title = pdfSafe("GAZPALACK BERLETI SZERZODES");
   const titleW = fontBold.widthOfTextAtSize(title, 14);
   ctx.page.drawText(title, {
@@ -422,7 +422,7 @@ export async function generateRentalContractPdf(data: RentalContractData): Promi
   const lines = resolveLines(data);
 
   drawLessorBlock(ctx);
-  drawLesseeBlock(ctx);
+  drawLesseeBlock(ctx, data.partner);
   drawCylinderTable(ctx, lines);
   drawRentalDetails(ctx, data);
   drawTerms(ctx);

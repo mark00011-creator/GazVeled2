@@ -135,6 +135,12 @@ const items: MoreItem[] = [
     module: "suppliers",
   },
   {
+    to: "/delivery-notes",
+    icon: FileText,
+    label: "Szállítólevelek",
+    desc: "ADR szállítólevél / palackcsere bizonylat, kézi és előzményből",
+  },
+  {
     to: "/rental-return",
     icon: RotateCcw,
     label: "Bérlet visszavétel",

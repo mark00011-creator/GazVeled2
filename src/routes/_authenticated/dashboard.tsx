@@ -44,6 +44,7 @@ import {
   fetchExchangeProfitStats,
   fetchTopExchangedProducts,
   fetchWarehouseInventoryValue,
+  fetchYearlyMonthlyProfitBreakdown,
   formatProfit,
 } from "@/lib/dashboard-stats";
 import { fetchChineseStock } from "@/lib/chinese-stock";
@@ -53,8 +54,16 @@ import { fetchActiveDeployedQuantitySummary } from "@/lib/rental-quantity-stock"
 import { useAuth } from "@/lib/auth";
 import { GAZ_VEELED_ORG_ID } from "@/lib/organization";
 import { UninvoicedExchangesCard } from "@/components/UninvoicedExchangesCard";
+import { UninvoicedRentalFeesCard } from "@/components/UninvoicedRentalFeesCard";
 import { useRouteScrollOnly } from "@/hooks/use-route-state-persistence";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useState } from "react";
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({ meta: [{ title: "Áttekintés – Gáz Veled" }] }),
 
@@ -80,6 +89,7 @@ type CylinderExpiryWidget = RentalWidget & {
 
 function Dashboard() {
   const { organization } = useAuth();
+  const [yearBreakdownOpen, setYearBreakdownOpen] = useState(false);
   const {
     data: stats,
     isLoading,
@@ -341,6 +351,13 @@ function Dashboard() {
 
   useRouteScrollOnly(isFetched || isError);
 
+  const year = new Date().getFullYear();
+  const { data: monthlyBreakdown } = useQuery({
+    queryKey: ["yearly-monthly-profit", year],
+    queryFn: () => fetchYearlyMonthlyProfitBreakdown(year),
+    enabled: yearBreakdownOpen,
+  });
+
   const isEmptyTenant =
     !!organization &&
     organization.id !== GAZ_VEELED_ORG_ID &&
@@ -368,6 +385,30 @@ function Dashboard() {
 
   return (
     <AppShell title="Áttekintés">
+      <Dialog open={yearBreakdownOpen} onOpenChange={setYearBreakdownOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Éves nyereség – {year} havi lebontás</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[60vh] space-y-1 overflow-y-auto text-sm">
+            {(monthlyBreakdown ?? []).map((row) => (
+              <div
+                key={row.month}
+                className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2"
+              >
+                <span>
+                  {row.label}
+                  <span className="ml-2 text-xs text-muted-foreground">{row.exchangeCount} csere</span>
+                </span>
+                <span className="font-semibold">{formatProfit(row.profit)}</span>
+              </div>
+            ))}
+            {!monthlyBreakdown && (
+              <p className="text-xs text-muted-foreground">Betöltés…</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
       {isEmptyTenant && (
         <Card className="mb-4 border-primary/30 bg-primary/5 p-4">
           <h2 className="text-base font-semibold">Üdvözöljük a {organization?.name} cégnél</h2>
@@ -516,13 +557,22 @@ function Dashboard() {
             {formatProfit(stats?.profitStats?.monthProfit ?? 0)}
           </div>
         </Card>
-        <Card className="p-4">
+        <Card
+          className="cursor-pointer p-4 transition-colors hover:bg-accent/40"
+          role="button"
+          tabIndex={0}
+          onClick={() => setYearBreakdownOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") setYearBreakdownOpen(true);
+          }}
+        >
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Banknote className="h-3.5 w-3.5" /> Éves nyereség
           </div>
           <div className="mt-1 text-xl font-bold">
             {formatProfit(stats?.profitStats?.yearProfit ?? 0)}
           </div>
+          <div className="mt-1 text-[10px] text-muted-foreground">Kattints a havi lebontáshoz</div>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -556,6 +606,7 @@ function Dashboard() {
       </div>
 
       <UninvoicedExchangesCard />
+      <UninvoicedRentalFeesCard />
 
       {(stats?.topProducts?.length ?? 0) > 0 && (
         <Card className="mb-4 p-4">

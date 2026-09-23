@@ -473,7 +473,9 @@ function RentalDetail() {
             />
           )}
           <Info
-            label={rentalType === "monthly" ? "Havi díj" : "Díj"}
+            label={
+              rentalType === "monthly" ? "Havi díj" : rentalType === "yearly" ? "Éves díj" : "Díj"
+            }
             value={`${Number(rental.monthly_fee).toLocaleString("hu-HU")} Ft${rentalType === "monthly" ? "/hó" : ""}`}
           />
           <Info label="Kaució" value={`${Number(rental.deposit).toLocaleString("hu-HU")} Ft`} />

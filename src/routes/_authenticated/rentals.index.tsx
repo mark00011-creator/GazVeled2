@@ -580,21 +580,27 @@ function RentalsList() {
               </div>
               <div>
                 <Label>Bérlet típusa *</Label>
-                <Select
-                  value={form.rental_type}
-                  onValueChange={(v) => onTypeChange(v as RentalType)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {RENTAL_TYPE_OPTIONS.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="mt-1.5 grid grid-cols-3 gap-2">
+                  {RENTAL_TYPE_OPTIONS.map((o) => (
+                    <Button
+                      key={o.value}
+                      type="button"
+                      size="sm"
+                      variant={form.rental_type === o.value ? "default" : "outline"}
+                      className="h-auto whitespace-normal px-2 py-2 text-xs"
+                      onClick={() => onTypeChange(o.value)}
+                    >
+                      {o.label}
+                    </Button>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  {form.rental_type === "monthly"
+                    ? "Havidíjas bérlet – a díj havonta számlázandó."
+                    : form.rental_type === "yearly"
+                      ? "Éves bérlet – egyszeri éves díj."
+                      : "Díjmentes kölcsön – nincs bérleti díj."}
+                </p>
               </div>
               <div>
                 <Label>Bérlet kezdete *</Label>
@@ -642,7 +648,7 @@ function RentalsList() {
               )}
               {form.rental_type === "yearly" && (
                 <div>
-                  <Label>Éves díj / havi díj (Ft)</Label>
+                  <Label>Éves díj (Ft)</Label>
                   <Input
                     type="number"
                     value={form.monthly_fee}

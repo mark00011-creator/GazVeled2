@@ -721,6 +721,9 @@ async function insertNewRental(args: ActiveRentalCreateParams): Promise<string> 
     rentalPayload.next_invoice_date = null;
   }
 
+  rentalPayload.initial_fee_invoiced =
+    args.rental_type === "free" || !(args.monthly_fee > 0);
+
   const { data: contractNumber, error: cnErr } = await supabase.rpc("next_rental_contract_number", {
     p_start_date: args.start_date,
   });

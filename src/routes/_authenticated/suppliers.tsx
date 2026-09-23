@@ -9,9 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Camera, Check, Plus, X } from "lucide-react";
+import { Camera, Check, FileText, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { circulationLabels, fmtDateTime, locationLabels, manufacturerLabels, type Manufacturer } from "@/lib/labels";
+import { createAndFinalizeFromSupplierExchange } from "@/lib/delivery-notes/ops";
 import {
   normalizeBarcode,
   resolveCylinderForSupplierReceive,
@@ -44,7 +45,7 @@ type DialogPhase = "return" | "receive";
 
 function Suppliers() {
   const qc = useQueryClient();
-  const { user } = useAuth();
+  const { user, organization } = useAuth();
   const [supplierId, setSupplierId] = useState("");
   const [returnBc, setReturnBc] = useState("");
   const [receiveBc, setReceiveBc] = useState("");
@@ -58,6 +59,7 @@ function Suppliers() {
   const [pendingBc, setPendingBc] = useState("");
   const [newName, setNewName] = useState("");
   const [newKind, setNewKind] = useState<SupKind>("siad");
+  const [makingDn, setMakingDn] = useState<string | null>(null);
 
   const applyDraft = useCallback((draft: SupplierExchangeDraft) => {
     setSupplierId(draft.supplierId);
@@ -548,6 +550,36 @@ function Suppliers() {
                 </div>
               )}
               {h.note && <div className="mt-1 text-xs text-muted-foreground">{h.note}</div>}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="mt-3 w-full"
+                disabled={!organization?.id || makingDn === h.id}
+                onClick={async () => {
+                  if (!organization?.id) return;
+                  setMakingDn(h.id);
+                  try {
+                    const fin = await createAndFinalizeFromSupplierExchange({
+                      organizationId: organization.id,
+                      organizationName: organization.name,
+                      supplierExchangeId: h.id,
+                    });
+                    toast.success(
+                      fin.adrReady
+                        ? `Szállítólevél: ${fin.documentNumber}`
+                        : `Szállítólevél (ADR figyelmeztetés): ${fin.documentNumber}`,
+                    );
+                  } catch (e) {
+                    toast.error((e as Error).message);
+                  } finally {
+                    setMakingDn(null);
+                  }
+                }}
+              >
+                <FileText className="mr-1 h-3.5 w-3.5" />
+                {makingDn === h.id ? "Szállítólevél…" : "Szállítólevél"}
+              </Button>
             </Card>
           );
         })}

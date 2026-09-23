@@ -1430,6 +1430,7 @@ export type Database = {
           expiry_date: string | null
           first_invoice_date: string | null
           id: string
+          initial_fee_invoiced: boolean
           monthly_fee: number
           next_invoice_date: string | null
           note: string | null
@@ -1456,6 +1457,7 @@ export type Database = {
           expiry_date?: string | null
           first_invoice_date?: string | null
           id?: string
+          initial_fee_invoiced?: boolean
           monthly_fee?: number
           next_invoice_date?: string | null
           note?: string | null
@@ -1482,6 +1484,7 @@ export type Database = {
           expiry_date?: string | null
           first_invoice_date?: string | null
           id?: string
+          initial_fee_invoiced?: boolean
           monthly_fee?: number
           next_invoice_date?: string | null
           note?: string | null
@@ -1922,6 +1925,19 @@ export type Database = {
           p_role?: string
         }
         Returns: string
+      }
+      correct_exchange_outgoing: {
+        Args: {
+          p_exchange_id: string
+          p_new_outgoing_id: string
+        }
+        Returns: undefined
+      }
+      mark_rental_initial_fee_invoiced: {
+        Args: {
+          p_rental_id: string
+        }
+        Returns: undefined
       }
       create_organization: {
         Args: {

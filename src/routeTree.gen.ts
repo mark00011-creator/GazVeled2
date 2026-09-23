@@ -32,6 +32,7 @@ import { Route as AuthenticatedInventoryRouteImport } from './routes/_authentica
 import { Route as AuthenticatedGasOrderFlagaRouteImport } from './routes/_authenticated/gas-order-flaga'
 import { Route as AuthenticatedGasOrderRouteImport } from './routes/_authenticated/gas-order'
 import { Route as AuthenticatedFlagaPbStockRouteImport } from './routes/_authenticated/flaga-pb-stock'
+import { Route as AuthenticatedDeliveryNotesRouteImport } from './routes/_authenticated/delivery-notes'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedCylindersRouteImport } from './routes/_authenticated/cylinders'
 import { Route as AuthenticatedChineseStockRouteImport } from './routes/_authenticated/chinese-stock'
@@ -167,6 +168,12 @@ const AuthenticatedFlagaPbStockRoute =
     path: '/flaga-pb-stock',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedDeliveryNotesRoute =
+  AuthenticatedDeliveryNotesRouteImport.update({
+    id: '/delivery-notes',
+    path: '/delivery-notes',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -238,6 +245,7 @@ export interface FileRoutesByFullPath {
   '/chinese-stock': typeof AuthenticatedChineseStockRoute
   '/cylinders': typeof AuthenticatedCylindersRouteWithChildren
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/delivery-notes': typeof AuthenticatedDeliveryNotesRoute
   '/flaga-pb-stock': typeof AuthenticatedFlagaPbStockRoute
   '/gas-order': typeof AuthenticatedGasOrderRoute
   '/gas-order-flaga': typeof AuthenticatedGasOrderFlagaRoute
@@ -273,6 +281,7 @@ export interface FileRoutesByTo {
   '/chinese-stock': typeof AuthenticatedChineseStockRoute
   '/cylinders': typeof AuthenticatedCylindersRouteWithChildren
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/delivery-notes': typeof AuthenticatedDeliveryNotesRoute
   '/flaga-pb-stock': typeof AuthenticatedFlagaPbStockRoute
   '/gas-order': typeof AuthenticatedGasOrderRoute
   '/gas-order-flaga': typeof AuthenticatedGasOrderFlagaRoute
@@ -308,6 +317,7 @@ export interface FileRoutesById {
   '/_authenticated/chinese-stock': typeof AuthenticatedChineseStockRoute
   '/_authenticated/cylinders': typeof AuthenticatedCylindersRouteWithChildren
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/delivery-notes': typeof AuthenticatedDeliveryNotesRoute
   '/_authenticated/flaga-pb-stock': typeof AuthenticatedFlagaPbStockRoute
   '/_authenticated/gas-order': typeof AuthenticatedGasOrderRoute
   '/_authenticated/gas-order-flaga': typeof AuthenticatedGasOrderFlagaRoute
@@ -345,6 +355,7 @@ export interface FileRouteTypes {
     | '/chinese-stock'
     | '/cylinders'
     | '/dashboard'
+    | '/delivery-notes'
     | '/flaga-pb-stock'
     | '/gas-order'
     | '/gas-order-flaga'
@@ -380,6 +391,7 @@ export interface FileRouteTypes {
     | '/chinese-stock'
     | '/cylinders'
     | '/dashboard'
+    | '/delivery-notes'
     | '/flaga-pb-stock'
     | '/gas-order'
     | '/gas-order-flaga'
@@ -414,6 +426,7 @@ export interface FileRouteTypes {
     | '/_authenticated/chinese-stock'
     | '/_authenticated/cylinders'
     | '/_authenticated/dashboard'
+    | '/_authenticated/delivery-notes'
     | '/_authenticated/flaga-pb-stock'
     | '/_authenticated/gas-order'
     | '/_authenticated/gas-order-flaga'
@@ -612,6 +625,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedFlagaPbStockRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/delivery-notes': {
+      id: '/_authenticated/delivery-notes'
+      path: '/delivery-notes'
+      fullPath: '/delivery-notes'
+      preLoaderRoute: typeof AuthenticatedDeliveryNotesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
       path: '/dashboard'
@@ -753,6 +773,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedChineseStockRoute: typeof AuthenticatedChineseStockRoute
   AuthenticatedCylindersRoute: typeof AuthenticatedCylindersRouteWithChildren
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedDeliveryNotesRoute: typeof AuthenticatedDeliveryNotesRoute
   AuthenticatedFlagaPbStockRoute: typeof AuthenticatedFlagaPbStockRoute
   AuthenticatedGasOrderRoute: typeof AuthenticatedGasOrderRoute
   AuthenticatedGasOrderFlagaRoute: typeof AuthenticatedGasOrderFlagaRoute
@@ -779,6 +800,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedChineseStockRoute: AuthenticatedChineseStockRoute,
   AuthenticatedCylindersRoute: AuthenticatedCylindersRouteWithChildren,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedDeliveryNotesRoute: AuthenticatedDeliveryNotesRoute,
   AuthenticatedFlagaPbStockRoute: AuthenticatedFlagaPbStockRoute,
   AuthenticatedGasOrderRoute: AuthenticatedGasOrderRoute,
   AuthenticatedGasOrderFlagaRoute: AuthenticatedGasOrderFlagaRoute,

@@ -65,6 +65,7 @@ type CylinderRef = { barcode: string; gas_type: string; size: string } | null;
 const UNINVOICED_SELECT = `
   id,
   batch_id,
+  partner_id,
   created_at,
   eladasi_ar,
   profit,
@@ -92,6 +93,7 @@ export type UninvoicedExchange = {
   /** UI kulcs: batch_id vagy egyedi exchange id */
   id: string;
   batchId: string | null;
+  partnerId: string;
   exchangeIds: string[];
   created_at: string;
   eladasi_ar: number;
@@ -112,6 +114,7 @@ export type UninvoicedExchangeSummary = {
 function mapUninvoicedRow(row: {
   id: string;
   batch_id?: string | null;
+  partner_id?: string | null;
   created_at: string;
   eladasi_ar: number | null;
   profit: number | null;
@@ -120,7 +123,12 @@ function mapUninvoicedRow(row: {
   partners: { name: string } | null;
   incoming: CylinderRef;
   outgoing: CylinderRef;
-}): UninvoicedExchangeItem & { batchId: string | null; created_at: string; partnerName: string } {
+}): UninvoicedExchangeItem & {
+  batchId: string | null;
+  partnerId: string;
+  created_at: string;
+  partnerName: string;
+} {
   const op = row.operation_type ?? "exchange";
   let incomingLabel = cylinderLabel(row.incoming);
   let outgoingLabel = cylinderLabel(row.outgoing);
@@ -145,6 +153,7 @@ function mapUninvoicedRow(row: {
   return {
     exchangeId: row.id,
     batchId: row.batch_id ?? null,
+    partnerId: row.partner_id ?? "",
     created_at: row.created_at,
     partnerName: row.partners?.name ?? "—",
     incomingLabel,
@@ -165,6 +174,7 @@ function groupUninvoicedRows(
       groups.set(key, {
         id: key,
         batchId: row.batchId,
+        partnerId: row.partnerId,
         exchangeIds: [row.exchangeId],
         created_at: row.created_at,
         eladasi_ar: row.eladasi_ar,
@@ -228,6 +238,7 @@ export async function fetchUninvoicedExchanges(limit = 5): Promise<UninvoicedExc
       row as {
         id: string;
         batch_id?: string | null;
+        partner_id?: string | null;
         created_at: string;
         eladasi_ar: number | null;
         profit: number | null;
@@ -321,6 +332,64 @@ export async function fetchExchangeProfitStats(): Promise<ExchangeProfitStats> {
     monthExchangeCount,
     monthAvgProfit: monthExchangeCount > 0 ? Math.round(monthProfit / monthExchangeCount) : null,
   };
+}
+
+export type MonthlyProfitRow = {
+  year: number;
+  month: number; // 1–12
+  label: string;
+  profit: number;
+  exchangeCount: number;
+};
+
+const HU_MONTHS = [
+  "Január",
+  "Február",
+  "Március",
+  "Április",
+  "Május",
+  "Június",
+  "Július",
+  "Augusztus",
+  "Szeptember",
+  "Október",
+  "November",
+  "December",
+];
+
+/** Aktuális naptári év havi nyereség / bevétel lebontása (csere profit). */
+export async function fetchYearlyMonthlyProfitBreakdown(
+  year = new Date().getFullYear(),
+): Promise<MonthlyProfitRow[]> {
+  const yearStart = new Date(year, 0, 1).toISOString();
+  const yearEnd = new Date(year + 1, 0, 1).toISOString();
+
+  const { data, error } = await applyCompletedQuickExchangeFilters(
+    supabase
+      .from("exchanges")
+      .select("profit, created_at")
+      .gte("created_at", yearStart)
+      .lt("created_at", yearEnd),
+  );
+  if (error) throw new Error(formatSupabaseError(error, "Éves havi lebontás"));
+
+  const buckets = Array.from({ length: 12 }, (_, i) => ({
+    year,
+    month: i + 1,
+    label: HU_MONTHS[i],
+    profit: 0,
+    exchangeCount: 0,
+  }));
+
+  for (const row of data ?? []) {
+    const d = new Date(row.created_at as string);
+    if (d.getFullYear() !== year) continue;
+    const idx = d.getMonth();
+    buckets[idx].profit += Number(row.profit) || 0;
+    buckets[idx].exchangeCount += 1;
+  }
+
+  return buckets;
 }
 
 export async function fetchTopExchangedProducts(limit = 5): Promise<TopExchangedProduct[]> {
