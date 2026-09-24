@@ -1,8 +1,10 @@
 # SECOND PRE-PRODUCTION AUDIT — `0f450af`
 
-**Dátum:** 2026-09-23  
-**Auditor mód:** független, bizonyítás-only (nincs fix / feature / refactor)  
+**Dátum (eredeti):** 2026-09-23  
+**Újrafuttatás:** 2026-09-24 (megszakított audit folytatása / újraellenőrzés)  
+**Auditor mód:** független, bizonyítás-only (nincs fix / feature / refactor / prod apply)  
 **Hardening commit:** `0f450af29c42cb5740229f5d4c326901e239c54b`  
+**Audit doksi commit (első kör):** `1709eccfa356568c8f6589c2470d42529e3dd158`  
 **Előző blokkoló audit doksi:** `docs/delivery-notes/PRE_PRODUCTION_AUDIT_1120396.md` (`606a811`)  
 **Production projekt:** `snmiwsgtnokvqlnwvfwf` (`https://snmiwsgtnokvqlnwvfwf.supabase.co`)  
 **Production apply ebben a körben:** **TILOS / NEM FUTTATVA**
@@ -19,6 +21,27 @@ A hardening **statikusan** kijavítja a `606a811` CRITICAL immutability / MAX+1 
 1. **Élő DB bizonyíték hiányzik** (nincs local Docker / működő Supabase CLI ezen a gépen) → 50-párhuzamos finalize, transaction rollback, cross-org RLS, immutability trigger smoke, fresh migration install **nem futtatható**.
 2. **HIGH trust-boundary:** a `finalize_delivery_note` RPC a kliens által küldött ADR/business snapshotot és pontszámot **vakon elfogadja** (nincs szerveroldali újraszámítás / hitelesítés).
 
+### Újrafuttatás (2026-09-24) — megerősítés
+
+| Ellenőrzés | Eredmény |
+|------------|----------|
+| HEAD / hardening | `1709ecc` (audit doksi) fölött hardening továbbra is `0f450af`; working tree csak probe PDF zaj (nem commitolva) |
+| Prod URL / ID | `https://snmiwsgtnokvqlnwvfwf.supabase.co` — **PASS** (helyes projekt) |
+| Prod `adr_product_master` / `delivery_notes*` | **NULL** (nincs apply) |
+| Prod delivery RPC-k (`%delivery_note%`) | **0** |
+| Prod schema_migrations `20260923120000` / `20260923140000` | **0 találat** |
+| Docker | **hiányzik** |
+| Supabase CLI | **crash** (`Illegal instruction`) |
+| `npm run test:adr` | **9/9 PASS** |
+| `npm run test:delivery-notes` | **8/8 PASS** |
+| `npm test` | **80/80 PASS** |
+| Float/threshold probe | 999.999 within; 1000 exact within; 1000.001 / 29×11.5×3 over — **PASS** |
+| Client `p_adr_snapshot` trust boundary | **még mindig HIGH FAIL** (`ops.ts` → `finalize_delivery_note`) |
+| Sequence UPSERT (140000) | **PASS design** (statikus) |
+| Élő concurrency / RLS / fresh migrate | **NEM FUTTATHATÓ** |
+
+**Végső státusz változatlan:** **NOT READY** (nincs production apply).
+
 ---
 
 ## 1. PRE
@@ -26,11 +49,11 @@ A hardening **statikusan** kijavítja a `606a811` CRITICAL immutability / MAX+1 
 | Mező | Érték |
 |------|--------|
 | Branch | `main` |
-| HEAD | `0f450af29c42cb5740229f5d4c326901e239c54b` |
-| Working tree | clean (audit doksi commit előtt) |
+| Hardening HEAD | `0f450af29c42cb5740229f5d4c326901e239c54b` |
+| Audit doksi HEAD (újrafuttatás előtt) | `1709eccfa356568c8f6589c2470d42529e3dd158` |
 | Delivery-note migrációk (repo) | `20260923120000_delivery_notes_adr.sql`, `20260923140000_delivery_notes_hardening.sql` |
 | Local/test applied migrations | **Nincs** — Docker nincs, `supabase` CLI crash (`Illegal instruction`), fresh local DB nem indítható |
-| Production migration state | delivery note objektumok **hiányoznak** (lásd §2) |
+| Production migration state | delivery note objektumok **hiányoznak** (lásd §2); 2026-09-24 újraellenőrizve |
 
 ---
 
@@ -49,7 +72,7 @@ A hardening **statikusan** kijavítja a `606a811` CRITICAL immutability / MAX+1 
 | `allocate_delivery_note_number(...)` | **NULL** |
 | schema_migrations `2026092312%` / `2026092314%` / delivery\|adr | **nincs találat** |
 
-**Bizonyíték:** productionön a delivery-note migráció **továbbra sincs alkalmazva**.
+**Bizonyíték:** productionön a delivery-note migráció **továbbra sincs alkalmazva** (2026-09-23 és 2026-09-24 read-only MCP `execute_sql` / `list_migrations`).
 
 ---
 
@@ -279,14 +302,15 @@ Bypass: `set_config('app.delivery_note_bypass','1', true)` csak definer függvé
 
 ## 17. Regression
 
-| Suite | Eredmény (2026-09-23 audit) |
-|-------|------------------------------|
-| ADR | **9/9 PASS** |
-| hardening | **8/8 PASS** |
-| `npm test` | **80/80 PASS** |
-| `npm run build` | **PASS** |
-| typecheck | **nincs** dedikált script |
-| lint | **nem futtatva** (korábbi hang / idő) → PARTIAL |
+| Suite | Eredmény (2026-09-23) | Újrafuttatás (2026-09-24) |
+|-------|----------------------|---------------------------|
+| ADR | **9/9 PASS** | **9/9 PASS** |
+| hardening | **8/8 PASS** | **8/8 PASS** |
+| `npm test` | **80/80 PASS** | **80/80 PASS** |
+| second-audit-probe | float/PDF meta OK | float/PDF meta OK (v2 ~19–21 KB) |
+| `npm run build` | **PASS** | **nem újrafuttatva** (statikus/regression kör; kód nem változott) |
+| typecheck | **nincs** dedikált script | ugyanaz |
+| lint | **nem futtatva** → PARTIAL | **nem futtatva** → PARTIAL |
 
 ---
 
