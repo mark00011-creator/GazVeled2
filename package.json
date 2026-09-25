@@ -12,7 +12,7 @@
     "format": "prettier --write .",
     "test": "node --test scripts/rental-temp-barcode-save.test.mjs scripts/cylinder-history-events.test.mjs scripts/global-events.test.mjs scripts/event-integrity-check.test.mjs scripts/exchange-operator-rbac.test.mjs scripts/password-recovery-redirect.test.mjs scripts/supply-stock.test.mjs scripts/supply-pricing.test.mjs scripts/supply-stock-ui.test.mjs scripts/workflow-draft.test.mjs scripts/partner-search.test.mjs scripts/route-state.test.mjs scripts/exchange-batch.test.mjs scripts/organizations.test.mjs scripts/org-tax.test.mjs scripts/form-persist.test.mjs scripts/org-isolation.test.mjs scripts/security-privilege-lockdown.test.mjs",
     "test:adr": "npx tsx --test scripts/adr-1136.test.mjs",
-    "test:delivery-notes": "npx tsx --test scripts/delivery-note-hardening.test.mjs",
+    "test:delivery-notes": "npx tsx --test scripts/delivery-note-hardening.test.mjs scripts/delivery-note-finalize-authority.test.mjs",
     "test:rental-pdf": "npx tsx --test scripts/rental-contract-pdf.test.mjs",
     "test:security": "node --test scripts/security-privilege-lockdown.test.mjs"
   },

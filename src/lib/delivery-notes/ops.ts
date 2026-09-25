@@ -16,11 +16,7 @@ import {
   pdfBase64ToBytes,
   pdfBytesToBase64,
 } from "@/lib/delivery-notes/pdf";
-import {
-  buildAdrSnapshot,
-  buildBusinessSnapshot,
-  type DeliveryNoteBusinessSnapshot,
-} from "@/lib/delivery-notes/snapshot";
+import type { DeliveryNoteBusinessSnapshot } from "@/lib/delivery-notes/snapshot";
 import type {
   DeliveryNoteHeaderInput,
   DeliveryNoteItemInput,
@@ -79,7 +75,9 @@ function mapMasterRow(row: Record<string, unknown>): AdrProductData {
   };
 }
 
-export async function resolveAdrProduct(gasType: string | null | undefined): Promise<AdrProductData> {
+export async function resolveAdrProduct(
+  gasType: string | null | undefined,
+): Promise<AdrProductData> {
   const key = gasTypeToAdrKey(gasType);
   if (!key) return fallbackProduct("");
   try {
@@ -221,31 +219,11 @@ type FinalizeRpcResult = {
   cancellation_reason?: string | null;
 };
 
-async function loadDraftItems(noteId: string): Promise<DeliveryNoteItemInput[]> {
-  const { data: items, error } = await db
-    .from("delivery_note_items")
-    .select("*")
-    .eq("delivery_note_id", noteId)
-    .order("sort_order");
-  if (error) throw new Error(formatSupabaseError(error, "Szállítólevél tételek"));
-  return (items ?? []).map((it: Record<string, unknown>) => ({
-    lineRole: it.line_role as DeliveryNoteItemInput["lineRole"],
-    cylinderState: it.cylinder_state as DeliveryNoteItemInput["cylinderState"],
-    gasType: (it.gas_type as string) ?? null,
-    size: (it.size as string) ?? null,
-    quantity: Number(it.quantity),
-    barcode: (it.barcode as string) ?? null,
-    cylinderId: (it.cylinder_id as string) ?? null,
-    waterCapacityL: it.water_capacity_l != null ? Number(it.water_capacity_l) : null,
-    netGasMassKg: it.net_gas_mass_kg != null ? Number(it.net_gas_mass_kg) : null,
-    adrProductKey: (it.adr_product_key as string) ?? null,
-    note: (it.note as string) ?? null,
-  }));
-}
-
 /**
- * Finalize via single SECURITY DEFINER RPC (number + snapshots + status).
- * PDF is generated from returned snapshots only, then attached once.
+ * Finalize via single SECURITY DEFINER RPC.
+ * Authority: server builds ADR + business snapshots from DB (items + master + partner/org).
+ * Client preview ADR is NOT sent and MUST NOT influence finalized data.
+ * PDF is generated from RPC-returned snapshots only, then attached once.
  */
 export async function finalizeDeliveryNote(noteId: string): Promise<{
   documentNumber: string;
@@ -253,46 +231,31 @@ export async function finalizeDeliveryNote(noteId: string): Promise<{
   adrReady: boolean;
   status: DeliveryNoteStatus;
 }> {
-  const { data: note, error } = await db.from("delivery_notes").select("*").eq("id", noteId).single();
+  const { data: note, error } = await db
+    .from("delivery_notes")
+    .select("*")
+    .eq("id", noteId)
+    .single();
   if (error || !note) throw new Error(formatSupabaseError(error, "Szállítólevél betöltése"));
   if (note.status === "finalized") throw new Error("A szállítólevél már véglegesítve van");
-  if (note.status === "cancelled") throw new Error("Érvénytelenített szállítólevél nem véglegesíthető");
+  if (note.status === "cancelled")
+    throw new Error("Érvénytelenített szállítólevél nem véglegesíthető");
   if (note.status !== "draft") throw new Error("Csak piszkozat véglegesíthető");
 
-  const itemInputs = await loadDraftItems(noteId);
-  const { enriched, products, adr, adrReady } = await buildAdrForItems(itemInputs);
-
-  const business = buildBusinessSnapshot({
-    header: {
-      shipperName: note.shipper_name ?? "",
-      shipperAddress: note.shipper_address,
-      consigneeName: note.consignee_name ?? "",
-      consigneeAddress: note.consignee_address,
-      deliveryAddress: note.delivery_address,
-      vehiclePlate: note.vehicle_plate,
-      driverName: note.driver_name,
-    },
-    items: enriched,
-    products,
-    adr,
-  });
-  const adrSnap = buildAdrSnapshot(adr);
-
   const { data: rpcData, error: rpcErr } = await db.rpc("finalize_delivery_note", {
-    p_note_id: noteId,
-    p_adr_snapshot: adrSnap,
-    p_business_snapshot: business,
-    p_adr_total_points: adr.totalPoints,
-    p_adr_within_116: adr.within116Exemption,
-    p_pdf_base64: null,
+    p_delivery_note_id: noteId,
   });
 
   if (rpcErr) throw new Error(formatSupabaseError(rpcErr, "Szállítólevél véglegesítés"));
   if (!rpcData?.document_number || rpcData.status !== "finalized") {
     throw new Error("Finalize RPC nem adott vissza véglegesített dokumentumot");
   }
+  if (!rpcData.adr_snapshot || !rpcData.business_snapshot) {
+    throw new Error("Finalize RPC nem adott vissza szerveroldali snapshotot");
+  }
 
   const fin = rpcData as FinalizeRpcResult;
+  const serverAdrReady = (fin.adr_snapshot?.blockingWarnings?.length ?? 0) === 0;
   const pdfBytes = await generateDeliveryNotePdfFromSnapshots({
     documentNumber: fin.document_number,
     issuedAtIso: fin.issued_at ?? fin.finalized_at,
@@ -310,7 +273,7 @@ export async function finalizeDeliveryNote(noteId: string): Promise<{
   return {
     documentNumber: fin.document_number,
     pdfBytes,
-    adrReady,
+    adrReady: serverAdrReady,
     status: "finalized",
   };
 }
@@ -329,7 +292,8 @@ export async function cancelDeliveryNote(
     .eq("id", noteId)
     .single();
   if (error || !note) throw new Error(formatSupabaseError(error, "Szállítólevél"));
-  if (note.status !== "finalized") throw new Error("Csak véglegesített szállítólevél érvényteleníthető");
+  if (note.status !== "finalized")
+    throw new Error("Csak véglegesített szállítólevél érvényteleníthető");
 
   const business = note.business_snapshot as DeliveryNoteBusinessSnapshot;
   const adr = note.adr_snapshot as AdrCalculationResult;
@@ -362,7 +326,9 @@ export async function cancelDeliveryNote(
 export async function downloadStoredDeliveryNotePdf(noteId: string): Promise<void> {
   const { data: note, error } = await db
     .from("delivery_notes")
-    .select("document_number, status, pdf_base64, issued_at, finalized_at, cancelled_at, cancellation_reason, adr_snapshot, business_snapshot")
+    .select(
+      "document_number, status, pdf_base64, issued_at, finalized_at, cancelled_at, cancellation_reason, adr_snapshot, business_snapshot",
+    )
     .eq("id", noteId)
     .single();
   if (error || !note) throw new Error(formatSupabaseError(error, "Szállítólevél"));
@@ -438,8 +404,7 @@ export async function createAndFinalizeFromSupplierExchange(args: {
     });
   }
 
-  const supplierName =
-    (ex as { suppliers?: { name: string } }).suppliers?.name ?? "Beszállító";
+  const supplierName = (ex as { suppliers?: { name: string } }).suppliers?.name ?? "Beszállító";
 
   const { id } = await createDeliveryNoteDraft(
     {
@@ -480,8 +445,18 @@ export async function createAndFinalizeFromExchangeBatch(args: {
 
   const items: DeliveryNoteItemInput[] = [];
   for (const row of rows ?? []) {
-    const out = row.outgoing as { id: string; barcode: string; gas_type: string; size: string } | null;
-    const inn = row.incoming as { id: string; barcode: string; gas_type: string; size: string } | null;
+    const out = row.outgoing as {
+      id: string;
+      barcode: string;
+      gas_type: string;
+      size: string;
+    } | null;
+    const inn = row.incoming as {
+      id: string;
+      barcode: string;
+      gas_type: string;
+      size: string;
+    } | null;
     if (out) {
       items.push({
         lineRole: "outgoing_full",
