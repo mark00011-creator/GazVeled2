@@ -154,7 +154,10 @@ Unit/hardening PDF (Noto, accents, cancelled, multipage) regression **PASS**. Te
 
 ## 20. Commit / push
 
-Lásd git (bypass migration + validation docs + harness).
+| Mező | Érték |
+|------|--------|
+| Commit | `57a7fae` |
+| Push | `main` → origin OK (`00ee069..57a7fae`) |
 
 ## 21. Production
 
