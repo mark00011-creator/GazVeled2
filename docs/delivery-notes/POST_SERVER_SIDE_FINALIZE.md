@@ -12,6 +12,7 @@
 |------|--------|
 | Branch | `main` |
 | PRE HEAD | `8e058db` (second audit re-run) |
+| POST HEAD | `bf452a3` |
 | Dirty (PRE) | csak local PDF sample zaj (`pdf-samples-v2/*`) — nem része a fixnek |
 
 ## 2. Root cause
