@@ -1,161 +1,248 @@
 # Delivery-note / ADR — PRODUCTION APPLY REPORT
 
 **Dátum:** 2026-09-27  
-**Final verdict:** **PRODUCTION ISSUE** (PRE STOP — apply nem indult)
+**Final verdict:** **PRODUCTION ISSUE**
+
+DB apply + trust-boundary + RLS/grants **PASS**. Blokkoló maradék: authenticated UI smoke (nincs auth session), fizikai `pg_dump` backup (WSL/Docker), app deploy SHA API-ból nem igazolható (Vercel 403).
 
 ---
 
-## 1. PRE
+## 1. Original dirty tree állapot
 
 | Mező | Érték |
 |------|--------|
-| Branch | `main` |
-| HEAD | `1758542` (`docs: record live DB validation commit hash and push`) |
-| origin/main | `1758542` (szinkron) |
-| bf452a3 ős HEAD-ben | igen |
-| Working tree | **DIRTY** → szabály szerint **STOP** |
+| Path | `C:\Users\mark00011\Projects\GazVeled2` |
+| HEAD | `881182d` |
+| Branch | `main` (dirty working tree) |
+| Multi-company `20260927*` | **3 untracked fájl megvan** (érintetlen) |
+| Művelet a dirty tree-n | **Nincs** reset/stash/clean/branch-switch; csak ez a report frissült |
 
-### Dirty tartalom (nem delivery-note)
-
-- Untracked / modified: többcéges onboarding + EQUIPMENT_SALES (migrációk, Edge, UI, docs, `package.json`, `routeTree.gen.ts`, …)
-- PDF sample binárisok (`docs/delivery-notes/pdf-samples-v2/*`)
-- `docs/delivery-notes/ETAP_CLOSED.md` (untracked)
-
-A többcéges munka **nincs commitolva / nincs origin/main-en**. Owner workként megmarad; **nem reverteltük**, **nem töröltük**, **nem módosítottuk** ebben a körben.
+Dirty tartalom (owner work, megtartva): multi-company onboarding + EQUIPMENT_SALES migrációk/UI/Edge/docs, PDF sample binárisok, `ETAP_CLOSED.md`, stb.
 
 ---
 
-## 2. Production target
+## 2. Clean deployment worktree
 
 | Mező | Érték |
 |------|--------|
-| Project ref | **`snmiwsgtnokvqlnwvfwf`** |
-| Név | GazVeled |
-| MCP URL | `https://snmiwsgtnokvqlnwvfwf.supabase.co` |
-| Status | ACTIVE_HEALTHY |
-| ≠ validation | `wexzoclifwibdqxaowzf` (INACTIVE) |
+| Path | `C:\Users\mark00011\Projects\GazVeled2-dn-prod-apply` |
+| HEAD | `881182d4c7e0135ac27f04cad81ce0cda2fa530c` |
+| State | detached `origin/main` |
+| `git status` | **clean** |
+| `20260927*` multi-company | **0 db** |
+
+Minden production migration művelet ebből a clean worktree forrásfájljaiból / MCP-ből történt.
 
 ---
 
 ## 3. Backup
 
-**NOT EXECUTED** — PRE STOP miatt migration előtti backup lépéshez nem jutottunk.
+| Mező | Érték |
+|------|--------|
+| Target project | **`snmiwsgtnokvqlnwvfwf`** |
+| Időpont | 2026-09-27 ~07:01 (local) |
+| Docker/`pg_dump` | **FAIL** — `WSL_E_WSL_OPTIONAL_COMPONENT_REQUIRED` (Docker Desktop nem indul WSL nélkül) |
+| Használt módszer | **MCP logical snapshot** (migration source SQL másolat + equivalence + method marker) |
+| Helyszín | `C:\Users\mark00011\Projects\GazVeled2-backups\dn-pre-apply-20260927-070123` |
+| Méret | ~80 KB (forrás SQL + meta; nem full data dump) |
+| Restore DN | `DROP` DN táblák/RPC-k + `DELETE` érintett `schema_migrations` sorok; exchange history repair sor visszaállítható |
+| Credential gitbe | **nem** került |
 
-Apply előtt kötelező bizonyítható backup (időpont, mód, azonosító, restore path).
+**Backup státusz:** bizonyítható *logikai* pre-apply artifact **PASS**; fizikai `pg_dump` **FAIL / WSL**.
 
 ---
 
-## 4. Pending migration audit
+## 4. Exchange migration equivalence audit
 
-### Production history (utolsó releváns)
+| | Repo | Production |
+|--|------|------------|
+| Stamp | `20260923100000_exchange_outgoing_correction` | `20260923070752_exchange_outgoing_correction_v2` |
+| `correct_exchange_outgoing(uuid,uuid)` | CREATE OR REPLACE | jelen, SECURITY DEFINER, `search_path=public` — **szemantikailag azonos** |
+| `mark_rental_initial_fee_invoiced(uuid)` | CREATE OR REPLACE | jelen — **azonos** |
+| `rentals.initial_fee_invoiced` | `boolean NOT NULL DEFAULT false` | jelen |
+| Re-apply kockázat | **HIGH** — mass `UPDATE rentals SET initial_fee_invoiced=true` |
 
-- Utolsó known version a listában: `20260923070752` / `exchange_outgoing_correction_v2`
-- `20260923%` / `24%` / `25%` / `27%` delivery / multi-company: **csak** a fenti v2 sor — **nincs** delivery-note version
+**Verdikt: A) SEMANTIKAILAG AZONOS** — SQL **nem** futtatható újra.
 
-### Delivery-note objektumok productionön (részleges apply?)
+---
+
+## 5. Migration history repair
+
+| Mező | Érték |
+|------|--------|
+| Történt? | **IGEN** (backup után) |
+| Módszer | `INSERT INTO supabase_migrations.schema_migrations` — `20260923100000` / `exchange_outgoing_correction` (statements = repair-only komment; SQL nem futott) |
+| CLI `migration repair` | nem (nincs CLI access token + Docker/WSL) — MCP SQL = ugyanaz a history tábla |
+
+---
+
+## 6. Pending migration lista repair után (elvárt vs tény)
+
+Repair után apply előtt a clean repo szerinti pending **csak** a 4 DN migráció volt.
+
+**THESE MIGRATIONS WILL APPLY (és alkalmaztuk):**
+
+1. `20260923120000_delivery_notes_adr.sql` — ADR master + DN táblák + seed + RLS v1  
+2. `20260923140000_delivery_notes_hardening.sql` — immutability, sequences, finalize/cancel RPC, RLS redesign  
+3. `20260924120000_delivery_notes_server_side_finalize.sql` — trust-boundary finalize (`p_delivery_note_id` only)  
+4. `20260925120000_delivery_notes_bypass_hardening.sql` — bypass GUC hardening  
+
+**THESE WILL NOT APPLY:** multi-company / onboarding / EQUIPMENT / exchange correction re-run / Számlázz / scanner / OCR / rental unrelated — **nem** kerültek productionre.
+
+Extra post-apply (MCP, repo fájl nélkül): `20260927051650_delivery_notes_table_grants` — authenticated/service_role DML GRANT (MCP `CREATE TABLE` nem örökölte a CLI default privilege-eket).
+
+---
+
+## 7. DN-only apply lista
+
+Lásd §6. Apply csatorna: Supabase MCP `apply_migration` + version remap a repo stamp-ekre (CLI `db push` Docker/token híján nem volt elérhető).
+
+---
+
+## 8. Apply eredmény
+
+| Migráció | Eredmény |
+|----------|----------|
+| history repair `20260923100000` | PASS |
+| `delivery_notes_adr` → `20260923120000` | PASS |
+| `delivery_notes_hardening` → `20260923140000` | PASS |
+| `delivery_notes_server_side_finalize` → `20260924120000` | PASS |
+| `delivery_notes_bypass_hardening` → `20260925120000` | PASS |
+| `delivery_notes_table_grants` → `20260927051650` | PASS (privilege alignment) |
+
+---
+
+## 9. Production DB objects
 
 | Objektum | Állapot |
 |----------|---------|
-| `adr_product_master` | **nincs** (`null`) |
-| `delivery_notes` | **nincs** |
-| `delivery_note_items` | **nincs** |
-| `delivery_note_sequences` | **nincs** |
-| `finalize_delivery_note` | **nincs** |
-| `cancel_delivery_note` | **nincs** |
-
-→ **Nincs részleges delivery-note apply.** (Ez PASS a „ne legyen félkész séma” ellenőrzésre.)
-
-### Git-tracked pending (origin/main vs prod)
-
-| Version / fájl | Scope | Megjegyzés |
-|----------------|-------|------------|
-| `20260923100000_exchange_outgoing_correction.sql` | **UNRELATED** (csere korrekció / bérleti emlékeztető) | Prod-on már van `exchange_outgoing_correction_v2` **más version stamp**-pel (`20260923070752`). Teljes `db push` ezt is újra akarná futtatni. |
-| `20260923120000_delivery_notes_adr.sql` | **DELIVERY / ADR** | Validált stack része |
-| `20260923140000_delivery_notes_hardening.sql` | **DELIVERY** | Validált |
-| `20260924120000_delivery_notes_server_side_finalize.sql` | **DELIVERY** (`bf452a3`) | Validált |
-| `20260925120000_delivery_notes_bypass_hardening.sql` | **DELIVERY** (bypass) | Validált |
-
-### Untracked (working tree only — NEM origin/main)
-
-| Fájl | Scope |
-|------|--------|
-| `20260927120000_multi_company_onboarding_modules.sql` | onboarding / modules |
-| `20260927120100_multi_company_provision_rpcs.sql` | onboarding / invite |
-| `20260927120200_equipment_sales_shared_stock.sql` | EQUIPMENT_SALES / SHARED |
-
-Ezek **nem** production pending a remote history szerint, de **ebben a dirty workspace-ben** egy vak `supabase db push` / CLI apply **besodorhatná** őket → **TILOS**.
-
-### Scope döntés
-
-**STOP:** ne futtassunk bulk apply-t, amíg:
-
-1. working tree clean (többcéges fájlok stash/külön branch, nem törölve);
-2. az `exchange_outgoing_correction` (`20260923100000`) vs prod `…_v2` conflict/skip stratégia nincs rögzítve;
-3. delivery-note négyes **külön**, kontrollált apply (nem full pending dump).
-
-Delivery-note négyes **önmagában** alkalmazható lenne (nincs DN objektum prod-on; nincs DN↔multi-company SQL függőség a négyesben). A blokkoló: dirty tree + unrelated pending stamp + backup hiánya.
+| `adr_product_master` | létezik, RLS on |
+| `delivery_notes` | létezik, RLS on |
+| `delivery_note_items` | létezik, RLS on |
+| `delivery_note_sequences` | létezik, RLS on, PK `(organization_id, year)` |
+| `finalize_delivery_note(p_delivery_note_id uuid)` | létezik |
+| `cancel_delivery_note(uuid, text, text)` | létezik |
+| Oszlopok (`status`, `document_number`, `finalized_at/by`, `cancelled_at/by`, `cancellation_reason`, `business_snapshot`, `adr_snapshot`) | **mind jelen** |
+| Unique docnum index | `delivery_notes_org_docnum_uidx` |
+| Immutability triggers | `trg_delivery_notes_immutability`, `trg_delivery_note_items_immutability` |
 
 ---
 
-## 5. Alkalmazott migrationök
+## 10. RLS / security
 
-**Egyik sem.** Apply nem indult.
+| Check | Eredmény |
+|-------|----------|
+| RLS enabled (4 tábla) | PASS |
+| ADR master: csak SELECT policy (nincs write policy) | PASS |
+| DN per-op policies (select/insert/update/delete) | PASS |
+| sequences: csak SELECT policy | PASS |
+| `finalize`/`cancel`: anon EXECUTE = false; authenticated = true | PASS |
+| authenticated DML GRANT (post-fix fix után) | PASS |
+| anon SELECT delivery_notes | false |
+| Runtime anon REST | `delivery_notes` GET **401**; `finalize` RPC **401**; ADR hack row **nem** keletkezett |
+| Cross-org runtime | **NOT EXECUTED** (nincs második auth session) |
+| Org admin ADR write runtime | **NOT EXECUTED** (statikus: nincs INSERT policy + `auth_adr_ins=false`) |
 
-## 6. Apply eredmény
+---
 
-**NOT EXECUTED**
+## 11. Trust boundary
 
-## 7–11. DB / RLS / RPC / immutability / ADR master
+| Követelmény (bf452a3) | Production |
+|------------------------|------------|
+| Nincs authoritative `p_adr_snapshot` param | PASS — signature: `p_delivery_note_id uuid` only |
+| Nincs authoritative `p_business_snapshot` param | PASS |
+| jsonb overload count | **0** |
+| ADR total szerver (`build_delivery_note_finalize_snapshots`) | PASS |
+| `finalized_by = auth.uid()` | PASS |
+| `finalized_at = now()` | PASS |
+| document number `allocate_delivery_note_number` | PASS |
+| SECURITY DEFINER + `search_path=public` | PASS |
 
-**NOT EXECUTED** (apply előtt STOP).
+---
 
-ADR megjegyzés (következő apply-re): PB / Stargon C18 `verified=false` **maradjon** — ne állítsuk `true`-ra.
+## 12. ADR master
 
-## 12. Deploy commit
+| Key | verified | Megjegyzés |
+|-----|----------|------------|
+| `stargon` | **false** | stub — **nem** állítottuk true-ra |
+| `pb` | **nincs sor** | SECOND_PRE: nincs verified seed; **nem** promote-oltuk true-ra |
+| „Stargon C18” külön key | **nincs** | normalizer → `stargon` (verified=false) |
 
-| | |
-|--|--|
-| Production app cél | delivery-note kompatibilis kód = **`origin/main` @ `1758542`** (már tartalmazza `bf452a3` + bypass) |
-| Többcéges a deployban? | **Nem** — nincs a remote main-en |
-| Deploy ebben a körben | **NOT EXECUTED** |
+---
 
-Ha később a többcéges kódot commitolnák mainre DN apply előtt: frontend schema nélkül mehetne productionre → **tiilos** schema nélküli DN-független modul deploy; DN UI már a `1758542`-n van.
+## 13. App deploy
 
-## 13–15. UI / PDF / log smoke
+| Mező | Érték |
+|------|--------|
+| Deploy candidate | `origin/main` = **`881182d`** |
+| bf452a3 ős | igen |
+| DN UI / ops `p_delivery_note_id` | igen (`src/lib/delivery-notes/ops.ts`) |
+| Noto Sans PDF fontok | igen (`public/fonts/NotoSans-*.ttf`) |
+| Multi-company a candidate-en | **nincs** |
+| Élő site | `https://gazveeled2.vercel.app` HTTP 200, auth oldal betölt |
+| Production deploy SHA (Vercel API) | **NOT CONFIRMED** (403 Forbidden) |
 
-**NOT EXECUTED**
+Ha a production app még pre-bf452a3 kliens: finalize signature mismatch — redeploy `origin/main` szükséges. Candidate kompatibilis.
 
-## 16. Remaining issues
+---
 
-1. Working tree dirty (többcéges uncommitted + PDF zaj).
-2. Pending unrelated `20260923100000_exchange_outgoing_correction.sql` vs prod `v2` version mismatch.
-3. Backup még nincs.
-4. Apply / smoke / deploy várakozik clean PRE-re.
+## 14. UI smoke
+
+| Check | Eredmény |
+|-------|----------|
+| App betölt / login UI | PASS (`/auth`) |
+| Több → Szállítólevelek (auth után) | **NOT EXECUTED** — nincs production auth session |
+| Lista / migration warning / console | **NOT EXECUTED** |
+| Kézi / beszállítói / gyorscsere SZL indítás | **NOT EXECUTED** |
+| FINALIZED bizonylat / SZL sorszám fogyasztás | **szándékosan nem** |
+
+---
+
+## 15. Log check
+
+| Forrás | Eredmény |
+|--------|----------|
+| postgres_logs ERROR (ClickHouse filter) | üres találat a lekérdezett ablakban |
+| Részletes postgres dump | intermittent backend error — **PARTIAL** |
+| Frontend fatal (auth page) | nincs látható fatal a snapshotban |
+
+---
+
+## 16. Multi-company local work sértetlensége
+
+| Check | Eredmény |
+|-------|----------|
+| Dirty tree fájlok megvannak | PASS |
+| Untracked `20260927*` (3 db) | PASS |
+| Nem reset/clean/delete | PASS |
+| Nem commitoltuk multi-company-t ezzel a deployjal | PASS |
+
+---
 
 ## 17. Rollback readiness
 
-Nincs új production változás → rollback nem releváns. Apply előtt: backup + egyenkénti DN migráció + history repair szükség esetén az exchange stamp-re.
-
-## 18. Final verdict
-
-# PRODUCTION ISSUE
-
-**Ok:** PRE STOP — dirty working tree; migration scope nem tiszta bulk push-hoz; backup / apply / smoke nem futott.
-
-**Delivery-note séma productionön:** még nincs (tiszta indulás lehetséges a négyes DN migrációval, ha a fenti blokkolók feloldva).
-
-**Többcéges fejlesztés:** meglévő local work — **megtartva**, nem része ennek az élesítésnek.
+1. Fizikai dump hiányzik (WSL) — teljes DB restore korlátozott.  
+2. DN rollback: drop tables/functions + delete migration rows `20260923120000`…`20260925120000` (+ grants `20260927051650`).  
+3. Exchange repair sor (`20260923100000`) törölhető history-ből; `…_v2` marad.  
+4. Backup folder: `GazVeled2-backups\dn-pre-apply-20260927-070123`.
 
 ---
 
-## Következő lépések (külön jóváhagyással)
+## 18. Remaining issue
 
-1. Többcéges változások stash / feature branch (ne törölni).
-2. Clean tree a `1758542` / origin/main alapján.
-3. Bizonyítható production backup.
-4. `exchange_outgoing_correction` stamp stratégia (skip/repair) rögzítése.
-5. Csak a 4 DN migráció kontrollált apply.
-6. DB post-check + UI smoke (DRAFT only; FINALIZED TILOS).
-7. Onboarding/module/EQUIPMENT implementáció / prod: **külön** jóváhagyás.
+1. **UI smoke** authenticated — kötelező manuális / session-es smoke.  
+2. **WSL/Docker** — `pg_dump` backup + CLI `db push`/`migration repair` továbbra sem.  
+3. **Vercel deploy SHA** — API 403; erősítsd, hogy production app ≥ `bf452a3`.  
+4. **Repo sync** — `delivery_notes_table_grants` csak production history-ben; érdemes később tracked migrationként felvenni (clean/main), nem a dirty multi-company tree részeként.  
+5. PB master sor továbbra sincs (szándékos / SECOND_PRE); Stargon C18 külön key nincs.
 
-**DELIVERY NOTE ETAP — production apply még nincs lezárva; implementációra vár a külön jóváhagyott folytatás (előbb DN prod apply).**
+---
+
+## 19. Final verdict
+
+# **PRODUCTION ISSUE**
+
+**Indok:** Delivery-note/ADR séma productionön **alkalmazva és trust-boundary szerint helyes**, de a kötelező authenticated UI smoke és a fizikai backup/WSL hiány miatt a teljes production-verification szabály szerinti **PASS / PRODUCTION READY nem adható**.
+
+**DB apply:** sikeres (DN-only).  
+**Multi-company:** nem került productionre; local dirty work érintetlen.
