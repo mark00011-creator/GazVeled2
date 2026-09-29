@@ -211,35 +211,66 @@ export async function generateDeliveryNotePdf(input: DeliveryNotePdfInput): Prom
   line(ctx, "PALACKCSERE TÁBLÁZAT", 11, true);
   ctx.y -= 2;
 
-  const byKey = new Map<
+  const byGasSize = new Map<
     string,
     { gas: string; size: string; full: number; empty: number; other: number; barcodes: string[] }
   >();
+  /** Üres (tisztítatlan) palackok gáznemenként – mérettől független összesítés. */
+  const emptyByGas = new Map<string, { gas: string; qty: number; barcodes: string[] }>();
+
   for (const it of input.items) {
-    const key = `${it.gasType ?? "?"}||${it.size ?? "?"}`;
-    const row = byKey.get(key) ?? {
-      gas: it.gasType ?? "—",
-      size: it.size ?? "—",
+    const gas = (it.gasType ?? "—").trim() || "—";
+    const size = (it.size ?? "—").trim() || "—";
+    const key = `${gas}||${size}`;
+    const row = byGasSize.get(key) ?? {
+      gas,
+      size,
       full: 0,
       empty: 0,
       other: 0,
       barcodes: [],
     };
+    const isEmpty =
+      it.lineRole === "incoming_empty" ||
+      it.cylinderState === "EMPTY_UNCLEANED" ||
+      it.cylinderState === "EMPTY_CLEAN";
     if (it.lineRole === "outgoing_full") row.full += it.quantity;
-    else if (it.lineRole === "incoming_empty") row.empty += it.quantity;
+    else if (isEmpty) row.empty += it.quantity;
     else row.other += it.quantity;
     if (it.barcode) row.barcodes.push(it.barcode);
-    byKey.set(key, row);
+    byGasSize.set(key, row);
+
+    if (isEmpty) {
+      const eg = emptyByGas.get(gas) ?? { gas, qty: 0, barcodes: [] };
+      eg.qty += it.quantity;
+      if (it.barcode) eg.barcodes.push(it.barcode);
+      emptyByGas.set(gas, eg);
+    }
   }
 
-  for (const row of byKey.values()) {
-    line(
-      ctx,
-      `${row.gas} ${row.size} · teli kiadott: ${row.full} · üres visszavett (tisztítatlan): ${row.empty}` +
-        (row.other ? ` · egyéb: ${row.other}` : ""),
-      9,
-      true,
-    );
+  if (emptyByGas.size > 0) {
+    line(ctx, "ÜRES PALACKOK GÁZNEMENKÉNT", 11, true);
+    ctx.y -= 2;
+    const emptyTotal = [...emptyByGas.values()].reduce((s, r) => s + r.qty, 0);
+    line(ctx, `Összesen üres: ${emptyTotal} db`, 9, true);
+    for (const row of emptyByGas.values()) {
+      line(ctx, `${row.gas}: ${row.qty} db`, 9, true);
+      if (row.barcodes.length) {
+        line(ctx, `  Sorszámok: ${row.barcodes.join(", ")}`, 8);
+      }
+    }
+    ctx.y -= 8;
+    line(ctx, "Részletezés méretenként", 10, true);
+    ctx.y -= 2;
+  }
+
+  for (const row of byGasSize.values()) {
+    const parts: string[] = [];
+    if (row.full > 0) parts.push(`teli kiadott: ${row.full}`);
+    if (row.empty > 0) parts.push(`üres: ${row.empty}`);
+    if (row.other > 0) parts.push(`egyéb: ${row.other}`);
+    if (parts.length === 0) continue;
+    line(ctx, `${row.gas} ${row.size} · ${parts.join(" · ")}`, 9, true);
     if (row.barcodes.length) {
       line(ctx, `  Sorszámok: ${row.barcodes.join(", ")}`, 8);
     }
@@ -286,9 +317,16 @@ export async function generateDeliveryNotePdf(input: DeliveryNotePdfInput): Prom
     );
   }
 
-  if (input.adr.emptyUncleanedCount > 0) {
+  if (input.adr.emptyUncleanedCount > 0 || emptyByGas.size > 0) {
     line(ctx, "ÜRES TARTÁLY, 2", 9, true);
-    line(ctx, `Visszavett üres palackok összesen: ${input.adr.emptyUncleanedCount} db`, 8);
+    const emptyTotal =
+      input.adr.emptyUncleanedCount > 0
+        ? input.adr.emptyUncleanedCount
+        : [...emptyByGas.values()].reduce((s, r) => s + r.qty, 0);
+    line(ctx, `Üres, tisztítatlan palackok összesen: ${emptyTotal} db`, 8);
+    for (const row of emptyByGas.values()) {
+      line(ctx, `  ${row.gas}: ${row.qty} db`, 8);
+    }
   }
 
   ctx.y -= 6;
