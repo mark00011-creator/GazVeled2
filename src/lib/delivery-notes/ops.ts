@@ -23,6 +23,45 @@ import type {
   DeliveryNoteRow,
   DeliveryNoteStatus,
 } from "@/lib/delivery-notes/types";
+import { encodeCylinderMeta, parseCylinderMeta } from "@/lib/delivery-notes/cylinder-meta";
+
+async function enrichBusinessSnapshotCylinderMeta(
+  snap: DeliveryNoteBusinessSnapshot,
+): Promise<DeliveryNoteBusinessSnapshot> {
+  const barcodes = [
+    ...new Set(
+      (snap.items ?? [])
+        .map((i) => i.barcode)
+        .filter((b): b is string => !!b && b.trim().length > 0),
+    ),
+  ];
+  if (barcodes.length === 0) return snap;
+
+  const { data: cyls } = await supabase
+    .from("cylinders")
+    .select("barcode, manufacturer, circulation")
+    .in("barcode", barcodes);
+  const map = new Map((cyls ?? []).map((c) => [c.barcode, c]));
+
+  return {
+    ...snap,
+    items: snap.items.map((it) => {
+      const fromNote = parseCylinderMeta(it.note);
+      const cyl = it.barcode ? map.get(it.barcode) : undefined;
+      const manufacturer = it.manufacturer ?? fromNote.manufacturer ?? cyl?.manufacturer ?? null;
+      const circulation = it.circulation ?? fromNote.circulation ?? cyl?.circulation ?? null;
+      return {
+        ...it,
+        manufacturer,
+        circulation,
+        note:
+          it.note?.startsWith("DNMETA:") || (!manufacturer && !circulation)
+            ? it.note
+            : encodeCylinderMeta({ manufacturer, circulation }, fromNote.userNote),
+      };
+    }),
+  };
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
@@ -193,7 +232,13 @@ export async function createDeliveryNoteDraft(
     water_capacity_l: it.waterCapacityL ?? null,
     net_gas_mass_kg: it.netGasMassKg ?? null,
     adr_product_key: it.adrProductKey ?? null,
-    note: it.note ?? null,
+    note:
+      it.note?.startsWith("DNMETA:")
+        ? it.note
+        : encodeCylinderMeta(
+            { manufacturer: it.manufacturer ?? null, circulation: it.circulation ?? null },
+            it.note ?? null,
+          ),
     sort_order: i,
   }));
 
@@ -256,11 +301,13 @@ export async function finalizeDeliveryNote(noteId: string): Promise<{
 
   const fin = rpcData as FinalizeRpcResult;
   const serverAdrReady = (fin.adr_snapshot?.blockingWarnings?.length ?? 0) === 0;
+  const business = await enrichBusinessSnapshotCylinderMeta(fin.business_snapshot);
   const pdfBytes = await generateDeliveryNotePdfFromSnapshots({
     documentNumber: fin.document_number,
     issuedAtIso: fin.issued_at ?? fin.finalized_at,
     status: "finalized",
-    business: fin.business_snapshot,
+    sourceType: (note as { source_type?: string }).source_type ?? business.sourceType ?? null,
+    business,
     adr: fin.adr_snapshot,
   });
 
@@ -390,72 +437,82 @@ export async function createAndFinalizeFromSupplierExchange(args: {
     };
   }
 
-  // Reuse orphan draft from a previous failed finalize attempt.
-  const { data: existingDraft } = await db
+  // Drop orphan drafts so we always rebuild with barcode · manufacturer · gas · size · circulation.
+  const { data: orphanDrafts } = await db
     .from("delivery_notes")
     .select("id")
     .eq("organization_id", args.organizationId)
     .eq("source_type", "supplier_exchange")
     .eq("source_id", args.supplierExchangeId)
-    .eq("status", "draft")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  let noteId = existingDraft?.id as string | undefined;
-  if (!noteId) {
-    const returnedIds = (ex.returned_cylinder_ids as string[]) ?? [];
-    const receivedIds = (ex.received_cylinder_ids as string[]) ?? [];
-    const allIds = [...returnedIds, ...receivedIds];
-    const { data: cyls } = await supabase
-      .from("cylinders")
-      .select("id, barcode, gas_type, size")
-      .in("id", allIds.length ? allIds : ["00000000-0000-0000-0000-000000000000"]);
-    const map = new Map((cyls ?? []).map((c) => [c.id, c]));
-
-    const items: DeliveryNoteItemInput[] = [];
-    for (const id of returnedIds) {
-      const c = map.get(id);
-      items.push({
-        lineRole: "incoming_empty",
-        cylinderState: "EMPTY_UNCLEANED",
-        gasType: c?.gas_type ?? null,
-        size: c?.size ?? null,
-        quantity: 1,
-        barcode: c?.barcode ?? null,
-        cylinderId: id,
-      });
-    }
-    for (const id of receivedIds) {
-      const c = map.get(id);
-      items.push({
-        lineRole: "outgoing_full",
-        cylinderState: "FULL",
-        gasType: c?.gas_type ?? null,
-        size: c?.size ?? null,
-        quantity: 1,
-        barcode: c?.barcode ?? null,
-        cylinderId: id,
-      });
-    }
-
-    const supplierName = (ex as { suppliers?: { name: string } }).suppliers?.name ?? "Beszállító";
-
-    const created = await createDeliveryNoteDraft(
-      {
-        organizationId: args.organizationId,
-        sourceType: "supplier_exchange",
-        sourceId: args.supplierExchangeId,
-        supplierId: ex.supplier_id,
-        shipperName: args.organizationName,
-        shipperAddress: args.shipperAddress ?? null,
-        consigneeName: supplierName,
-        consigneeAddress: null,
-      },
-      items,
-    );
-    noteId = created.id;
+    .eq("status", "draft");
+  for (const d of orphanDrafts ?? []) {
+    await db.from("delivery_note_items").delete().eq("delivery_note_id", d.id);
+    await db.from("delivery_notes").delete().eq("id", d.id).eq("status", "draft");
   }
+
+  const returnedIds = (ex.returned_cylinder_ids as string[]) ?? [];
+  const receivedIds = (ex.received_cylinder_ids as string[]) ?? [];
+  const allIds = [...returnedIds, ...receivedIds];
+  const { data: cyls } = await supabase
+    .from("cylinders")
+    .select("id, barcode, gas_type, size, manufacturer, circulation")
+    .in("id", allIds.length ? allIds : ["00000000-0000-0000-0000-000000000000"]);
+  const map = new Map((cyls ?? []).map((c) => [c.id, c]));
+
+  const items: DeliveryNoteItemInput[] = [];
+  for (const id of returnedIds) {
+    const c = map.get(id);
+    items.push({
+      lineRole: "incoming_empty",
+      cylinderState: "EMPTY_UNCLEANED",
+      gasType: c?.gas_type ?? null,
+      size: c?.size ?? null,
+      quantity: 1,
+      barcode: c?.barcode ?? null,
+      cylinderId: id,
+      manufacturer: c?.manufacturer ?? null,
+      circulation: c?.circulation ?? null,
+      note: encodeCylinderMeta({
+        manufacturer: c?.manufacturer ?? null,
+        circulation: c?.circulation ?? null,
+      }),
+    });
+  }
+  for (const id of receivedIds) {
+    const c = map.get(id);
+    items.push({
+      lineRole: "outgoing_full",
+      cylinderState: "FULL",
+      gasType: c?.gas_type ?? null,
+      size: c?.size ?? null,
+      quantity: 1,
+      barcode: c?.barcode ?? null,
+      cylinderId: id,
+      manufacturer: c?.manufacturer ?? null,
+      circulation: c?.circulation ?? null,
+      note: encodeCylinderMeta({
+        manufacturer: c?.manufacturer ?? null,
+        circulation: c?.circulation ?? null,
+      }),
+    });
+  }
+
+  const supplierName = (ex as { suppliers?: { name: string } }).suppliers?.name ?? "Beszállító";
+
+  const created = await createDeliveryNoteDraft(
+    {
+      organizationId: args.organizationId,
+      sourceType: "supplier_exchange",
+      sourceId: args.supplierExchangeId,
+      supplierId: ex.supplier_id,
+      shipperName: args.organizationName,
+      shipperAddress: args.shipperAddress ?? null,
+      consigneeName: supplierName,
+      consigneeAddress: null,
+    },
+    items,
+  );
+  const noteId = created.id;
 
   try {
     const fin = await finalizeDeliveryNote(noteId!);
@@ -475,7 +532,7 @@ async function downloadExistingDeliveryNotePdf(noteId: string): Promise<Uint8Arr
   const { data: note, error } = await db
     .from("delivery_notes")
     .select(
-      "document_number, status, pdf_base64, issued_at, finalized_at, cancellation_reason, adr_snapshot, business_snapshot",
+      "document_number, status, source_type, pdf_base64, issued_at, finalized_at, cancellation_reason, adr_snapshot, business_snapshot",
     )
     .eq("id", noteId)
     .single();
@@ -486,7 +543,9 @@ async function downloadExistingDeliveryNotePdf(noteId: string): Promise<Uint8Arr
   if (note.pdf_base64) {
     bytes = pdfBase64ToBytes(note.pdf_base64 as string);
   } else {
-    const business = note.business_snapshot as DeliveryNoteBusinessSnapshot;
+    const business = await enrichBusinessSnapshotCylinderMeta(
+      note.business_snapshot as DeliveryNoteBusinessSnapshot,
+    );
     const adr = note.adr_snapshot as AdrCalculationResult;
     if (!business || !adr || !note.document_number) {
       throw new Error("Hiányzó snapshot/PDF");
@@ -496,6 +555,7 @@ async function downloadExistingDeliveryNotePdf(noteId: string): Promise<Uint8Arr
       issuedAtIso: note.issued_at ?? note.finalized_at,
       status: note.status === "cancelled" ? "cancelled" : "finalized",
       cancellationReason: note.cancellation_reason,
+      sourceType: note.source_type,
       business,
       adr,
     });

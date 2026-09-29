@@ -3,6 +3,7 @@
  */
 import type { AdrCalculationResult, AdrLineResult, AdrProductData } from "@/lib/adr/types-and-calc";
 import type { DeliveryNoteItemInput } from "@/lib/delivery-notes/types";
+import { encodeCylinderMeta, parseCylinderMeta } from "@/lib/delivery-notes/cylinder-meta";
 
 export type DeliveryNoteBusinessLineSnapshot = {
   lineRole: DeliveryNoteItemInput["lineRole"];
@@ -11,6 +12,8 @@ export type DeliveryNoteBusinessLineSnapshot = {
   size: string | null;
   quantity: number;
   barcode: string | null;
+  manufacturer?: string | null;
+  circulation?: string | null;
   waterCapacityL: number | null;
   netGasMassKg: number | null;
   adrProductKey: string | null;
@@ -42,6 +45,7 @@ export type DeliveryNoteBusinessSnapshot = {
   deliveryAddress: string | null;
   vehiclePlate: string | null;
   driverName: string | null;
+  sourceType?: string | null;
   items: DeliveryNoteBusinessLineSnapshot[];
 };
 
@@ -75,6 +79,7 @@ export function buildBusinessSnapshot(args: {
     deliveryAddress?: string | null;
     vehiclePlate?: string | null;
     driverName?: string | null;
+    sourceType?: string | null;
   };
   items: DeliveryNoteItemInput[];
   products: (AdrProductData | null)[];
@@ -89,20 +94,33 @@ export function buildBusinessSnapshot(args: {
     deliveryAddress: args.header.deliveryAddress ?? null,
     vehiclePlate: args.header.vehiclePlate ?? null,
     driverName: args.header.driverName ?? null,
-    items: args.items.map((it, i) => ({
-      lineRole: it.lineRole,
-      cylinderState: it.cylinderState,
-      gasType: it.gasType,
-      size: it.size,
-      quantity: it.quantity,
-      barcode: it.barcode ?? null,
-      waterCapacityL: it.waterCapacityL ?? null,
-      netGasMassKg: it.netGasMassKg ?? null,
-      adrProductKey: it.adrProductKey ?? null,
-      note: it.note ?? null,
-      adrProduct: args.products[i] ? freezeAdrProduct(args.products[i]!) : null,
-      adrLine: args.adr.lines[i] ?? null,
-    })),
+    sourceType: args.header.sourceType ?? null,
+    items: args.items.map((it, i) => {
+      const meta = parseCylinderMeta(it.note);
+      const manufacturer = it.manufacturer ?? meta.manufacturer;
+      const circulation = it.circulation ?? meta.circulation;
+      return {
+        lineRole: it.lineRole,
+        cylinderState: it.cylinderState,
+        gasType: it.gasType,
+        size: it.size,
+        quantity: it.quantity,
+        barcode: it.barcode ?? null,
+        manufacturer,
+        circulation,
+        waterCapacityL: it.waterCapacityL ?? null,
+        netGasMassKg: it.netGasMassKg ?? null,
+        adrProductKey: it.adrProductKey ?? null,
+        note: it.note?.startsWith("DNMETA:")
+          ? it.note
+          : encodeCylinderMeta(
+              { manufacturer, circulation },
+              meta.userNote ?? it.note ?? null,
+            ),
+        adrProduct: args.products[i] ? freezeAdrProduct(args.products[i]!) : null,
+        adrLine: args.adr.lines[i] ?? null,
+      };
+    }),
   };
 }
 
@@ -114,16 +132,21 @@ export function buildAdrSnapshot(adr: AdrCalculationResult): DeliveryNoteAdrSnap
 export function itemsFromBusinessSnapshot(
   snap: DeliveryNoteBusinessSnapshot,
 ): DeliveryNoteItemInput[] {
-  return snap.items.map((it) => ({
-    lineRole: it.lineRole,
-    cylinderState: it.cylinderState,
-    gasType: it.gasType,
-    size: it.size,
-    quantity: it.quantity,
-    barcode: it.barcode,
-    waterCapacityL: it.waterCapacityL,
-    netGasMassKg: it.netGasMassKg,
-    adrProductKey: it.adrProductKey,
-    note: it.note,
-  }));
+  return snap.items.map((it) => {
+    const meta = parseCylinderMeta(it.note);
+    return {
+      lineRole: it.lineRole,
+      cylinderState: it.cylinderState,
+      gasType: it.gasType,
+      size: it.size,
+      quantity: it.quantity,
+      barcode: it.barcode,
+      manufacturer: it.manufacturer ?? meta.manufacturer,
+      circulation: it.circulation ?? meta.circulation,
+      waterCapacityL: it.waterCapacityL,
+      netGasMassKg: it.netGasMassKg,
+      adrProductKey: it.adrProductKey,
+      note: meta.userNote,
+    };
+  });
 }

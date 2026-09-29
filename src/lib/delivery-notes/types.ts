@@ -18,6 +18,9 @@ export type DeliveryNoteItemInput = {
   quantity: number;
   barcode?: string | null;
   cylinderId?: string | null;
+  /** Display meta – also mirrored into note as DNMETA so finalize snapshot keeps it. */
+  manufacturer?: string | null;
+  circulation?: string | null;
   waterCapacityL?: number | null;
   netGasMassKg?: number | null;
   adrProductKey?: string | null;

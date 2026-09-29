@@ -1,15 +1,23 @@
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import type { AdrCalculationResult } from "@/lib/adr/types-and-calc";
-import type { DeliveryNoteItemInput } from "@/lib/delivery-notes/types";
+import type { DeliveryNoteItemInput, DeliveryNoteSourceType } from "@/lib/delivery-notes/types";
 import type { DeliveryNoteBusinessSnapshot } from "@/lib/delivery-notes/snapshot";
 import { itemsFromBusinessSnapshot } from "@/lib/delivery-notes/snapshot";
+import { parseCylinderMeta } from "@/lib/delivery-notes/cylinder-meta";
+import {
+  circulationLabels,
+  manufacturerLabels,
+  type Circulation,
+  type Manufacturer,
+} from "@/lib/labels";
 
 export type DeliveryNotePdfInput = {
   documentNumber: string;
   issuedAtIso: string;
   status?: "draft" | "finalized" | "cancelled";
   cancellationReason?: string | null;
+  sourceType?: DeliveryNoteSourceType | string | null;
   shipperName: string;
   shipperAddress?: string | null;
   consigneeName: string;
@@ -148,6 +156,43 @@ function fmtDateTime(iso: string): string {
   }
 }
 
+function isEmptyItem(it: DeliveryNoteItemInput): boolean {
+  return (
+    it.lineRole === "incoming_empty" ||
+    it.cylinderState === "EMPTY_UNCLEANED" ||
+    it.cylinderState === "EMPTY_CLEAN"
+  );
+}
+
+function isFullItem(it: DeliveryNoteItemInput): boolean {
+  return it.lineRole === "outgoing_full" || it.cylinderState === "FULL" || it.cylinderState === "PARTIAL";
+}
+
+function mfrLabel(v: string | null | undefined): string {
+  if (!v) return "—";
+  return manufacturerLabels[v as Manufacturer] ?? v;
+}
+
+function circLabel(v: string | null | undefined): string {
+  if (!v) return "—";
+  return circulationLabels[v as Circulation] ?? v;
+}
+
+function formatCylinderDisplayLine(it: DeliveryNoteItemInput): string {
+  const meta = parseCylinderMeta(it.note);
+  const mfr = mfrLabel(it.manufacturer ?? meta.manufacturer);
+  const circ = circLabel(it.circulation ?? meta.circulation);
+  const bc = (it.barcode ?? "—").trim() || "—";
+  return `${bc} · ${mfr} · ${it.gasType ?? "—"} · ${it.size ?? "—"} · ${circ}`;
+}
+
+function sectionLabels(sourceType?: string | null): { empty: string; full: string } {
+  if (sourceType === "supplier_exchange") {
+    return { empty: "ÜRES ÁTADOTT", full: "TELI ÁTVETT" };
+  }
+  return { empty: "ÜRES VISSZAVETT", full: "TELI KIADOTT" };
+}
+
 function drawCancelledBanner(ctx: Ctx, reason: string | null | undefined) {
   ensure(ctx, 48);
   ctx.page.drawRectangle({
@@ -208,89 +253,67 @@ export async function generateDeliveryNotePdf(input: DeliveryNotePdfInput): Prom
   if (input.driverName) line(ctx, `Gépjárművezető: ${input.driverName}`);
   ctx.y -= 8;
 
-  line(ctx, "PALACKCSERE TÁBLÁZAT", 11, true);
+  line(ctx, "PALACKCSERE TÉTELEK", 11, true);
   ctx.y -= 2;
 
-  const byGasSize = new Map<
-    string,
-    { gas: string; size: string; full: number; empty: number; other: number; barcodes: string[] }
-  >();
-  /** Üres (tisztítatlan) palackok gáznemenként – mérettől független összesítés. */
-  const emptyByGas = new Map<string, { gas: string; qty: number; barcodes: string[] }>();
+  const labels = sectionLabels(input.sourceType);
+  const emptyItems = input.items.filter(isEmptyItem);
+  const fullItems = input.items.filter(isFullItem);
+  const otherItems = input.items.filter((it) => !isEmptyItem(it) && !isFullItem(it));
 
-  for (const it of input.items) {
-    const gas = (it.gasType ?? "—").trim() || "—";
-    const size = (it.size ?? "—").trim() || "—";
-    const key = `${gas}||${size}`;
-    const row = byGasSize.get(key) ?? {
-      gas,
-      size,
-      full: 0,
-      empty: 0,
-      other: 0,
-      barcodes: [],
-    };
-    const isEmpty =
-      it.lineRole === "incoming_empty" ||
-      it.cylinderState === "EMPTY_UNCLEANED" ||
-      it.cylinderState === "EMPTY_CLEAN";
-    if (it.lineRole === "outgoing_full") row.full += it.quantity;
-    else if (isEmpty) row.empty += it.quantity;
-    else row.other += it.quantity;
-    if (it.barcode) row.barcodes.push(it.barcode);
-    byGasSize.set(key, row);
-
-    if (isEmpty) {
-      const eg = emptyByGas.get(gas) ?? { gas, qty: 0, barcodes: [] };
-      eg.qty += it.quantity;
-      if (it.barcode) eg.barcodes.push(it.barcode);
-      emptyByGas.set(gas, eg);
+  if (emptyItems.length > 0) {
+    line(ctx, `${labels.empty} (${emptyItems.length} db)`, 10, true);
+    ctx.y -= 1;
+    for (const it of emptyItems) {
+      line(ctx, formatCylinderDisplayLine(it), 9);
     }
-  }
-
-  if (emptyByGas.size > 0) {
-    line(ctx, "ÜRES PALACKOK GÁZNEMENKÉNT", 11, true);
-    ctx.y -= 2;
-    const emptyTotal = [...emptyByGas.values()].reduce((s, r) => s + r.qty, 0);
-    line(ctx, `Összesen üres: ${emptyTotal} db`, 9, true);
-    for (const row of emptyByGas.values()) {
-      line(ctx, `${row.gas}: ${row.qty} db`, 9, true);
-      if (row.barcodes.length) {
-        line(ctx, `  Sorszámok: ${row.barcodes.join(", ")}`, 8);
-      }
+    ctx.y -= 4;
+    const emptyByGas = new Map<string, number>();
+    for (const it of emptyItems) {
+      const gas = (it.gasType ?? "—").trim() || "—";
+      emptyByGas.set(gas, (emptyByGas.get(gas) ?? 0) + it.quantity);
     }
-    ctx.y -= 8;
-    line(ctx, "Részletezés méretenként", 10, true);
-    ctx.y -= 2;
-  }
-
-  for (const row of byGasSize.values()) {
-    const parts: string[] = [];
-    if (row.full > 0) parts.push(`teli kiadott: ${row.full}`);
-    if (row.empty > 0) parts.push(`üres: ${row.empty}`);
-    if (row.other > 0) parts.push(`egyéb: ${row.other}`);
-    if (parts.length === 0) continue;
-    line(ctx, `${row.gas} ${row.size} · ${parts.join(" · ")}`, 9, true);
-    if (row.barcodes.length) {
-      line(ctx, `  Sorszámok: ${row.barcodes.join(", ")}`, 8);
+    line(ctx, "Üres palackok gáznemenként", 9, true);
+    for (const [gas, qty] of emptyByGas) {
+      line(ctx, `  ${gas}: ${qty} db`, 9);
     }
-  }
-
-  // Explicit item list for multipage stress (each line)
-  if (input.items.length >= 15) {
     ctx.y -= 6;
-    line(ctx, "Tételrészletező", 10, true);
-    for (const it of input.items) {
-      line(
-        ctx,
-        `• ${it.gasType ?? "—"} ${it.size ?? ""} · ${it.quantity} db · ${it.cylinderState}` +
-          (it.barcode ? ` · ${it.barcode}` : ""),
-        8,
-      );
-    }
   }
 
-  ctx.y -= 10;
+  if (fullItems.length > 0) {
+    line(ctx, `${labels.full} (${fullItems.length} db)`, 10, true);
+    ctx.y -= 1;
+    for (const it of fullItems) {
+      line(ctx, formatCylinderDisplayLine(it), 9);
+    }
+    ctx.y -= 4;
+    const fullByGas = new Map<string, number>();
+    for (const it of fullItems) {
+      const gas = (it.gasType ?? "—").trim() || "—";
+      fullByGas.set(gas, (fullByGas.get(gas) ?? 0) + it.quantity);
+    }
+    line(ctx, "Teli palackok gáznemenként", 9, true);
+    for (const [gas, qty] of fullByGas) {
+      line(ctx, `  ${gas}: ${qty} db`, 9);
+    }
+    ctx.y -= 6;
+  }
+
+  if (otherItems.length > 0) {
+    line(ctx, `Egyéb tételek (${otherItems.length} db)`, 10, true);
+    for (const it of otherItems) {
+      line(ctx, formatCylinderDisplayLine(it), 9);
+    }
+    ctx.y -= 6;
+  }
+
+  const emptyByGasForAdr = new Map<string, number>();
+  for (const it of emptyItems) {
+    const gas = (it.gasType ?? "—").trim() || "—";
+    emptyByGasForAdr.set(gas, (emptyByGasForAdr.get(gas) ?? 0) + it.quantity);
+  }
+
+  ctx.y -= 4;
   line(ctx, "ADR FUVAROKMÁNY ADATOK", 11, true);
   line(ctx, `Szabálykészlet: ${input.adr.rulesetVersion}`, 8);
   ctx.y -= 2;
@@ -317,15 +340,15 @@ export async function generateDeliveryNotePdf(input: DeliveryNotePdfInput): Prom
     );
   }
 
-  if (input.adr.emptyUncleanedCount > 0 || emptyByGas.size > 0) {
+  if (input.adr.emptyUncleanedCount > 0 || emptyByGasForAdr.size > 0) {
     line(ctx, "ÜRES TARTÁLY, 2", 9, true);
     const emptyTotal =
       input.adr.emptyUncleanedCount > 0
         ? input.adr.emptyUncleanedCount
-        : [...emptyByGas.values()].reduce((s, r) => s + r.qty, 0);
+        : [...emptyByGasForAdr.values()].reduce((s, n) => s + n, 0);
     line(ctx, `Üres, tisztítatlan palackok összesen: ${emptyTotal} db`, 8);
-    for (const row of emptyByGas.values()) {
-      line(ctx, `  ${row.gas}: ${row.qty} db`, 8);
+    for (const [gas, qty] of emptyByGasForAdr) {
+      line(ctx, `  ${gas}: ${qty} db`, 8);
     }
   }
 
@@ -359,6 +382,7 @@ export async function generateDeliveryNotePdfFromSnapshots(args: {
   issuedAtIso: string;
   status: "finalized" | "cancelled" | "draft";
   cancellationReason?: string | null;
+  sourceType?: DeliveryNoteSourceType | string | null;
   business: DeliveryNoteBusinessSnapshot;
   adr: AdrCalculationResult;
 }): Promise<Uint8Array> {
@@ -368,6 +392,7 @@ export async function generateDeliveryNotePdfFromSnapshots(args: {
     issuedAtIso: args.issuedAtIso,
     status: args.status,
     cancellationReason: args.cancellationReason,
+    sourceType: args.sourceType ?? args.business.sourceType ?? null,
     shipperName: args.business.shipperName,
     shipperAddress: args.business.shipperAddress,
     consigneeName: args.business.consigneeName,
