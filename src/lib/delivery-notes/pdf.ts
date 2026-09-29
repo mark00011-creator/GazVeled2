@@ -344,13 +344,20 @@ export async function generateDeliveryNotePdfFromSnapshots(args: {
 }
 
 export function downloadDeliveryNotePdf(bytes: Uint8Array, filename: string) {
-  const blob = new Blob([bytes], { type: "application/pdf" });
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  const blob = new Blob([copy], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  a.rel = "noopener";
+  a.style.display = "none";
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  // Revoke after the browser has started the download.
+  window.setTimeout(() => URL.revokeObjectURL(url), 2_000);
 }
 
 export function pdfBytesToBase64(pdfBytes: Uint8Array): string {

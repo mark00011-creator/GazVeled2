@@ -369,60 +369,144 @@ export async function createAndFinalizeFromSupplierExchange(args: {
     .single();
   if (error || !ex) throw new Error(formatSupabaseError(error, "Beszállítói csere"));
 
-  const returnedIds = (ex.returned_cylinder_ids as string[]) ?? [];
-  const receivedIds = (ex.received_cylinder_ids as string[]) ?? [];
-  const allIds = [...returnedIds, ...receivedIds];
-  const { data: cyls } = await supabase
-    .from("cylinders")
-    .select("id, barcode, gas_type, size")
-    .in("id", allIds.length ? allIds : ["00000000-0000-0000-0000-000000000000"]);
-  const map = new Map((cyls ?? []).map((c) => [c.id, c]));
-
-  const items: DeliveryNoteItemInput[] = [];
-  for (const id of returnedIds) {
-    const c = map.get(id);
-    items.push({
-      lineRole: "incoming_empty",
-      cylinderState: "EMPTY_UNCLEANED",
-      gasType: c?.gas_type ?? null,
-      size: c?.size ?? null,
-      quantity: 1,
-      barcode: c?.barcode ?? null,
-      cylinderId: id,
-    });
-  }
-  for (const id of receivedIds) {
-    const c = map.get(id);
-    items.push({
-      lineRole: "outgoing_full",
-      cylinderState: "FULL",
-      gasType: c?.gas_type ?? null,
-      size: c?.size ?? null,
-      quantity: 1,
-      barcode: c?.barcode ?? null,
-      cylinderId: id,
-    });
+  // Prefer an already-finalized note for this exchange (PDF re-download).
+  const { data: existingFinal } = await db
+    .from("delivery_notes")
+    .select("id, document_number, status")
+    .eq("organization_id", args.organizationId)
+    .eq("source_type", "supplier_exchange")
+    .eq("source_id", args.supplierExchangeId)
+    .eq("status", "finalized")
+    .order("finalized_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existingFinal?.id) {
+    const pdfBytes = await downloadExistingDeliveryNotePdf(existingFinal.id);
+    return {
+      documentNumber: existingFinal.document_number ?? "SZL",
+      pdfBytes,
+      adrReady: true,
+      noteId: existingFinal.id,
+    };
   }
 
-  const supplierName = (ex as { suppliers?: { name: string } }).suppliers?.name ?? "Beszállító";
+  // Reuse orphan draft from a previous failed finalize attempt.
+  const { data: existingDraft } = await db
+    .from("delivery_notes")
+    .select("id")
+    .eq("organization_id", args.organizationId)
+    .eq("source_type", "supplier_exchange")
+    .eq("source_id", args.supplierExchangeId)
+    .eq("status", "draft")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  const { id } = await createDeliveryNoteDraft(
-    {
-      organizationId: args.organizationId,
-      sourceType: "supplier_exchange",
-      sourceId: args.supplierExchangeId,
-      supplierId: ex.supplier_id,
-      shipperName: args.organizationName,
-      shipperAddress: args.shipperAddress ?? null,
-      consigneeName: supplierName,
-      consigneeAddress: null,
-    },
-    items,
-  );
+  let noteId = existingDraft?.id as string | undefined;
+  if (!noteId) {
+    const returnedIds = (ex.returned_cylinder_ids as string[]) ?? [];
+    const receivedIds = (ex.received_cylinder_ids as string[]) ?? [];
+    const allIds = [...returnedIds, ...receivedIds];
+    const { data: cyls } = await supabase
+      .from("cylinders")
+      .select("id, barcode, gas_type, size")
+      .in("id", allIds.length ? allIds : ["00000000-0000-0000-0000-000000000000"]);
+    const map = new Map((cyls ?? []).map((c) => [c.id, c]));
 
-  const fin = await finalizeDeliveryNote(id);
-  downloadDeliveryNotePdf(fin.pdfBytes, `${fin.documentNumber}.pdf`);
-  return { ...fin, noteId: id };
+    const items: DeliveryNoteItemInput[] = [];
+    for (const id of returnedIds) {
+      const c = map.get(id);
+      items.push({
+        lineRole: "incoming_empty",
+        cylinderState: "EMPTY_UNCLEANED",
+        gasType: c?.gas_type ?? null,
+        size: c?.size ?? null,
+        quantity: 1,
+        barcode: c?.barcode ?? null,
+        cylinderId: id,
+      });
+    }
+    for (const id of receivedIds) {
+      const c = map.get(id);
+      items.push({
+        lineRole: "outgoing_full",
+        cylinderState: "FULL",
+        gasType: c?.gas_type ?? null,
+        size: c?.size ?? null,
+        quantity: 1,
+        barcode: c?.barcode ?? null,
+        cylinderId: id,
+      });
+    }
+
+    const supplierName = (ex as { suppliers?: { name: string } }).suppliers?.name ?? "Beszállító";
+
+    const created = await createDeliveryNoteDraft(
+      {
+        organizationId: args.organizationId,
+        sourceType: "supplier_exchange",
+        sourceId: args.supplierExchangeId,
+        supplierId: ex.supplier_id,
+        shipperName: args.organizationName,
+        shipperAddress: args.shipperAddress ?? null,
+        consigneeName: supplierName,
+        consigneeAddress: null,
+      },
+      items,
+    );
+    noteId = created.id;
+  }
+
+  try {
+    const fin = await finalizeDeliveryNote(noteId!);
+    downloadDeliveryNotePdf(fin.pdfBytes, `${fin.documentNumber}.pdf`);
+    return { ...fin, noteId: noteId! };
+  } catch (err) {
+    console.error("Szállítólevél finalize/PDF hiba (beszállítói csere)", {
+      supplierExchangeId: args.supplierExchangeId,
+      noteId,
+      err,
+    });
+    throw err;
+  }
+}
+
+async function downloadExistingDeliveryNotePdf(noteId: string): Promise<Uint8Array> {
+  const { data: note, error } = await db
+    .from("delivery_notes")
+    .select(
+      "document_number, status, pdf_base64, issued_at, finalized_at, cancellation_reason, adr_snapshot, business_snapshot",
+    )
+    .eq("id", noteId)
+    .single();
+  if (error || !note) throw new Error(formatSupabaseError(error, "Szállítólevél betöltése"));
+  if (note.status === "draft") throw new Error("Piszkozathoz még nincs végleges PDF");
+
+  let bytes: Uint8Array;
+  if (note.pdf_base64) {
+    bytes = pdfBase64ToBytes(note.pdf_base64 as string);
+  } else {
+    const business = note.business_snapshot as DeliveryNoteBusinessSnapshot;
+    const adr = note.adr_snapshot as AdrCalculationResult;
+    if (!business || !adr || !note.document_number) {
+      throw new Error("Hiányzó snapshot/PDF");
+    }
+    bytes = await generateDeliveryNotePdfFromSnapshots({
+      documentNumber: note.document_number,
+      issuedAtIso: note.issued_at ?? note.finalized_at,
+      status: note.status === "cancelled" ? "cancelled" : "finalized",
+      cancellationReason: note.cancellation_reason,
+      business,
+      adr,
+    });
+    const { error: pdfErr } = await db.rpc("attach_delivery_note_pdf", {
+      p_note_id: noteId,
+      p_pdf_base64: pdfBytesToBase64(bytes),
+    });
+    if (pdfErr) console.warn("PDF csatolás sikertelen (újratöltés után mégis letölthető)", pdfErr);
+  }
+  downloadDeliveryNotePdf(bytes, `${note.document_number ?? "SZL"}.pdf`);
+  return bytes;
 }
 
 export async function createAndFinalizeFromExchangeBatch(args: {

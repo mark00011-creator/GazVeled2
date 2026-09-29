@@ -571,7 +571,8 @@ function Suppliers() {
                         : `Szállítólevél (ADR figyelmeztetés): ${fin.documentNumber}`,
                     );
                   } catch (e) {
-                    toast.error((e as Error).message);
+                    console.error("Beszállítói csere → szállítólevél hiba", e);
+                    toast.error((e as Error).message || "Szállítólevél / PDF hiba");
                   } finally {
                     setMakingDn(null);
                   }
