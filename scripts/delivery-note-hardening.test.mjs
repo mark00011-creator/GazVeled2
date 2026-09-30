@@ -194,7 +194,7 @@ test("draft PDF with accents + ÜRES TARTÁLY", async () => {
 });
 
 test("20+ line multipage PDF", async () => {
-  const items = Array.from({ length: 24 }, (_, i) => ({
+  const items = Array.from({ length: 55 }, (_, i) => ({
     lineRole: "incoming_empty",
     cylinderState: "EMPTY_UNCLEANED",
     gasType: "Argon",
@@ -203,12 +203,13 @@ test("20+ line multipage PDF", async () => {
     barcode: `HU-Ékezet-${String(i + 1).padStart(3, "0")}`,
   }));
   const adr = calculateAdr1136([
-    line("e", "EMPTY_UNCLEANED", 24, ADR_VERIFIED_SEEDS.ARGON_COMPRESSED, { waterCapacityLitres: 50, netGasMassKg: null }, "Ar"),
+    line("e", "EMPTY_UNCLEANED", 55, ADR_VERIFIED_SEEDS.ARGON_COMPRESSED, { waterCapacityLitres: 50, netGasMassKg: null }, "Ar"),
   ]);
   const bytes = await generateDeliveryNotePdf({
     documentNumber: "SZL-2026-000200",
     issuedAtIso: new Date().toISOString(),
     status: "finalized",
+    sourceType: "quick_exchange",
     shipperName: "Feladó",
     consigneeName: "Címzett",
     items,
