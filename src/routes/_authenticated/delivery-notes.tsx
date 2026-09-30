@@ -27,6 +27,7 @@ import {
 } from "@/lib/delivery-notes/ops";
 import { downloadDeliveryNotePdf } from "@/lib/delivery-notes/pdf";
 import type { DeliveryNoteItemInput, DeliveryNoteStatus } from "@/lib/delivery-notes/types";
+import { formatUserFacingError } from "@/lib/supabase-error";
 
 export const Route = createFileRoute("/_authenticated/delivery-notes")({
   head: () => ({ meta: [{ title: "Szállítólevelek – Gáz Veled" }] }),
@@ -123,7 +124,8 @@ function DeliveryNotesPage() {
       setCancelReason("");
       qc.invalidateQueries({ queryKey: ["delivery-notes"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) =>
+      toast.error(formatUserFacingError(e, "Érvénytelenítés sikertelen")),
   });
 
   const pdfMut = useMutation({

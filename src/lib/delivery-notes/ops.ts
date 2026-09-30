@@ -334,7 +334,7 @@ export async function cancelDeliveryNote(
   const { data: note, error } = await db
     .from("delivery_notes")
     .select(
-      "id, status, document_number, issued_at, finalized_at, adr_snapshot, business_snapshot, cancellation_reason",
+      "id, status, source_type, document_number, issued_at, finalized_at, adr_snapshot, business_snapshot, cancellation_reason",
     )
     .eq("id", noteId)
     .single();
@@ -345,17 +345,27 @@ export async function cancelDeliveryNote(
   const business = note.business_snapshot as DeliveryNoteBusinessSnapshot;
   const adr = note.adr_snapshot as AdrCalculationResult;
   if (!business || !adr || !note.document_number) {
-    throw new Error("Hiányzó snapshot – érvénytelenítés nem lehetséges");
+    throw new Error(
+      "Hiányzó ADR/üzleti snapshot – érvénytelenítés nem lehetséges. A bizonylat adatbázisból admin törlést igényel.",
+    );
   }
 
-  const pdfBytes = await generateDeliveryNotePdfFromSnapshots({
-    documentNumber: note.document_number,
-    issuedAtIso: note.issued_at ?? note.finalized_at,
-    status: "cancelled",
-    cancellationReason: reason.trim(),
-    business,
-    adr,
-  });
+  let pdfBytes: Uint8Array;
+  try {
+    pdfBytes = await generateDeliveryNotePdfFromSnapshots({
+      documentNumber: note.document_number,
+      issuedAtIso: note.issued_at ?? note.finalized_at,
+      status: "cancelled",
+      cancellationReason: reason.trim(),
+      sourceType: note.source_type,
+      business: await enrichBusinessSnapshotCylinderMeta(business),
+      adr,
+    });
+  } catch (e) {
+    throw new Error(
+      formatUserFacingError(e, "Érvénytelenített PDF előállítása sikertelen"),
+    );
+  }
 
   const { data: rpcData, error: rpcErr } = await db.rpc("cancel_delivery_note", {
     p_note_id: noteId,
@@ -374,7 +384,7 @@ export async function downloadStoredDeliveryNotePdf(noteId: string): Promise<voi
   const { data: note, error } = await db
     .from("delivery_notes")
     .select(
-      "document_number, status, pdf_base64, issued_at, finalized_at, cancelled_at, cancellation_reason, adr_snapshot, business_snapshot",
+      "document_number, status, source_type, pdf_base64, issued_at, finalized_at, cancelled_at, cancellation_reason, adr_snapshot, business_snapshot",
     )
     .eq("id", noteId)
     .single();
@@ -385,8 +395,9 @@ export async function downloadStoredDeliveryNotePdf(noteId: string): Promise<voi
   if (note.pdf_base64) {
     bytes = pdfBase64ToBytes(note.pdf_base64 as string);
   } else {
-    // Regenerálás kizárólag snapshotból
-    const business = note.business_snapshot as DeliveryNoteBusinessSnapshot;
+    const business = await enrichBusinessSnapshotCylinderMeta(
+      note.business_snapshot as DeliveryNoteBusinessSnapshot,
+    );
     const adr = note.adr_snapshot as AdrCalculationResult;
     if (!business || !adr || !note.document_number) {
       throw new Error("Hiányzó snapshot/PDF");
@@ -396,6 +407,7 @@ export async function downloadStoredDeliveryNotePdf(noteId: string): Promise<voi
       issuedAtIso: note.issued_at ?? note.finalized_at,
       status: note.status === "cancelled" ? "cancelled" : "finalized",
       cancellationReason: note.cancellation_reason,
+      sourceType: note.source_type,
       business,
       adr,
     });
