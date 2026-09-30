@@ -66,3 +66,35 @@ export function throwSupabaseError(
   logSupabaseError(label, error, extra);
   throw new Error(formatSupabaseError(error, label));
 }
+
+/** Human-readable Hungarian message from Error / PostgREST / unknown throwables. */
+export function formatUserFacingError(err: unknown, fallback = "Ismeretlen hiba történt"): string {
+  if (err == null) return fallback;
+  if (typeof err === "string") {
+    const t = err.trim();
+    return t || fallback;
+  }
+  if (err instanceof Error) {
+    const msg = err.message?.trim();
+    if (msg && msg !== "[object Object]") return msg;
+  }
+  if (typeof err === "object") {
+    const o = err as Record<string, unknown>;
+    const parts = [
+      typeof o.message === "string" ? o.message : null,
+      typeof o.details === "string" ? `Részlet: ${o.details}` : null,
+      typeof o.hint === "string" ? `Tipp: ${o.hint}` : null,
+      typeof o.code === "string" || typeof o.code === "number" ? `Kód: ${o.code}` : null,
+      typeof o.status === "number" ? `HTTP ${o.status}` : null,
+      typeof o.statusCode === "number" ? `HTTP ${o.statusCode}` : null,
+    ].filter(Boolean);
+    if (parts.length) return parts.join(" · ");
+    try {
+      const json = JSON.stringify(o);
+      if (json && json !== "{}" && json !== "null") return json.slice(0, 280);
+    } catch {
+      /* ignore */
+    }
+  }
+  return fallback;
+}

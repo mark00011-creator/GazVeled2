@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { formatSupabaseError } from "@/lib/supabase-error";
+import { formatSupabaseError, formatUserFacingError } from "@/lib/supabase-error";
 import {
   ADR_RULESET_VERSION,
   ADR_UNVERIFIED_STARGON_C18,
@@ -411,7 +411,7 @@ export async function createAndFinalizeFromSupplierExchange(args: {
 }): Promise<{ documentNumber: string; pdfBytes: Uint8Array; adrReady: boolean; noteId: string }> {
   const { data: ex, error } = await db
     .from("supplier_exchanges")
-    .select("*, suppliers(name)")
+    .select("*, suppliers(name, address, tax_number)")
     .eq("id", args.supplierExchangeId)
     .single();
   if (error || !ex) throw new Error(formatSupabaseError(error, "Beszállítói csere"));
@@ -497,7 +497,11 @@ export async function createAndFinalizeFromSupplierExchange(args: {
     });
   }
 
-  const supplierName = (ex as { suppliers?: { name: string } }).suppliers?.name ?? "Beszállító";
+  const supplier = (ex as {
+    suppliers?: { name?: string; address?: string | null; tax_number?: string | null };
+  }).suppliers;
+  const supplierName = supplier?.name ?? "Beszállító";
+  const supplierAddress = supplier?.address ?? null;
 
   const created = await createDeliveryNoteDraft(
     {
@@ -508,23 +512,29 @@ export async function createAndFinalizeFromSupplierExchange(args: {
       shipperName: args.organizationName,
       shipperAddress: args.shipperAddress ?? null,
       consigneeName: supplierName,
-      consigneeAddress: null,
+      consigneeAddress: supplierAddress,
+      consigneeTaxNumber: supplier?.tax_number ?? null,
     },
     items,
   );
   const noteId = created.id;
 
   try {
-    const fin = await finalizeDeliveryNote(noteId!);
+    const fin = await finalizeDeliveryNote(noteId);
     downloadDeliveryNotePdf(fin.pdfBytes, `${fin.documentNumber}.pdf`);
-    return { ...fin, noteId: noteId! };
+    return { ...fin, noteId };
   } catch (err) {
     console.error("Szállítólevél finalize/PDF hiba (beszállítói csere)", {
       supplierExchangeId: args.supplierExchangeId,
       noteId,
       err,
     });
-    throw err;
+    throw new Error(
+      formatUserFacingError(
+        err,
+        "A szállítólevél véglegesítése sikertelen. Nyisd meg a Szállítólevelek oldalt.",
+      ),
+    );
   }
 }
 

@@ -4,13 +4,6 @@ import type { AdrCalculationResult } from "@/lib/adr/types-and-calc";
 import type { DeliveryNoteItemInput, DeliveryNoteSourceType } from "@/lib/delivery-notes/types";
 import type { DeliveryNoteBusinessSnapshot } from "@/lib/delivery-notes/snapshot";
 import { itemsFromBusinessSnapshot } from "@/lib/delivery-notes/snapshot";
-import { parseCylinderMeta } from "@/lib/delivery-notes/cylinder-meta";
-import {
-  circulationLabels,
-  manufacturerLabels,
-  type Circulation,
-  type Manufacturer,
-} from "@/lib/labels";
 
 export type DeliveryNotePdfInput = {
   documentNumber: string;
@@ -38,6 +31,7 @@ type Ctx = {
   y: number;
   pageNum: number;
   documentNumber: string;
+  title: string;
 };
 
 const PAGE_W = 595;
@@ -90,8 +84,8 @@ function ensure(ctx: Ctx, need: number) {
 }
 
 function drawHeader(ctx: Ctx, continued: boolean) {
-  const { page, font, fontBold, documentNumber } = ctx;
-  page.drawText("SZÁLLÍTÓLEVÉL / PALACKCSERE BIZONYLAT", {
+  const { page, font, fontBold, documentNumber, title } = ctx;
+  page.drawText(title, {
     x: MARGIN,
     y: ctx.y,
     size: 13,
@@ -102,7 +96,7 @@ function drawHeader(ctx: Ctx, continued: boolean) {
   page.drawText(`Bizonylatszám: ${documentNumber}${continued ? " (folytatás)" : ""}`, {
     x: MARGIN,
     y: ctx.y,
-    size: 10,
+    size: 11,
     font: fontBold,
   });
   ctx.y -= 14;
@@ -168,29 +162,118 @@ function isFullItem(it: DeliveryNoteItemInput): boolean {
   return it.lineRole === "outgoing_full" || it.cylinderState === "FULL" || it.cylinderState === "PARTIAL";
 }
 
-function mfrLabel(v: string | null | undefined): string {
-  if (!v) return "—";
-  return manufacturerLabels[v as Manufacturer] ?? v;
-}
+type GasSizeGroup = {
+  gas: string;
+  size: string;
+  qty: number;
+  barcodes: string[];
+};
 
-function circLabel(v: string | null | undefined): string {
-  if (!v) return "—";
-  return circulationLabels[v as Circulation] ?? v;
-}
-
-function formatCylinderDisplayLine(it: DeliveryNoteItemInput): string {
-  const meta = parseCylinderMeta(it.note);
-  const mfr = mfrLabel(it.manufacturer ?? meta.manufacturer);
-  const circ = circLabel(it.circulation ?? meta.circulation);
-  const bc = (it.barcode ?? "—").trim() || "—";
-  return `${bc} · ${mfr} · ${it.gasType ?? "—"} · ${it.size ?? "—"} · ${circ}`;
-}
-
-function sectionLabels(sourceType?: string | null): { empty: string; full: string } {
-  if (sourceType === "supplier_exchange") {
-    return { empty: "ÜRES ÁTADOTT", full: "TELI ÁTVETT" };
+function groupByGasSize(items: DeliveryNoteItemInput[]): GasSizeGroup[] {
+  const map = new Map<string, GasSizeGroup>();
+  for (const it of items) {
+    const gas = (it.gasType ?? "—").trim() || "—";
+    const size = (it.size ?? "—").trim() || "—";
+    const key = `${gas}||${size}`;
+    const row = map.get(key) ?? { gas, size, qty: 0, barcodes: [] };
+    row.qty += it.quantity;
+    if (it.barcode) row.barcodes.push(it.barcode);
+    map.set(key, row);
   }
-  return { empty: "ÜRES VISSZAVETT", full: "TELI KIADOTT" };
+  return [...map.values()];
+}
+
+function writeGroupedCylinderSection(
+  ctx: Ctx,
+  title: string,
+  items: DeliveryNoteItemInput[],
+  lineSuffix: string,
+) {
+  if (items.length === 0) return;
+  line(ctx, title, 11, true);
+  ctx.y -= 2;
+  for (const g of groupByGasSize(items)) {
+    line(ctx, `${g.gas} ${g.size} ${lineSuffix}: ${g.qty} db`, 10, true);
+    if (g.barcodes.length === 0) continue;
+    if (g.barcodes.length <= 6) {
+      line(ctx, `  Sorszámok: ${g.barcodes.join(", ")}`, 9);
+    } else {
+      line(ctx, "  Sorszámok:", 9);
+      for (const bc of g.barcodes) {
+        line(ctx, `    ${bc}`, 9);
+      }
+    }
+  }
+  ctx.y -= 6;
+}
+
+function writeSupplierAdrBlock(ctx: Ctx, input: DeliveryNotePdfInput, emptyCount: number) {
+  line(ctx, "ADR FUVAROKMÁNY ADATOK", 11, true);
+  line(ctx, `Szabálykészlet: ${input.adr.rulesetVersion}`, 9);
+  ctx.y -= 2;
+  line(ctx, `Üres tartály: ${emptyCount} darab`, 9, true);
+  if (emptyCount > 0) {
+    line(
+      ctx,
+      "Mindegyik átadott, tisztítatlan üres palack 4. szállítási kategória (ÜRES TARTÁLY, 2).",
+      9,
+    );
+  }
+  // Beszállítói átvételnél a teli ADR-t a beszállító bizonylata számolja — nálunk 0 pont.
+  line(ctx, "ADR 1.1.3.6 számított érték: 0 / 1000", 10, true);
+  line(ctx, "Mennyiségi állapot: ADR 1.1.3.6 határán belül", 9, true);
+  line(
+    ctx,
+    "Megjegyzés: a teli palackok ADR adatait a beszállító szállítólevele / számlája tartalmazza.",
+    7,
+  );
+}
+
+function writeCustomerAdrBlock(ctx: Ctx, input: DeliveryNotePdfInput, emptyCount: number) {
+  line(ctx, "ADR FUVAROKMÁNY ADATOK", 11, true);
+  line(ctx, `Szabálykészlet: ${input.adr.rulesetVersion}`, 9);
+  ctx.y -= 2;
+
+  if (!input.adrReady) {
+    line(
+      ctx,
+      "FIGYELEM: A termék ADR törzsadata nincs hitelesítve – nem jogilag kész ADR dokumentum.",
+      9,
+      true,
+    );
+    for (const w of input.adr.blockingWarnings) line(ctx, `• ${w}`, 8);
+    ctx.y -= 4;
+  }
+
+  for (const l of input.adr.lines) {
+    if (!l.includedInDangerousGoods || l.state === "EMPTY_UNCLEANED") continue;
+    if (!l.documentLineText) continue;
+    line(ctx, l.documentLineText, 9, true);
+    line(
+      ctx,
+      `  ${l.quantity} db palack · mennyiség: ${l.adrQuantity}${l.adrQuantityUnit ?? ""} · kat. ${l.transportCategory ?? "—"} · ×${l.multiplier} · pont: ${l.points}`,
+      8,
+    );
+  }
+
+  if (emptyCount > 0) {
+    line(ctx, "ÜRES TARTÁLY, 2", 9, true);
+    line(ctx, `Átvett üres, tisztítatlan palackok: ${emptyCount} db (4. kategória)`, 8);
+  }
+
+  ctx.y -= 4;
+  line(ctx, "ADR 1.1.3.6 ÖSSZESÍTÉS", 10, true);
+  line(ctx, `1. kategória: ${input.adr.pointsByCategory.cat1}`);
+  line(ctx, `2. kategória: ${input.adr.pointsByCategory.cat2}`);
+  line(ctx, `3. kategória: ${input.adr.pointsByCategory.cat3}`);
+  line(ctx, `Üres, tisztítatlan / 4. kategória: ${emptyCount} db`);
+  line(ctx, `ADR 1.1.3.6 számított érték: ${input.adr.totalPoints} / 1000`, 10, true);
+  line(ctx, input.adr.statusLabelHu, 9, true);
+  line(
+    ctx,
+    "Megjegyzés: a pontszám önmagában nem jelenti, hogy a szállítás minden egyéb ADR-követelménynek megfelel.",
+    7,
+  );
 }
 
 function drawCancelledBanner(ctx: Ctx, reason: string | null | undefined) {
@@ -224,6 +307,11 @@ export async function generateDeliveryNotePdf(input: DeliveryNotePdfInput): Prom
   const fontBold = await doc.embedFont(fonts.bold, { subset: true });
   const page = doc.addPage([PAGE_W, PAGE_H]);
 
+  const isSupplier = input.sourceType === "supplier_exchange";
+  const title = isSupplier
+    ? "SZÁLLÍTÓLEVÉL – BESZÁLLÍTÓI PALACKCSERE"
+    : "SZÁLLÍTÓLEVÉL – PALACKCSERE (VEVŐ)";
+
   const ctx: Ctx = {
     doc,
     page,
@@ -232,6 +320,7 @@ export async function generateDeliveryNotePdf(input: DeliveryNotePdfInput): Prom
     y: PAGE_H - MARGIN,
     pageNum: 1,
     documentNumber: input.documentNumber,
+    title,
   };
 
   drawHeader(ctx, false);
@@ -240,137 +329,73 @@ export async function generateDeliveryNotePdf(input: DeliveryNotePdfInput): Prom
   }
 
   line(ctx, `Kiállítás: ${fmtDateTime(input.issuedAtIso)}`, 9);
-  if (input.status) line(ctx, `Státusz: ${input.status.toUpperCase()}`, 9, true);
-  ctx.y -= 4;
-  line(ctx, `Feladó: ${input.shipperName}`, 10, true);
-  if (input.shipperAddress) line(ctx, `Cím: ${input.shipperAddress}`);
-  line(ctx, `Címzett: ${input.consigneeName}`, 10, true);
-  if (input.consigneeAddress) line(ctx, `Cím: ${input.consigneeAddress}`);
-  if (input.deliveryAddress && input.deliveryAddress !== input.consigneeAddress) {
-    line(ctx, `Szállítási cím: ${input.deliveryAddress}`);
+  if (input.status === "finalized") line(ctx, "Státusz: VÉGLEGESÍTVE", 9, true);
+  else if (input.status === "cancelled") line(ctx, "Státusz: ÉRVÉNYTELENÍTVE", 9, true);
+  else if (input.status === "draft") line(ctx, "Státusz: PISZKOZAT", 9, true);
+  ctx.y -= 6;
+
+  if (isSupplier) {
+    line(ctx, `Átvevő (én / cég): ${input.shipperName}`, 10, true);
+    if (input.shipperAddress) line(ctx, `Cím: ${input.shipperAddress}`);
+    line(ctx, `Beszállító (átadó): ${input.consigneeName}`, 10, true);
+    if (input.consigneeAddress) line(ctx, `Cím: ${input.consigneeAddress}`);
+  } else {
+    line(ctx, `Eladó: ${input.shipperName}`, 10, true);
+    if (input.shipperAddress) line(ctx, `Cím: ${input.shipperAddress}`);
+    line(ctx, `Vevő: ${input.consigneeName}`, 10, true);
+    if (input.consigneeAddress) line(ctx, `Cím: ${input.consigneeAddress}`);
+    if (input.deliveryAddress && input.deliveryAddress !== input.consigneeAddress) {
+      line(ctx, `Szállítási cím: ${input.deliveryAddress}`);
+    }
   }
   if (input.vehiclePlate) line(ctx, `Rendszám: ${input.vehiclePlate}`);
   if (input.driverName) line(ctx, `Gépjárművezető: ${input.driverName}`);
-  ctx.y -= 8;
+  ctx.y -= 10;
 
-  line(ctx, "PALACKCSERE TÉTELEK", 11, true);
-  ctx.y -= 2;
-
-  const labels = sectionLabels(input.sourceType);
   const emptyItems = input.items.filter(isEmptyItem);
   const fullItems = input.items.filter(isFullItem);
-  const otherItems = input.items.filter((it) => !isEmptyItem(it) && !isFullItem(it));
 
-  if (emptyItems.length > 0) {
-    line(ctx, `${labels.empty} (${emptyItems.length} db)`, 10, true);
-    ctx.y -= 1;
-    for (const it of emptyItems) {
-      line(ctx, formatCylinderDisplayLine(it), 9);
-    }
-    ctx.y -= 4;
-    const emptyByGas = new Map<string, number>();
-    for (const it of emptyItems) {
-      const gas = (it.gasType ?? "—").trim() || "—";
-      emptyByGas.set(gas, (emptyByGas.get(gas) ?? 0) + it.quantity);
-    }
-    line(ctx, "Üres palackok gáznemenként", 9, true);
-    for (const [gas, qty] of emptyByGas) {
-      line(ctx, `  ${gas}: ${qty} db`, 9);
-    }
-    ctx.y -= 6;
-  }
-
-  if (fullItems.length > 0) {
-    line(ctx, `${labels.full} (${fullItems.length} db)`, 10, true);
-    ctx.y -= 1;
-    for (const it of fullItems) {
-      line(ctx, formatCylinderDisplayLine(it), 9);
-    }
-    ctx.y -= 4;
-    const fullByGas = new Map<string, number>();
-    for (const it of fullItems) {
-      const gas = (it.gasType ?? "—").trim() || "—";
-      fullByGas.set(gas, (fullByGas.get(gas) ?? 0) + it.quantity);
-    }
-    line(ctx, "Teli palackok gáznemenként", 9, true);
-    for (const [gas, qty] of fullByGas) {
-      line(ctx, `  ${gas}: ${qty} db`, 9);
-    }
-    ctx.y -= 6;
-  }
-
-  if (otherItems.length > 0) {
-    line(ctx, `Egyéb tételek (${otherItems.length} db)`, 10, true);
-    for (const it of otherItems) {
-      line(ctx, formatCylinderDisplayLine(it), 9);
-    }
-    ctx.y -= 6;
-  }
-
-  const emptyByGasForAdr = new Map<string, number>();
-  for (const it of emptyItems) {
-    const gas = (it.gasType ?? "—").trim() || "—";
-    emptyByGasForAdr.set(gas, (emptyByGasForAdr.get(gas) ?? 0) + it.quantity);
-  }
-
-  ctx.y -= 4;
-  line(ctx, "ADR FUVAROKMÁNY ADATOK", 11, true);
-  line(ctx, `Szabálykészlet: ${input.adr.rulesetVersion}`, 8);
-  ctx.y -= 2;
-
-  if (!input.adrReady) {
-    line(
+  if (isSupplier) {
+    // Én kapom a teli-t, én adom az üres-t — teljes ADR a telinek NINCS.
+    writeGroupedCylinderSection(
       ctx,
-      "FIGYELEM: A termék ADR törzsadata nincs hitelesítve – nem jogilag kész ADR dokumentum.",
-      9,
-      true,
+      "ÁTVETT TELI PALACKOK",
+      fullItems,
+      "átvett teli palack",
     );
-    for (const w of input.adr.blockingWarnings) line(ctx, `• ${w}`, 8);
-    ctx.y -= 4;
-  }
-
-  for (const l of input.adr.lines) {
-    if (!l.includedInDangerousGoods || l.state === "EMPTY_UNCLEANED") continue;
-    if (!l.documentLineText) continue;
-    line(ctx, l.documentLineText, 9, true);
-    line(
+    writeGroupedCylinderSection(
       ctx,
-      `  ${l.quantity} db palack · mennyiség: ${l.adrQuantity}${l.adrQuantityUnit ?? ""} · kat. ${l.transportCategory ?? "—"} · ×${l.multiplier} · pont: ${l.points}`,
-      8,
+      "ÁTADOTT ÜRES PALACKOK",
+      emptyItems,
+      "átadott üres palack",
     );
+    writeSupplierAdrBlock(ctx, input, emptyItems.reduce((s, i) => s + i.quantity, 0));
+    ctx.y -= 20;
+    ensure(ctx, 70);
+    line(ctx, "Átvevő / gépjárművezető: _________________________  Név: _______________", 9);
+    ctx.y -= 16;
+    line(ctx, "Átadó (én): _________________________  Név: _______________", 9);
+  } else {
+    // Én veszem át az üres-t, én adom a teli-t a vevőnek.
+    writeGroupedCylinderSection(
+      ctx,
+      "ÁTVETT ÜRES PALACKOK",
+      emptyItems,
+      "átvett üres palack",
+    );
+    writeGroupedCylinderSection(
+      ctx,
+      "ÁTADOTT TELI PALACKOK",
+      fullItems,
+      "átadott teli palack",
+    );
+    writeCustomerAdrBlock(ctx, input, emptyItems.reduce((s, i) => s + i.quantity, 0));
+    ctx.y -= 20;
+    ensure(ctx, 70);
+    line(ctx, "Átadó / gépjárművezető: _________________________  Név: _______________", 9);
+    ctx.y -= 16;
+    line(ctx, "Átvevő (vevő): _________________________  Név: _______________", 9);
   }
-
-  if (input.adr.emptyUncleanedCount > 0 || emptyByGasForAdr.size > 0) {
-    line(ctx, "ÜRES TARTÁLY, 2", 9, true);
-    const emptyTotal =
-      input.adr.emptyUncleanedCount > 0
-        ? input.adr.emptyUncleanedCount
-        : [...emptyByGasForAdr.values()].reduce((s, n) => s + n, 0);
-    line(ctx, `Üres, tisztítatlan palackok összesen: ${emptyTotal} db`, 8);
-    for (const [gas, qty] of emptyByGasForAdr) {
-      line(ctx, `  ${gas}: ${qty} db`, 8);
-    }
-  }
-
-  ctx.y -= 6;
-  line(ctx, "ADR 1.1.3.6 ÖSSZESÍTÉS", 10, true);
-  line(ctx, `1. kategória: ${input.adr.pointsByCategory.cat1}`);
-  line(ctx, `2. kategória: ${input.adr.pointsByCategory.cat2}`);
-  line(ctx, `3. kategória: ${input.adr.pointsByCategory.cat3}`);
-  line(ctx, `Üres, tisztítatlan / 4. kategória: ${input.adr.emptyUncleanedCount} db`);
-  line(ctx, `ADR 1.1.3.6 számított érték: ${input.adr.totalPoints} / 1000`, 10, true);
-  line(ctx, input.adr.statusLabelHu, 9, true);
-  line(
-    ctx,
-    "Megjegyzés: a pontszám önmagában nem jelenti, hogy a szállítás minden egyéb ADR-követelménynek megfelel.",
-    7,
-  );
-
-  ctx.y -= 20;
-  ensure(ctx, 70);
-  line(ctx, "Átadó / gépjárművezető: _________________________  Név: _______________", 9);
-  ctx.y -= 16;
-  line(ctx, "Átvevő: _________________________  Név: _______________", 9);
 
   drawFooter(ctx);
   return doc.save();

@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,6 +13,7 @@ import { Camera, Check, FileText, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { circulationLabels, fmtDateTime, locationLabels, manufacturerLabels, type Manufacturer } from "@/lib/labels";
 import { createAndFinalizeFromSupplierExchange } from "@/lib/delivery-notes/ops";
+import { formatUserFacingError } from "@/lib/supabase-error";
 import {
   normalizeBarcode,
   resolveCylinderForSupplierReceive,
@@ -45,6 +46,7 @@ type DialogPhase = "return" | "receive";
 
 function Suppliers() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { user, organization } = useAuth();
   const [supplierId, setSupplierId] = useState("");
   const [returnBc, setReturnBc] = useState("");
@@ -567,12 +569,19 @@ function Suppliers() {
                     });
                     toast.success(
                       fin.adrReady
-                        ? `Szállítólevél: ${fin.documentNumber}`
-                        : `Szállítólevél (ADR figyelmeztetés): ${fin.documentNumber}`,
+                        ? `Szállítólevél kész: ${fin.documentNumber}`
+                        : `Szállítólevél kész (ADR figyelmeztetés): ${fin.documentNumber}`,
                     );
+                    void navigate({ to: "/delivery-notes" });
                   } catch (e) {
                     console.error("Beszállítói csere → szállítólevél hiba", e);
-                    toast.error((e as Error).message || "Szállítólevél / PDF hiba");
+                    toast.error(
+                      formatUserFacingError(
+                        e,
+                        "A szállítólevél mentése sikertelen. Ellenőrizd a Szállítólevelek oldalon.",
+                      ),
+                    );
+                    void navigate({ to: "/delivery-notes" });
                   } finally {
                     setMakingDn(null);
                   }
