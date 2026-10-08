@@ -1,7 +1,11 @@
 import { supabase } from "@/integrations/supabase/client";
 import { formatSupabaseError } from "@/lib/supabase-error";
 import { resolveVatRate, lineAmounts } from "@/lib/szamlazz/xml";
-import type { TaxRegime } from "@/lib/organization";
+import {
+  isInvoicingEnabled,
+  parseOrganizationSettings,
+  type TaxRegime,
+} from "@/lib/organization";
 
 export type InvoiceDocumentStatus = "draft" | "finalizing" | "finalized" | "failed";
 
@@ -131,6 +135,20 @@ export async function createInvoiceDraft(input: {
   items: InvoiceDraftItemInput[];
 }): Promise<string> {
   if (!input.items.length) throw new Error("Legalább egy tétel kell");
+
+  const { data: orgRow, error: orgErr } = await supabase
+    .from("organizations")
+    .select("settings")
+    .eq("id", input.organizationId)
+    .maybeSingle();
+  if (orgErr) throw new Error(formatSupabaseError(orgErr, "Cég beállítások"));
+  const orgSettings = parseOrganizationSettings(
+    (orgRow as { settings?: unknown } | null)?.settings,
+  );
+  if (!isInvoicingEnabled(orgSettings)) {
+    throw new Error("A számlázás modul nincs bekapcsolva ennél a cégnél");
+  }
+
   const t = totalsFromItems(input.items);
 
   const { data: doc, error } = await supabase
@@ -285,12 +303,24 @@ export async function updateInvoiceDraftItems(
   if (upErr) throw new Error(formatSupabaseError(upErr, "Összegek frissítése"));
 }
 
-/** Gyors csere csoportból draft tételek. */
+/** Labelből gáznem+térfogat kulcs (gyártó/serial nélkül). */
+export function exchangeProductKey(label: string): string {
+  const cleaned = label
+    .replace(/^Kínai csere:\s*/i, "")
+    .replace(/^[^\s·]+ · /, "")
+    .split(" · ")[0]
+    ?.trim();
+  return cleaned || label;
+}
+
+/** Gyors csere csoportból draft tételek – gáznem+térfogat szerint konszolidálva. */
 export function buildDraftItemsFromUninvoicedGroup(opts: {
   items: {
     exchangeId: string;
     outgoingLabel: string;
     eladasi_ar: number;
+    /** Darabszám (kínai full_out); default 1. */
+    quantity?: number;
   }[];
   taxRegime: TaxRegime;
   defaultVatRate: number;
@@ -299,12 +329,32 @@ export function buildDraftItemsFromUninvoicedGroup(opts: {
     regime: opts.taxRegime,
     defaultRate: opts.defaultVatRate,
   });
-  return opts.items.map((it) => ({
-    exchangeId: it.exchangeId,
-    name: `Gázcsere: ${it.outgoingLabel}`,
-    quantity: 1,
+
+  const groups = new Map<
+    string,
+    { name: string; quantity: number; netTotal: number; exchangeIds: string[] }
+  >();
+  for (const it of opts.items) {
+    const key = exchangeProductKey(it.outgoingLabel);
+    const qty = Math.max(1, Math.round(it.quantity ?? 1));
+    const g = groups.get(key) ?? {
+      name: `Gázcsere: ${key}`,
+      quantity: 0,
+      netTotal: 0,
+      exchangeIds: [],
+    };
+    g.quantity += qty;
+    g.netTotal += Math.max(0, it.eladasi_ar || 0);
+    g.exchangeIds.push(it.exchangeId);
+    groups.set(key, g);
+  }
+
+  return [...groups.values()].map((g) => ({
+    exchangeId: g.exchangeIds[0],
+    name: g.name,
+    quantity: g.quantity,
     unit: "db",
-    netUnitPrice: Math.max(0, it.eladasi_ar || 0),
+    netUnitPrice: g.quantity > 0 ? g.netTotal / g.quantity : 0,
     vatRate,
   }));
 }

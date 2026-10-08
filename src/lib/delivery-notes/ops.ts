@@ -24,6 +24,25 @@ import type {
   DeliveryNoteStatus,
 } from "@/lib/delivery-notes/types";
 import { encodeCylinderMeta, parseCylinderMeta } from "@/lib/delivery-notes/cylinder-meta";
+import {
+  isDeliveryNotesEnabled,
+  parseOrganizationSettings,
+} from "@/lib/organization";
+
+async function assertDeliveryNotesModule(organizationId: string): Promise<void> {
+  const { data: orgRow, error } = await supabase
+    .from("organizations")
+    .select("settings")
+    .eq("id", organizationId)
+    .maybeSingle();
+  if (error) throw new Error(formatSupabaseError(error, "Cég beállítások"));
+  const settings = parseOrganizationSettings(
+    (orgRow as { settings?: unknown } | null)?.settings,
+  );
+  if (!isDeliveryNotesEnabled(settings)) {
+    throw new Error("A szállítólevél modul nincs bekapcsolva ennél a cégnél");
+  }
+}
 
 async function enrichBusinessSnapshotCylinderMeta(
   snap: DeliveryNoteBusinessSnapshot,
@@ -185,6 +204,7 @@ export async function createDeliveryNoteDraft(
   items: DeliveryNoteItemInput[],
 ): Promise<{ id: string; adrReady: boolean }> {
   if (items.length === 0) throw new Error("Legalább egy tétel kell a szállítólevélhez");
+  await assertDeliveryNotesModule(header.organizationId);
   const { enriched, adr, adrReady } = await buildAdrForItems(items);
 
   const { data: auth } = await supabase.auth.getUser();
@@ -458,6 +478,7 @@ export async function createAndFinalizeFromSupplierExchange(args: {
     .eq("source_id", args.supplierExchangeId)
     .eq("status", "draft");
   for (const d of orphanDrafts ?? []) {
+    if (!d?.id) continue;
     await db.from("delivery_note_items").delete().eq("delivery_note_id", d.id);
     await db.from("delivery_notes").delete().eq("id", d.id).eq("status", "draft");
   }
@@ -604,7 +625,7 @@ export async function createAndFinalizeFromExchangeBatch(args: {
   const { data: rows, error } = await supabase
     .from("exchanges")
     .select(
-      "id, incoming: cylinders!exchanges_incoming_cylinder_id_fkey ( id, barcode, gas_type, size ), outgoing: cylinders!exchanges_outgoing_cylinder_id_fkey ( id, barcode, gas_type, size )",
+      "id, note, operation_type, incoming: cylinders!exchanges_incoming_cylinder_id_fkey ( id, barcode, gas_type, size ), outgoing: cylinders!exchanges_outgoing_cylinder_id_fkey ( id, barcode, gas_type, size )",
     )
     .in("id", args.exchangeIds);
   if (error) throw new Error(formatSupabaseError(error, "Csere tételek"));
@@ -644,6 +665,43 @@ export async function createAndFinalizeFromExchangeBatch(args: {
         barcode: inn.barcode,
         cylinderId: inn.id,
       });
+    }
+    // Darabszámos kínai: nincs cylinder FK – note-ból
+    if (!out && !inn) {
+      const note = String((row as { note?: string | null }).note ?? "");
+      const m = note.match(
+        /Kínai csere:\s*([^·]+?)\s+([^·]+?)\s*·\s*teli ki\s+(\d+)\s*·\s*üres vissza\s+(\d+)/i,
+      );
+      if (m) {
+        const gasType = m[1].trim();
+        const size = m[2].trim();
+        const fullOut = Number(m[3]);
+        const emptyIn = Number(m[4]);
+        if (fullOut > 0) {
+          items.push({
+            lineRole: "outgoing_full",
+            cylinderState: "FULL",
+            gasType,
+            size,
+            quantity: fullOut,
+            barcode: null,
+            cylinderId: null,
+            note: "kínai / darabszámos",
+          });
+        }
+        if (emptyIn > 0) {
+          items.push({
+            lineRole: "incoming_empty",
+            cylinderState: "EMPTY_UNCLEANED",
+            gasType,
+            size,
+            quantity: emptyIn,
+            barcode: null,
+            cylinderId: null,
+            note: "kínai / darabszámos",
+          });
+        }
+      }
     }
   }
 

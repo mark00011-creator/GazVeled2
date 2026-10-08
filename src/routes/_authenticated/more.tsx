@@ -6,7 +6,6 @@ import { isModuleEnabled } from "@/lib/organization";
 import {
   Truck,
   FileText,
-  RotateCcw,
   ScrollText,
   ChevronRight,
   ClipboardList,
@@ -18,6 +17,7 @@ import {
   Wrench,
   Building2,
 } from "lucide-react";
+import type { OrganizationModules } from "@/lib/organization";
 
 export const Route = createFileRoute("/_authenticated/more")({
   head: () => ({ meta: [{ title: "Több – Gáz Veled" }] }),
@@ -30,15 +30,8 @@ type MoreItem = {
   label: string;
   desc: string;
   platformOnly?: boolean;
-  module?:
-    | "flaga_pb"
-    | "prima_pb"
-    | "chinese_stock"
-    | "rentals"
-    | "tool_rental"
-    | "quotes"
-    | "gas_orders"
-    | "suppliers";
+  module?: keyof OrganizationModules;
+  highlight?: boolean;
 };
 
 const adminItems: MoreItem[] = [
@@ -139,13 +132,7 @@ const items: MoreItem[] = [
     icon: FileText,
     label: "Szállítólevelek",
     desc: "ADR szállítólevél / palackcsere bizonylat, kézi és előzményből",
-  },
-  {
-    to: "/rental-return",
-    icon: RotateCcw,
-    label: "Bérlet visszavétel",
-    desc: "Aktív bérlet zárása",
-    module: "rentals",
+    module: "delivery_notes",
   },
   {
     to: "/loaned-cylinders",
@@ -157,7 +144,7 @@ const items: MoreItem[] = [
     to: "/rentals",
     icon: FileText,
     label: "Bérletek",
-    desc: "Aktív és lezárt bérletek",
+    desc: "Aktív és lezárt bérletek – visszavétel a Bérlők / bérlet részletekből",
     module: "rentals",
   },
   { to: "/audit", icon: ScrollText, label: "Audit napló", desc: "Műveleti előzmények" },

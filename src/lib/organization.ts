@@ -13,6 +13,10 @@ export type OrganizationModules = {
   quotes: boolean;
   gas_orders: boolean;
   suppliers: boolean;
+  /** Számlázás modul (settings). Ha false → nincs „Számlázzam?”. */
+  invoicing: boolean;
+  /** Szállítólevél modul (settings). Ha false → nincs „Szállítólevél?”. */
+  delivery_notes: boolean;
 };
 
 export type OrganizationInvoicingSettings = {
@@ -61,6 +65,8 @@ export const DEFAULT_ORGANIZATION_SETTINGS: OrganizationSettings = {
     quotes: true,
     gas_orders: true,
     suppliers: true,
+    invoicing: false,
+    delivery_notes: true,
   },
   circulations: ["own", "siad", "berpalack"],
   warehouse_bins: [],
@@ -90,17 +96,6 @@ export function parseOrganizationSettings(raw: unknown): OrganizationSettings {
   const taxSrc =
     src.tax && typeof src.tax === "object" ? (src.tax as Record<string, unknown>) : {};
 
-  const modules: OrganizationModules = {
-    flaga_pb: modulesSrc.flaga_pb !== false,
-    prima_pb: modulesSrc.prima_pb !== false,
-    chinese_stock: modulesSrc.chinese_stock !== false,
-    rentals: modulesSrc.rentals !== false,
-    tool_rental: modulesSrc.tool_rental !== false,
-    quotes: modulesSrc.quotes !== false,
-    gas_orders: modulesSrc.gas_orders !== false,
-    suppliers: modulesSrc.suppliers !== false,
-  };
-
   const circulations = Array.isArray(src.circulations)
     ? src.circulations.filter((c): c is string => typeof c === "string")
     : [...DEFAULT_ORGANIZATION_SETTINGS.circulations];
@@ -112,6 +107,25 @@ export function parseOrganizationSettings(raw: unknown): OrganizationSettings {
   const providerRaw = invoicingSrc.provider;
   const provider =
     providerRaw === "billingo" || providerRaw === "szamlazz" ? providerRaw : null;
+
+  const modules: OrganizationModules = {
+    flaga_pb: modulesSrc.flaga_pb !== false,
+    prima_pb: modulesSrc.prima_pb !== false,
+    chinese_stock: modulesSrc.chinese_stock !== false,
+    rentals: modulesSrc.rentals !== false,
+    tool_rental: modulesSrc.tool_rental !== false,
+    quotes: modulesSrc.quotes !== false,
+    gas_orders: modulesSrc.gas_orders !== false,
+    suppliers: modulesSrc.suppliers !== false,
+    // Explicit false wins; otherwise derive from invoicing.provider (no org-id hardcode).
+    invoicing:
+      modulesSrc.invoicing === true
+        ? true
+        : modulesSrc.invoicing === false
+          ? false
+          : provider != null,
+    delivery_notes: modulesSrc.delivery_notes !== false,
+  };
 
   const regime: TaxRegime =
     taxSrc.regime === "vat_registered" ? "vat_registered" : "vat_exempt";
@@ -146,4 +160,22 @@ export function isModuleEnabled(
 ): boolean {
   if (!settings) return true;
   return settings.modules[module] !== false;
+}
+
+/** Számlázás: modules.invoicing + provider. Nincs org-id hardcode. */
+export function isInvoicingEnabled(
+  settings: OrganizationSettings | null | undefined,
+): boolean {
+  if (!settings) return false;
+  if (settings.modules.invoicing === false) return false;
+  if (settings.modules.invoicing === true) return true;
+  return settings.invoicing.provider != null;
+}
+
+/** Szállítólevél modal/RPC – modules.delivery_notes (default true). */
+export function isDeliveryNotesEnabled(
+  settings: OrganizationSettings | null | undefined,
+): boolean {
+  if (!settings) return true;
+  return settings.modules.delivery_notes !== false;
 }

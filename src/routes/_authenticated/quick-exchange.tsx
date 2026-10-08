@@ -103,7 +103,7 @@ import {
   type QuickExchangeListItem,
 } from "@/lib/quick-exchange-draft";
 import { useRouteScrollOnly } from "@/hooks/use-route-state-persistence";
-import { isModuleEnabled } from "@/lib/organization";
+import { isDeliveryNotesEnabled, isInvoicingEnabled, isModuleEnabled } from "@/lib/organization";
 
 export const Route = createFileRoute("/_authenticated/quick-exchange")({
   head: () => ({ meta: [{ title: "Gyors csere – Gáz Veled" }] }),
@@ -834,21 +834,24 @@ function QuickExchange() {
                 ? "Csere rögzítve – körforgás-eltérés rendezve"
                 : "Csere rögzítve",
           );
-          // Számlázzam? – igen → előnézet; nem → számlázatlan queue
-          setInvoiceAsk({
-            partnerId,
-            partnerName: selectedPartner?.name ?? "Partner",
-            batchId,
-            exchangeIds,
-            itemCount: toSubmit.length,
-          });
-          setDeliveryNoteAsk({
-            partnerId,
-            partnerName: selectedPartner?.name ?? "Partner",
-            batchId,
-            exchangeIds,
-            itemCount: toSubmit.length,
-          });
+          if (isInvoicingEnabled(orgSettings)) {
+            setInvoiceAsk({
+              partnerId,
+              partnerName: selectedPartner?.name ?? "Partner",
+              batchId,
+              exchangeIds,
+              itemCount: toSubmit.length,
+            });
+          }
+          if (isDeliveryNotesEnabled(orgSettings)) {
+            setDeliveryNoteAsk({
+              partnerId,
+              partnerName: selectedPartner?.name ?? "Partner",
+              batchId,
+              exchangeIds,
+              itemCount: toSubmit.length,
+            });
+          }
         }
       } else if (operation === "sale") {
         if (saleMode === "chinese") {

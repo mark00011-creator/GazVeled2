@@ -185,6 +185,16 @@ const MODULE_LABELS: { key: keyof OrganizationModules; label: string; desc: stri
   { key: "tool_rental", label: "Eszköz / fogyóanyag", desc: "Darabszámos raktár" },
   { key: "quotes", label: "Árajánlat", desc: "Árajánlat modul" },
   { key: "gas_orders", label: "Gáz rendelés", desc: "Üres palack rendelés" },
+  {
+    key: "invoicing",
+    label: "Számlázás",
+    desc: "Gyorscsere „Számlázzam?” és számla draft – ki = nincs számlázás",
+  },
+  {
+    key: "delivery_notes",
+    label: "Szállítólevél",
+    desc: "Gyorscsere „Szállítólevél?” és szállítólevél menü",
+  },
 ];
 
 type SettingsForm = {
@@ -204,7 +214,7 @@ const SETTINGS_DEFAULTS: SettingsForm = {
 };
 
 function OrganizationSettingsPage() {
-  const { isAdmin, organization, loading } = useAuth();
+  const { isAdmin, isPlatformAdmin, organization, loading } = useAuth();
   const qc = useQueryClient();
   const { state: form, patch, setState } = usePersistedFormState(SETTINGS_DEFAULTS, {
     formKey: "draft",
@@ -249,6 +259,10 @@ function OrganizationSettingsPage() {
       const nextSettings: OrganizationSettings = {
         ...settings,
         warehouse_bins,
+        // Company admin cannot change modules – keep DB truth
+        modules: isPlatformAdmin
+          ? settings.modules
+          : parseOrganizationSettings(orgRow?.settings).modules,
       };
       const { error } = await supabase
         .from("organizations")
@@ -307,7 +321,9 @@ function OrganizationSettingsPage() {
       <Card className="mb-3 space-y-3 p-4">
         <div className="text-sm font-semibold">Modulok</div>
         <p className="text-xs text-muted-foreground">
-          Ami ki van kapcsolva, nem jelenik meg a menüben. Az alap app közös, a modulok cégenkéntiek.
+          {isPlatformAdmin
+            ? "Platform tulajdonos: modulok kapcsolása."
+            : "Aktív moduljaid megtekintése. Bekapcsolást a platform tulajdonos végezheti."}
         </p>
         {MODULE_LABELS.map((m) => (
           <div key={m.key} className="flex items-center justify-between gap-3">
@@ -317,15 +333,17 @@ function OrganizationSettingsPage() {
             </div>
             <Switch
               checked={settings.modules[m.key]}
-              onCheckedChange={(v) =>
+              disabled={!isPlatformAdmin}
+              onCheckedChange={(v) => {
+                if (!isPlatformAdmin) return;
                 setState((prev) => ({
                   ...prev,
                   settings: {
                     ...prev.settings,
                     modules: { ...prev.settings.modules, [m.key]: v },
                   },
-                }))
-              }
+                }));
+              }}
             />
           </div>
         ))}

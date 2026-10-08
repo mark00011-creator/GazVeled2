@@ -138,6 +138,16 @@ function mapUninvoicedRow(row: {
     incomingLabel = "—";
     outgoingLabel = row.note?.split(" · ")[0] ?? "Kínai eladás";
   }
+  if (op === "chinese_brought") {
+    const m = row.note?.match(/Kínai csere:\s*([^·]+?)\s+([^·]+?)\s*·/i);
+    if (m) {
+      incomingLabel = "— (kínai üres)";
+      outgoingLabel = `Kínai csere: ${m[1].trim()} ${m[2].trim()}`;
+    } else {
+      incomingLabel = "—";
+      outgoingLabel = row.note?.split(" · ")[0] ?? "Kínai csere";
+    }
+  }
   if (op === "flaga_sale") {
     incomingLabel = "—";
     outgoingLabel = row.note?.split(" · ")[0] ?? "FLAGA eladás";
