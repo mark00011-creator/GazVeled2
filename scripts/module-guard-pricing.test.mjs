@@ -77,9 +77,13 @@ test("uninvoiced reminder is itemized and invoice actions follow the module", as
   const card = fs.readFileSync("src/components/UninvoicedExchangesCard.tsx", "utf8");
   assert.match(card, /isInvoicingEnabled\(organization\?\.settings\)/);
   assert.match(card, /formatProfit\(item\.eladasi_ar\)/);
-  assert.match(card, /invoicingOn &&/);
-  assert.match(card, /Mégse/);
+  assert.match(card, /Összesen:/);
   assert.match(card, /markUninvoicedGroupInvoiced/);
+  assert.match(
+    card,
+    /invoicingOn \? \([\s\S]*Számlázás…[\s\S]*Mégse[\s\S]*\) : \([\s\S]*Számláztam/,
+  );
+  assert.doesNotMatch(card, /\.delete\(\)|\.from\("exchanges"\)\.delete/);
 });
 
 test("quick exchange prompts are module-gated", async () => {

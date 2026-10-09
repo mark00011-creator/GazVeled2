@@ -10,6 +10,7 @@ import {
   formatProfit,
   markUninvoicedGroupInvoiced,
   type UninvoicedExchange,
+  type UninvoicedExchangeSummary,
 } from "@/lib/dashboard-stats";
 import { useAuth } from "@/lib/auth";
 import { isInvoicingEnabled } from "@/lib/organization";
@@ -80,6 +81,34 @@ export function UninvoicedExchangesCard() {
       qc.invalidateQueries({ queryKey: ["uninvoiced-exchanges"] });
     },
     onError: (e: Error) => toast.error(e.message),
+  });
+
+  const markInvoiced = useMutation({
+    mutationFn: markUninvoicedGroupInvoiced,
+    onMutate: async (group) => {
+      await qc.cancelQueries({ queryKey: ["uninvoiced-exchanges"] });
+      const prev = qc.getQueryData<UninvoicedExchangeSummary>(["uninvoiced-exchanges"]);
+      if (prev) {
+        const removedId = group.batchId ?? group.exchangeIds[0];
+        const removed = prev.recent.find((r) => r.id === removedId);
+        qc.setQueryData<UninvoicedExchangeSummary>(["uninvoiced-exchanges"], {
+          count: Math.max(0, prev.count - (removed ? 1 : 0)),
+          totalSaleValue: Math.max(0, prev.totalSaleValue - (removed?.eladasi_ar ?? 0)),
+          recent: prev.recent.filter((r) => r.id !== removedId),
+        });
+      }
+      return { prev };
+    },
+    onError: (err, _group, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["uninvoiced-exchanges"], ctx.prev);
+      toast.error((err as Error).message);
+    },
+    onSuccess: () => {
+      toast.success("Kiszámlázva");
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["uninvoiced-exchanges"] });
+    },
   });
 
   if (isLoading) return null;
@@ -160,7 +189,7 @@ export function UninvoicedExchangesCard() {
                   </div>
                 )}
               </div>
-              {invoicingOn && (
+              {invoicingOn ? (
                 <div className="mt-2 flex gap-2">
                   <Button
                     size="sm"
@@ -180,6 +209,21 @@ export function UninvoicedExchangesCard() {
                     Mégse
                   </Button>
                 </div>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-2 w-full"
+                  disabled={markInvoiced.isPending}
+                  onClick={() =>
+                    markInvoiced.mutate({
+                      batchId: row.batchId,
+                      exchangeIds: row.exchangeIds,
+                    })
+                  }
+                >
+                  Számláztam
+                </Button>
               )}
             </div>
           ))}
