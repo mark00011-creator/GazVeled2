@@ -1474,6 +1474,17 @@ export async function extendRental(rentalId: string): Promise<void> {
 
 
 
+/**
+ * Bérlet csak akkor zárható, ha sem sorszámos palack, sem nyitott darabszámos tétel nincs kint.
+ * A darabszám a már lefutott return_rental_quantity_items_partial utáni DB-állapot.
+ */
+export function shouldCloseRentalAfterReturn(
+  remainingSerials: number,
+  remainingQuantityItems: number,
+): boolean {
+  return remainingSerials === 0 && remainingQuantityItems === 0;
+}
+
 export async function returnRentalCylinders(args: {
 
   rental_id: string;
@@ -1644,11 +1655,9 @@ export async function returnRentalCylinders(args: {
 
   const updates: Record<string, unknown> = { updated_at: now };
 
-  if ((count ?? 0) === 0 && (qtyCount ?? 0) > 0) {
-    await returnRentalQuantityItems(args.rental_id);
-  }
-
-  if ((count ?? 0) === 0) {
+  // A részleges quantity RPC már könyvelte a kért darabot. A maradékot nem vesszük vissza.
+  // A teljes returnRentalCylinders folyamat nem egy DB-tranzakció (technikai adósság).
+  if (shouldCloseRentalAfterReturn(count ?? 0, qtyCount ?? 0)) {
     updates.status = "closed";
     updates.end_date = todayLocal();
   }
