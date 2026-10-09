@@ -72,6 +72,16 @@ test("createInvoiceDraft / createDeliveryNoteDraft source guards exist", async (
   assert.match(dn, /A szállítólevél modul nincs bekapcsolva/);
 });
 
+test("uninvoiced reminder is itemized and invoice actions follow the module", async () => {
+  const fs = await import("node:fs");
+  const card = fs.readFileSync("src/components/UninvoicedExchangesCard.tsx", "utf8");
+  assert.match(card, /isInvoicingEnabled\(organization\?\.settings\)/);
+  assert.match(card, /formatProfit\(item\.eladasi_ar\)/);
+  assert.match(card, /invoicingOn &&/);
+  assert.match(card, /Mégse/);
+  assert.match(card, /markUninvoicedGroupInvoiced/);
+});
+
 test("quick exchange prompts are module-gated", async () => {
   const fs = await import("node:fs");
   const qe = fs.readFileSync("src/routes/_authenticated/quick-exchange.tsx", "utf8");

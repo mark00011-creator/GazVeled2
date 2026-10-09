@@ -8,9 +8,11 @@ import { fmtDateTime } from "@/lib/labels";
 import {
   fetchUninvoicedExchanges,
   formatProfit,
+  markUninvoicedGroupInvoiced,
   type UninvoicedExchange,
 } from "@/lib/dashboard-stats";
 import { useAuth } from "@/lib/auth";
+import { isInvoicingEnabled } from "@/lib/organization";
 import {
   buildDraftItemsFromUninvoicedGroup,
   createInvoiceDraft,
@@ -22,6 +24,7 @@ import { ExchangeOutgoingCorrectionDialog } from "@/components/ExchangeOutgoingC
 export function UninvoicedExchangesCard() {
   const qc = useQueryClient();
   const { organization } = useAuth();
+  const invoicingOn = isInvoicingEnabled(organization?.settings);
   const [previewDocId, setPreviewDocId] = useState<string | null>(null);
   const [correctItem, setCorrectItem] = useState<{
     exchangeId: string;
@@ -70,6 +73,15 @@ export function UninvoicedExchangesCard() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const dismiss = useMutation({
+    mutationFn: (group: UninvoicedExchange) => markUninvoicedGroupInvoiced(group),
+    onSuccess: () => {
+      toast.success("Tétel elrejtve. A számlát kézzel töltheted ki.");
+      qc.invalidateQueries({ queryKey: ["uninvoiced-exchanges"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   if (isLoading) return null;
   if (isError) return null;
   if (!data || data.count === 0) return null;
@@ -113,6 +125,15 @@ export function UninvoicedExchangesCard() {
                       <span className="text-muted-foreground">Átvett: </span>
                       <span className="font-mono">{item.incomingLabel}</span>
                     </div>
+                    <div className="mt-1 flex justify-between gap-2">
+                      <span>
+                        Eladási ár:{" "}
+                        <span className="font-medium">{formatProfit(item.eladasi_ar)}</span>
+                      </span>
+                      <span>
+                        Profit: <span className="font-medium">{formatProfit(item.profit)}</span>
+                      </span>
+                    </div>
                     <Button
                       type="button"
                       size="sm"
@@ -130,28 +151,36 @@ export function UninvoicedExchangesCard() {
                   </div>
                 ))}
                 {row.pairCount > 1 && (
-                  <div className="pt-1 text-muted-foreground">
-                    {row.pairCount} tétel egy csoportban
+                  <div className="flex justify-between gap-2 pt-1">
+                    <span>
+                      Összesen:{" "}
+                      <span className="font-medium">{formatProfit(row.eladasi_ar)}</span>
+                    </span>
+                    <span className="text-muted-foreground">{row.pairCount} tétel</span>
                   </div>
                 )}
-                <div className="flex justify-between gap-2 pt-1">
-                  <span>
-                    Eladási ár:{" "}
-                    <span className="font-medium">{formatProfit(row.eladasi_ar)}</span>
-                  </span>
-                  <span>
-                    Profit: <span className="font-medium">{formatProfit(row.profit)}</span>
-                  </span>
-                </div>
               </div>
-              <Button
-                size="sm"
-                className="mt-2 w-full"
-                disabled={startInvoice.isPending}
-                onClick={() => startInvoice.mutate(row)}
-              >
-                Számlázás…
-              </Button>
+              {invoicingOn && (
+                <div className="mt-2 flex gap-2">
+                  <Button
+                    size="sm"
+                    className="flex-1"
+                    disabled={startInvoice.isPending || dismiss.isPending}
+                    onClick={() => startInvoice.mutate(row)}
+                  >
+                    Számlázás…
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1"
+                    disabled={startInvoice.isPending || dismiss.isPending}
+                    onClick={() => dismiss.mutate(row)}
+                  >
+                    Mégse
+                  </Button>
+                </div>
+              )}
             </div>
           ))}
         </div>
