@@ -135,7 +135,7 @@ export async function fetchSupplySales(): Promise<SupplySale[]> {
     .select(
       `
       *,
-      partner:partners(name, company_name),
+      partner:partners!supply_sales_partner_id_fkey(name, company_name),
       items:supply_sale_items(*),
       billing:supply_billing_queue(status)
     `,

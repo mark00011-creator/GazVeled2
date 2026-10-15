@@ -326,7 +326,7 @@ export async function fetchCylinderHistory(cylinderId: string): Promise<Cylinder
   const { data, error } = await supabase
     .from("cylinder_history")
     .select(
-      "id, cylinder_id, event_type, description, partner_id, old_value, new_value, metadata, created_at, created_by, event_group_id, related_cylinder_id, related_rental_id, related_partner_id, related_exchange_id, related_supplier_id, related_user_id, partners:partner_id(name), related_cylinder:cylinders!cylinder_history_related_cylinder_id_fkey(barcode)",
+      "id, cylinder_id, event_type, description, partner_id, old_value, new_value, metadata, created_at, created_by, event_group_id, related_cylinder_id, related_rental_id, related_partner_id, related_exchange_id, related_supplier_id, related_user_id, partners:partners!cylinder_history_partner_id_fkey(name), related_cylinder:cylinders!cylinder_history_related_cylinder_id_fkey(barcode)",
     )
     .eq("cylinder_id", cylinderId)
     .order("created_at", { ascending: true });

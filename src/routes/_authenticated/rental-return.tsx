@@ -151,7 +151,7 @@ function RentalReturn() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("rentals")
-        .select("id, partner_id, monthly_fee, deposit, start_date, status, partners(name, company_name)")
+        .select("id, partner_id, monthly_fee, deposit, start_date, status, partners:partners!rentals_partner_id_fkey(name, company_name)")
         .in("status", ["active", "expired", "cancelled"])
         .order("start_date", { ascending: false });
       if (error) throw error;

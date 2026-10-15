@@ -128,7 +128,7 @@ function Dashboard() {
         .from("rentals")
 
         .select(
-          "id, monthly_fee, status, start_date, next_invoice_date, rental_type, partners(name)",
+          "id, monthly_fee, status, start_date, next_invoice_date, rental_type, partners:partners!rentals_partner_id_fkey(name)",
         )
 
         .eq("status", "active");

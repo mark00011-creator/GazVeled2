@@ -62,7 +62,7 @@ export function nextQuoteNumber(existing: QuoteRow[]): string {
 export async function fetchQuotes(): Promise<QuoteRow[]> {
   const { data, error } = await supabase
     .from("quotes")
-    .select("*, partners(name, company_name)")
+    .select("*, partners:partners!quotes_partner_id_fkey(name, company_name)")
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(formatSupabaseError(error, "Árajánlatok betöltése"));
@@ -71,7 +71,7 @@ export async function fetchQuotes(): Promise<QuoteRow[]> {
 
 export async function fetchQuote(id: string): Promise<{ quote: QuoteRow; items: QuoteItemRow[] }> {
   const [quoteRes, itemsRes] = await Promise.all([
-    supabase.from("quotes").select("*, partners(name, company_name)").eq("id", id).single(),
+    supabase.from("quotes").select("*, partners:partners!quotes_partner_id_fkey(name, company_name)").eq("id", id).single(),
     supabase.from("quote_items").select("*").eq("quote_id", id).order("sort_order"),
   ]);
 

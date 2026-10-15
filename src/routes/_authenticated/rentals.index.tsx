@@ -168,7 +168,7 @@ function RentalsList() {
       let qb = supabase
         .from("rentals")
         .select(
-          "id, partner_id, start_date, end_date, expiry_date, rental_type, monthly_fee, deposit, status, next_invoice_date, partners(name, company_name)",
+          "id, partner_id, start_date, end_date, expiry_date, rental_type, monthly_fee, deposit, status, next_invoice_date, partners:partners!rentals_partner_id_fkey(name, company_name)",
         )
         .order("start_date", { ascending: false });
       if (statusFilter === "all") {

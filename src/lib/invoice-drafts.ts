@@ -213,7 +213,7 @@ export async function fetchInvoiceDocument(documentId: string): Promise<{
   const { data: doc, error } = await supabase
     .from("invoice_documents")
     .select(
-      "id, partner_id, status, batch_id, payment_method, note, net_total, vat_total, gross_total, external_invoice_number, last_error, created_at, partners(name)",
+      "id, partner_id, status, batch_id, payment_method, note, net_total, vat_total, gross_total, external_invoice_number, last_error, created_at, partners:partners!invoice_documents_partner_id_fkey(name)",
     )
     .eq("id", documentId)
     .single();
