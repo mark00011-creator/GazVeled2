@@ -30,7 +30,7 @@ export function UninvoicedRentalFeesCard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("rentals")
-        .select("id, rental_type, monthly_fee, start_date, partners(name)")
+        .select("id, rental_type, monthly_fee, start_date, partners:partners!rentals_partner_id_fkey(name)")
         .eq("status", "active")
         .eq("initial_fee_invoiced", false)
         .gt("monthly_fee", 0)

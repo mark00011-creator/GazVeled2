@@ -71,7 +71,7 @@ const UNINVOICED_SELECT = `
   profit,
   operation_type,
   note,
-  partners ( name ),
+  partners:partners!exchanges_partner_id_fkey ( name ),
   incoming: cylinders!exchanges_incoming_cylinder_id_fkey ( barcode, gas_type, size ),
   outgoing: cylinders!exchanges_outgoing_cylinder_id_fkey ( barcode, gas_type, size )
 `;
